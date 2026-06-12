@@ -1,0 +1,769 @@
+{
+  "findings": {
+    "game": {
+      "coreLoop": "SC2Mafia (custom SC2 Arcade map by Dark.Revenant, ~15 players, direct ancestor of Town of Salem) alternates three cycles: DAY, LYNCH (trial), and NIGHT. SETUP: host configures the game in a pre-game setup phase (players can vote -repick to replace host, -default to force the 'Setup of the Day'); then a naming phase where players pick names (-Name) or get random ones; roles are then secretly assigned. DAY CYCLE (1-6 min, host-set): all living players talk in public chat, share findings, whisper (-pm), and after an optional no-vote 'Discussion' period (30s-3min) vote to lynch via vote buttons next to player names. Day Type options: 'Majority' (51% of votes = instant execution), 'Majority + Trial' (51% puts player on trial — the de facto standard), 'Ballot' (secret ballot, most votes executed at day end), 'Ballot + Trial'. LYNCH CYCLE: accused player gets uninterrupted defense time (Trial Defense option; trial time 30s-2min split 50/50 defense/voting; 'Trial Pauses Day' option stops the day timer so an innocent verdict lets town vote again), then everyone votes guilty/innocent; guilty = public execution (flavor variants: firing squad, electrocution, sniper, gas chamber, hanging). Lynched player's role and Last Will are revealed immediately. -skip command (50%+ of living players) skips the day. NIGHT CYCLE (30s-2min): all players submit night actions simultaneously via UI/commands; Mafia/Triad/Cult/Masons/Jailor get private night chats; Mafia votes its kill target (-target). At dawn the game reveals deaths with role + Last Will (unless janitored), plus optional Death Descriptions (weapon flavor text identifying killer type) or full Night Sequence (adds audio cues — e.g. a Mass Murderer chainsaw sound plays even if his kill failed, leaking role presence). Repeat until a faction's win condition is met. Game can start at Day, Night, or Day(No-Lynch) (the common choice; also enables Night-1 jailing). After game end all players earn points (winners more), feeding unlockables/achievements; dead players meanwhile sit in graveyard chat and can gamble points on a Russian Roulette minigame.",
+      "setupSystem": "Host picks a Variant: 'Classic' (preset: Mafioso/Consort/Citizen/Doctor/Sheriff only, no Last Wills/PMs/Trials), 'Clue' (no Last Wills, roles NOT revealed on death — Coroner becomes critical), 'Custom' (full editor: every role and option), or 'Save Slot' (reload a previously -save'd custom setup — how almost all real games are hosted; etiquette is to build the save alone offline because lobbies get impatient). The setup editor is a ROLE LIST of ~15 slots; each slot is either a SPECIFIC ROLE (e.g. Sheriff, Godfather) or a RANDOM CATEGORY slot that rolls a role from a pool: Town Government, Town Investigative, Town Protective, Town Killing, Town Power, Town Core, Town Random, Mafia Support, Mafia Deception, Mafia Killing, Mafia Random, Triad equivalents, Neutral Benign, Neutral Evil, Neutral Killing, Neutral Random, Any Random. Each category has per-role EXCLUDE toggles (e.g. 'Town Core: Exclude Citizen', 'Neutral Evil: Exclude Serial Killer'), and individual roles have 'Excluded from randoms' flags. Every role additionally has its own OPTION toggles that radically retune it, e.g.: Sheriff detects-Mafia/SK/Arsonist/Cult/MM toggles; Jailor 1/2/3/infinite executions; Vigilante shot count; Veteran alert count + ignores-invulnerability; Godfather immune-to-detection / roleblock-immune / kills-like-Mafioso; Witch 'can cause self-targets' and 'victim knows he is controlled'; Cultist conversion cooldown (1/2/3 nights) and 'immunity prevents conversion'; Survivor vest count; Mayor vote weight + 'cannot be healed'; Executioner 'becomes Jester upon failure' / 'target is always Town'; Citizen one-time bulletproof vest and 'wins 1v1 vs Mafia'. Game-level options: Day Type (4 voting modes), Night Type (Classic/Death Descriptions/Night Sequence), trial settings, day/night/discussion/trial lengths, Last Wills on/off, PMs on/off, Choose Names on/off, starting phase. The engine can EMULATE the setup (roll the randoms repeatedly) so hosts can check emergent probabilities. Constraint system: Unique roles (Godfather, Mayor, Marshall, Crier, Judge, Mason Leader, Dragon Head, Witch Doctor) max 1 alive; Mayor and Marshall mutually exclusive unless forced; 'powerless role' rules stop randoms rolling roles that would do nothing (e.g. Coroner only spawns from randoms if a Janitor/Incense Master or Clue variant is present; Framer/Forger won't roll with no Town to frame); an all-excluded Town Government slot defaults to Citizen. Players with enough points can -blacklist (up to 6) and -prefer (up to 3) roles to bias their own assignment. The most popular balance is 9 Town / 3 Mafia or Triad / 3 Neutral (1 Neutral Killing, 1 Neutral Evil, 1 Neutral Benign).",
+      "roleCatalog": [
+        {
+          "alignment": "Town (uninformed majority; green)",
+          "approxCount": 20,
+          "notableRoles": [
+            {
+              "name": "Citizen",
+              "mechanic": "Vanilla; option for a one-night bulletproof vest and an option to win 1v1 ties vs Mafia/Triad"
+            },
+            {
+              "name": "Sheriff",
+              "mechanic": "Checks one player/night for alignment: 'member of the Mafia', 'Serial Killer', 'Arsonist', 'Cultist', 'Mass Murderer', or 'not suspicious' (per host detect toggles); fooled by Godfather detection immunity and Framer frames"
+            },
+            {
+              "name": "Investigator",
+              "mechanic": "Checks one player/night for their criminal record (crime list maps to role sets, e.g. 'Murder, Trespassing'); host option to instead reveal exact role"
+            },
+            {
+              "name": "Detective",
+              "mechanic": "Tracks one player/night, sees who they visited (sees FINAL post-swap visit)"
+            },
+            {
+              "name": "Lookout",
+              "mechanic": "Watches one player/night, sees everyone who visited them"
+            },
+            {
+              "name": "Coroner",
+              "mechanic": "Autopsies a dead body: learns exact role and night-by-night visit history; counter to Janitor and core of Clue variant"
+            },
+            {
+              "name": "Spy",
+              "mechanic": "Reads Mafia/Triad/Cult/Mason night chats anonymously (no speaker names); options to also see the Mafia kill target"
+            },
+            {
+              "name": "Doctor",
+              "mechanic": "Heals one player/night, negating one kill; options: knows if target attacked, prevents/detects Cult conversion; becomes Witch Doctor if converted (option)"
+            },
+            {
+              "name": "Bodyguard",
+              "mechanic": "Guards one player; if guarded player is attacked, attacker and Bodyguard BOTH die in a duel, target survives; at a Mass Murderer spree saves everyone and kills the MM"
+            },
+            {
+              "name": "Escort",
+              "mechanic": "Roleblocks one player/night, cancelling their action; some roles roleblock-immune; SK option 'kills roleblockers'"
+            },
+            {
+              "name": "Bus Driver",
+              "mechanic": "Swaps two players; every targeted action on one hits the other instead; can kill via redirection; chaotic dual-use protective/power role"
+            },
+            {
+              "name": "Vigilante",
+              "mechanic": "Night kill with host-limited shots (1-4 or unlimited); can't shoot N1; mislynches town when wrong ('Town Serial Killer')"
+            },
+            {
+              "name": "Veteran",
+              "mechanic": "Goes 'on alert' (limited count): automatically kills every visitor that night, optionally ignoring night immunity; roleblock-immune"
+            },
+            {
+              "name": "Jailor",
+              "mechanic": "During a day with no lynch, selects (-jail) a target to jail that night: target is roleblocked (ignores roleblock immunity), protected (not from Arsonist), talks with Jailor in anonymous jail chat, and may be EXECUTED (pierces all night immunity, can't be healed); host-limited executions (1/2/3/infinite)"
+            },
+            {
+              "name": "Mayor",
+              "mechanic": "Unique; reveals self with -vote for permanent extra votes (e.g. counts as 4); option: can no longer be healed after reveal"
+            },
+            {
+              "name": "Marshall",
+              "mechanic": "Unique; reveals self to trigger a group-lynch day: multiple lynches, no trials; mutually exclusive with Mayor"
+            },
+            {
+              "name": "Crier",
+              "mechanic": "Unique; speaks anonymously to the whole town at night (only night-talking Town role); can disrupt/expose a Judge"
+            },
+            {
+              "name": "Mason / Mason Leader",
+              "mechanic": "Masons share a night chat and know each other; Mason Leader (unique) recruits one Citizen per night (limited recruits), bludgeons any Cultist he targets, immune to Cult conversion; Mason can become Leader if Leader dies (option)"
+            }
+          ]
+        },
+        {
+          "alignment": "Mafia (informed minority; red)",
+          "approxCount": 11,
+          "notableRoles": [
+            {
+              "name": "Godfather",
+              "mechanic": "Unique faction leader; final say on the night kill (-notarget possible), options for night immunity, detection immunity (reads 'not suspicious'), roleblock immunity, and killing personally when no Mafioso lives"
+            },
+            {
+              "name": "Mafioso",
+              "mechanic": "Basic killer; Mafiosos vote/suggest kill targets, one random Mafioso carries out the chosen kill"
+            },
+            {
+              "name": "Consigliere",
+              "mechanic": "Mafia Investigator: checks crimes or exact role per settings"
+            },
+            {
+              "name": "Consort",
+              "mechanic": "Mafia Escort: roleblocks one player/night"
+            },
+            {
+              "name": "Janitor",
+              "mechanic": "Sanitizes a target: if they die that night their role and Last Will are hidden from the town"
+            },
+            {
+              "name": "Framer",
+              "mechanic": "Frames a player: Sheriff sees them as Mafia (or a living neutral killer), Investigator gets planted crimes"
+            },
+            {
+              "name": "Disguiser",
+              "mechanic": "Kills a player and steals their identity/name; own Last Will left on old body (option-dependent); the dead victim appears as the Disguiser"
+            },
+            {
+              "name": "Blackmailer",
+              "mechanic": "Silences a player for the next day: they cannot talk (or whisper/reveal as Mayor; a blackmailed jailed target cannot answer the Jailor)"
+            },
+            {
+              "name": "Beguiler",
+              "mechanic": "Hides behind a target at night: anything targeting the Beguiler is redirected to that target"
+            },
+            {
+              "name": "Agent",
+              "mechanic": "Combined Detective+Lookout on one target (sees who they visited and who visited them)"
+            },
+            {
+              "name": "Kidnapper",
+              "mechanic": "Mafia Jailor: jails+roleblocks after a no-lynch day, anonymous chat, may execute (jail also protects target from the Mafia kill)"
+            }
+          ]
+        },
+        {
+          "alignment": "Triad (second scum faction; blue; mirror of Mafia)",
+          "approxCount": 11,
+          "notableRoles": [
+            {
+              "name": "Dragon Head",
+              "mechanic": "= Godfather"
+            },
+            {
+              "name": "Enforcer",
+              "mechanic": "= Mafioso"
+            },
+            {
+              "name": "Administrator",
+              "mechanic": "= Consigliere"
+            },
+            {
+              "name": "Liaison",
+              "mechanic": "= Consort"
+            },
+            {
+              "name": "Incense Master",
+              "mechanic": "= Janitor"
+            },
+            {
+              "name": "Forger",
+              "mechanic": "= Framer"
+            },
+            {
+              "name": "Informant",
+              "mechanic": "= Disguiser"
+            },
+            {
+              "name": "Silencer",
+              "mechanic": "= Blackmailer"
+            },
+            {
+              "name": "Deceiver",
+              "mechanic": "= Beguiler"
+            },
+            {
+              "name": "Vanguard",
+              "mechanic": "= Agent"
+            },
+            {
+              "name": "Interrogator",
+              "mechanic": "= Kidnapper; only real faction difference: Triad wins ties over Mafia. Mafia and Triad can coexist in one setup as hostile rival factions with separate night chats; a Spy can't tell their kills apart"
+            }
+          ]
+        },
+        {
+          "alignment": "Neutral Benign (own goals, can win with anyone)",
+          "approxCount": 4,
+          "notableRoles": [
+            {
+              "name": "Survivor",
+              "mechanic": "Win = just survive to game end (wins alongside any faction); gets N bulletproof vests (usually 4) usable for night immunity"
+            },
+            {
+              "name": "Jester",
+              "mechanic": "Win = get LYNCHED (night death doesn't count); can 'annoy' a player at night (they're told a Jester visited); on lynch, option makes one random guilty voter commit grief suicide the next night"
+            },
+            {
+              "name": "Executioner",
+              "mechanic": "Win = see his game-assigned target lynched (option: target always Town); option: becomes a Jester if target dies at night; option: night invulnerable"
+            },
+            {
+              "name": "Amnesiac",
+              "mechanic": "Converts to (remembers) the role of any DEAD player in the graveyard, inheriting that role's win condition; options restrict becoming Town/Mafia/killing; immune to Witch control and roleblock"
+            }
+          ]
+        },
+        {
+          "alignment": "Neutral Evil (win = survive and see Town lose; all win with the Cult)",
+          "approxCount": 7,
+          "notableRoles": [
+            {
+              "name": "Witch",
+              "mechanic": "Controls one player/night, forcing their night action onto a target of the Witch's choice (can force self-targets per option); victim-knows-controlled option; can't control Amnesiacs/the dead-targeting; counts as a kill route via Veterans/killers; wins with Mafia/Triad/NK/Cult/other Witches"
+            },
+            {
+              "name": "Auditor",
+              "mechanic": "Converts one player/night: Town→Citizen, Mafia→Mafioso, Triad→Enforcer, non-immune Neutrals→Scumbag; cannot audit night-immune roles; targets are notified they were audited"
+            },
+            {
+              "name": "Judge",
+              "mechanic": "Unique; may 'call court' during the day: discussion stops, forced anonymous ballot, Judge speaks as 'Court' (everyone else 'Jury') and gets bonus votes — can single-handedly lynch late-game; also speaks anonymously at night (appears as a Crier)"
+            },
+            {
+              "name": "Scumbag",
+              "mechanic": "Vanilla survive-and-see-Town-lose role created only by an Auditor converting a Neutral; not host-selectable"
+            },
+            {
+              "name": "Cultist",
+              "mechanic": "CULT sub-faction: shared night chat, democratically votes one conversion per cooldown (1/2/3 nights); cannot convert Mafia/Triad; night immunity blocks conversion (option); Cult capped at 1/3 of original game size minus Mafia, regains a conversion per two dead Cultists; converted players keep their old appearance but join Cult chat; Mason Leader kills Cultists he visits"
+            },
+            {
+              "name": "Witch Doctor",
+              "mechanic": "Unique Cult support: 'heals' a player — if that player is attacked, they survive AND are converted to the Cult (limited saves); Cult win = everyone else dead or converted; Doctor/Witch converted by Cult become the Witch Doctor if none exists (options)"
+            },
+            {
+              "name": "Elector (removed)",
+              "mechanic": "Scrapped role: stole one player's vote and gave it to another at night"
+            }
+          ]
+        },
+        {
+          "alignment": "Neutral Killing (subset of Neutral Evil; win = be last left standing; night-immune by default)",
+          "approxCount": 5,
+          "notableRoles": [
+            {
+              "name": "Serial Killer",
+              "mechanic": "Kills one player/night; options: night invulnerable, kills roleblockers (Escort/Jailor who releases him dies), wins-ties-over-Arsonist"
+            },
+            {
+              "name": "Arsonist",
+              "mechanic": "Each night either DOUSES a target in gasoline or IGNITES all doused players at once (mass kill, option ignores healing immunity); can undouse self by idling; doused players may or may not be notified (option)"
+            },
+            {
+              "name": "Mass Murderer",
+              "mechanic": "Stages a killing spree at a target's house: kills the target (if home, i.e. took no action) and every visitor; 1-2 night cooldown after killing 2+; Bodyguard at the scene saves everyone and kills the MM; can target self to camp his own house"
+            },
+            {
+              "name": "Electromaniac",
+              "mechanic": "Charges up to two players/night; if any two charged players contact each other both die; visiting a charged player kills them instantly; pierces ALL protection and immunity"
+            },
+            {
+              "name": "Poisoner",
+              "mechanic": "(Later addition) Poisons a player who dies some days later unless a Doctor visits them; repeat visits accelerate death; different NK roles cannot win together, but duplicates of the same NK role can"
+            }
+          ]
+        }
+      ],
+      "chatMechanics": [
+        "DAY CHAT: one public channel for all living players; the central deduction space. Dead players see everything but cannot speak to the living.",
+        "WHISPERS / PMs (-pm color/number msg, -r to reply): private content, but PUBLIC metadata — everyone is notified 'X is whispering to Y'. Host toggle; older versions let the Spy read PMs. Critical for role-claiming to a revealed Mayor/Marshall.",
+        "MAFIA NIGHT CHAT: all Mafia members talk privately each night and coordinate the kill via -target votes (Godfather has final say, -notarget possible). TRIAD has an identical separate chat; the two factions cannot hear each other.",
+        "CULT NIGHT CHAT: all Cultists + Witch Doctor talk at night and vote democratically on the conversion target (ties broken randomly). A Disguiser who steals a Cultist's identity does NOT get into Cult chat.",
+        "MASON NIGHT CHAT: Masons and Mason Leader talk privately at night (Town-aligned mirror of the Cult).",
+        "JAILOR CHAT: Jailor (or Kidnapper/Interrogator) converses one-on-one with his jailed prisoner; the Jailor's identity is anonymized as 'Jailor'. Quirk: two Jailors jailing the same target share one chat without knowing each other's identity. Blackmailed prisoners cannot reply.",
+        "SPY: reads Mafia/Triad/Cult/Mason night chats with speaker names hidden; option to see kill/conversion targets.",
+        "CRIER: broadcasts anonymously to the entire town at night ('the Crier says...'). JUDGE: also speaks anonymously at night (indistinguishable from a Crier) and during his 'court' day all non-Judge chat is anonymized as 'Jury'.",
+        "BLACKMAILER/SILENCER: target is mute the entire next day — cannot talk, and a blackmailed Mayor cannot reveal.",
+        "DEAD CHAT (graveyard): dead players chat freely among themselves, see all hidden info, and can play the Russian Roulette points minigame (-roulette/-join/-bet/-pull/-pass). No medium-style channel back to the living (that was Town of Salem's later addition).",
+        "LAST WILLS (-lw / -last will): up to 2 lines, editable any time while alive via a popup editor, revealed publicly on death (next dawn if night-killed, immediately if lynched). Anyone can re-read a dead player's will with -lw <number>. Convention: investigators log night results in shorthand ('N1: #7 (NS), N2: #5 (Mafia)'). Janitor/Incense Master cleaning hides role AND will; Clue variant disables wills entirely; host can disable wills.",
+        "DEATH NOTES (-dn msg): only non-Town killing roles (incl. Witch) may write one; it is displayed next to each victim they kill — used for taunts and disinformation.",
+        "MISC: -mute <player> client-side mute; -skip (50% of living skips day); -suicide (after day 3, kills self at night, used to dodge or to validate a Last Will posthumously)."
+      ],
+      "winConditions": [
+        "TOWN: lynch/kill every Mafia, Triad, Cultist, Neutral Killing and hostile Neutral Evil player. Town members all win together.",
+        "MAFIA: kill everyone who opposes them; effectively wins at parity — tiebreaker rules give Mafia the win when Mafia numbers >= Town numbers. Optional rule lets a lone Citizen beat the last Mafioso 1v1.",
+        "TRIAD: identical to Mafia, but wins ties OVER the Mafia (1v1 order: Triad > Mafia). When both factions are in a setup they must also eliminate each other.",
+        "CULT (Cultist + Witch Doctor): wins when every player is dead or converted — cannot win with Mafia/Triad or Neutral Killers, CAN win with other Neutral Benign/Evil roles.",
+        "NEUTRAL KILLING (SK/Arsonist/MM/Electromaniac/Poisoner): be the last faction standing; can win with Neutral Evil (except Cult) and Neutral Benign; different NK roles can never win together but duplicates of the same role can (2 SKs can co-win).",
+        "NEUTRAL EVIL non-killing (Witch/Judge/Auditor/Scumbag): 'survive and see the Town lose' — they ride along with whichever evil faction wins, and all of them also win with the Cult; they can also achieve rare solo wins.",
+        "NEUTRAL BENIGN: Survivor = simply alive at game end, stacks with any winner; Jester = gets lynched (instant personal win, + a guilty voter suicides); Executioner = his assigned target gets lynched while Exe lives (becomes Jester on failure, per option); Amnesiac = inherits the win condition of whatever graveyard role he remembers (or survives without converting).",
+        "DRAW/STALEMATE HANDLING: 'Three Days of Peace' — if nobody dies for 3 consecutive nights, day voting switches to anonymous ballot; persistent vote ties trigger re-votes until time expires, then a tiebreaker formula ends the game (Town wins if it outnumbers Mafia; Mafia wins at >= Town; Neutrals win if they outnumber Town; largest faction beats mixed Neutrals).",
+        "ONE-VERSUS-ONE AUTO-RESOLUTION: when the game reaches 1v1 at the start of a day it auto-concludes by priority: Arsonist > Serial Killer (option can flip SK over Arsonist) > Mass Murderer > Triad > Mafia (option: lone Citizen beats Mafia/Triad) > Cult > Witch/Judge/Auditor (win alongside the above) > Town > Executioner > Amnesiac > Survivor > Jester."
+      ],
+      "trickyMechanics": [
+        "GLOBAL NIGHT RESOLUTION ORDER (published by the developer Dark Revenant, June 2011): 1) Jailor/Kidnapper detains target; 2) night chats open (Mafia/Mason/Cult/Jailor); 3) bulletproof vests applied; 4) TARGET MANIPULATION LOOP — Witch controls, then Bus Driver swaps, then roleblockers (Escort/Consort), and this Witch→BusDriver→Roleblocker cycle REPEATS a random number of times to settle 'complicated webs of events and paradoxes' (e.g. escort blocks escort blocking witch); 5) Framer frames, Arsonist douses/undouses, misc non-killing actions; 6) ALL KILLS RESOLVE SIMULTANEOUSLY but are reported in fixed order — Jailor execution, Vigilante, Mafioso/Godfather, Serial Killer, Arsonist ignition, Mass Murderer, Jester grief-suicide, Disguiser, leaver suicides — with Bodyguard duels, Bus Driver collision kills, and Witch-forced kills interleaved; being killed in an earlier step does NOT cancel your own queued kill (dead men's knives still land); 7) Janitor cleans; 8) investigations resolve (Sheriff, Investigator, Consigliere) — i.e. info roles see POST-kill state; 9) Disguiser assumes identity if his kill succeeded; 10) Mason Leader recruit; 11) Cult conversion last.",
+        "SIMULTANEOUS SUBMISSION: all players lock in actions during the timed night; nothing resolves until the night ends, then the deterministic pipeline above runs. Conflicting actions are settled purely by that priority order, not submission time.",
+        "REDIRECTION STACK: Bus Driver swaps redirect every targeted action including kills and heals (forcing Mafia to kill their own is a core play); Beguiler/Deceiver hide-behind redirects everything aimed at THEM onto their host; Witch redirects the victim's OWN action. Detective reports show the FINAL visit after all swaps. Witch-on-Witch is defined: a Witch's 'action target' is the person she controls, so controlling a Witch re-aims who that second Witch controls, not her victim's target.",
+        "ROLEBLOCK EDGE CASES: jail roleblocks even roleblock-immune roles (Veteran, Amnesiac, Godfather w/ immunity); Serial Killer option kills roleblockers (an Escort who blocks him, or a Jailor who jails-and-releases him, dies); Jailor's own execution can be roleblocked by an Escort/Consort; Jailor is hardcoded immune to Witch control (acknowledged bug).",
+        "PROTECTION/IMMUNITY LADDER: night immunity (Godfather, NK roles, vests) blocks normal kills; piercing effects: Jailor execute (ignores immunity AND healing), Veteran alert (option: ignores invulnerability), Electromaniac (pierces everything), Arsonist option burns through Doctor heals. Bodyguard intercept kills the attacker and himself, saving the target; at a Mass Murderer spree the Bodyguard saves all visitors and kills the MM. Doctor heal beats one kill; multiple simultaneous attacks overwhelm a single heal.",
+        "VISIT SEMANTICS: actions = 'visits'; Lookout/Detective/Agent/Vanguard observe visits; Veteran kills visitors; Mass Murderer kills everyone 'at the house' (a target who took an action is 'not home' and survives); non-visiting roles can still be FORCED to visit by a Witch (a witched Citizen will show up in Lookout reports and die to a Veteran); jailed targets never visit and are 'always home'; Jailor visits his captive only when executing (creates a documented MM corner case).",
+        "CONVERSION SYSTEMS (hardest to implement): Cult — democratic vote, cooldown 1-3 nights, cannot convert Mafia/Triad, night-immunity/vests block conversion (option), 1/3-of-original-players cap with refund of one conversion per two dead Cultists, Mason Leader insta-kills Cultists he targets and Masons are unconvertible, Doctor/Witch convert into the unique Witch Doctor, Witch Doctor 'heal-converts' attacked targets and may push past the cap, Doctor heal beats Witch Doctor heal on the same target; Auditor — converts Town→Citizen / Mafia→Mafioso / Triad→Enforcer / Neutral→Scumbag, blocked by night immunity; Amnesiac — converts himself to any graveyard role; Mason Leader — recruits Citizens only; Executioner→Jester on failed objective. Resolution order puts both recruit/convert steps dead last.",
+        "FACTION KILL DELEGATION: Mafiosos vote/suggest targets, a random living Mafioso performs the kill, Godfather overrides; with no Mafioso the Godfather kills personally only if the host option allows; non-killing Mafia can -target to direct an AFK killer; a leaver's role 'suicides' but their queued kill still resolves.",
+        "UNIQUE-ROLE & SPAWN CONSTRAINTS: only one Godfather/Mayor/Marshall/Crier/Judge/Mason-Leader/Witch-Doctor/Dragon-Head alive at a time; Mayor and Marshall are mutually exclusive via a shared uniqueness category; random slots must not roll 'powerless' roles (Coroner needs a Janitor/Clue context; Framer needs Town to frame; Mason Leader only spawns alongside Citizens/Cultists); an impossible random slot defaults to Citizen.",
+        "INFORMATION-MASKING INTERACTIONS: Janitor hides role+will of victims; Disguiser swaps identities (graveyard shows the wrong person); Framer corrupts Sheriff/Investigator reads; Godfather detection immunity reads 'not suspicious'; Death Descriptions / Night Sequence leak killer-type via flavor text and sounds (MM sound plays even on a failed spree); Coroner exists specifically to undo masking.",
+        "STALEMATE DETECTION: the engine itself enforces endgame — Three-Days-of-Peace ballot mode + numeric tiebreaker formula, and the 1v1 auto-resolution priority table — so the implementation needs faction-counting logic evaluated at the start of every day."
+      ],
+      "mvpRoleSet": [
+        "Citizen — vanilla baseline; gives the role list flexible filler and teaches the 'power of the vote' core (add the 1-use vest option for spice).",
+        "Sheriff — the Town's alignment-check engine; the single most load-bearing info role and the anchor for Last-Will meta.",
+        "Investigator — second, fuzzier info channel (crime records) so claims can cross-check without making detection trivial.",
+        "Lookout — visit-based information; creates the visits/watch web that makes night actions legible and catches killers.",
+        "Doctor — the canonical protective; heal-vs-kill is the most fundamental night interaction to get right first.",
+        "Escort — Town roleblocker; introduces action-cancellation and the roleblock layer of the resolution order.",
+        "Jailor — SC2Mafia's signature role: day-selected jail, anonymous prisoner chat, immunity-piercing execution; generates the game's best moments and exercises chat + roleblock + kill systems at once.",
+        "Vigilante — Town kill with limited shots; high-drama misfires and the simplest 'Town can also kill' lever.",
+        "Mayor — one unique reveal role; the -vote reveal moment plus vote-weight mechanic is cheap to build and hugely fun.",
+        "Godfather — Mafia leader: night immunity + detection immunity + final kill say; teaches immunity and faction kill delegation.",
+        "Mafioso — kill executor and succession body for the Mafia (vote-the-target mechanic).",
+        "Consort — Mafia mirror of the Escort; WIFOM between Escort/Consort claims is classic and reuses the roleblock code.",
+        "Framer — one deception role so Sheriff results aren't gospel; minimal code (a flag on investigation results) for huge meta payoff.",
+        "Serial Killer — one Neutral Killing third threat; night-immune solo killer forces three-way tension and exercises last-man-standing win logic.",
+        "Jester — the beloved chaos role; trivial to implement (win-on-lynch + guilty-voter suicide) and instantly makes lynching decisions psychologically interesting.",
+        "(Optional 16th/swaps: Executioner or Survivor for a second benign neutral — both are near-free to implement; defer Witch, Bus Driver, Cult, Triad, Veteran, Mass Murderer, Disguiser to post-MVP since they drive most of the resolution-order complexity.)",
+        "Recommended MVP slot template (15p): Sheriff, Investigator, Lookout, Doctor, Escort, Jailor, Vigilante, Mayor, Citizen | Godfather, Mafioso, Consort or Framer | Serial Killer, Jester, Survivor/Executioner — matching the canonical 9 Town / 3 Mafia / 3 Neutral balance."
+      ],
+      "fullScopeNotes": "Full SC2Mafia scope is roughly 60 roles: 20 Town (6 Government, 5-6 Investigative, 4 Protective, 4 Killing/Power overlapping, plus Spy and oddities like Stump (punishment role) and seasonal Caroler), 11 Mafia, 11 Triad (pure mirror of Mafia with renamed roles whose only mechanical difference is winning ties — cheap to add once Mafia exists, supports Mafia-vs-Triad three-way games with separate chats), ~15 Neutrals (4 Benign, 6+ non-killing Evil incl. the Cult conversion sub-faction and the Auditor-spawned Scumbag, 4-5 Killing incl. later additions Electromaniac and Poisoner, plus the scrapped Elector). Beyond roles, full scope includes: the four-variant host system (Classic/Clue/Custom/Save Slot) with save persistence and setup emulation/probability rolling; ~17 random-category slot types with per-role exclusion matrices; dozens of per-role option toggles that change role identity (this option system is the real configuration surface — every role page lists 3-8 toggles); 4 day/voting types and 3 night-reveal types with trial timer plumbing; Last Wills/Death Notes/PMs; unique-role and powerless-role spawn constraint solving; the full deterministic night-resolution pipeline with the repeated Witch/BusDriver/Roleblock cycle; stalemate machinery (Three Days of Peace, tiebreaker formula, 1v1 priority table); blackmail/silence states; conversion bookkeeping (Cult caps, Witch Doctor uniqueness, Auditor downgrades, Amnesiac remembering, Mason recruiting); meta-progression (points, achievements per-role win list via -alist, unlockable models/appendages, colored names, role blacklist/prefer weighting); lobby tooling (host repick voting, -default setup-of-the-day, kick-vote lists); and the graveyard Russian Roulette betting minigame. Historical note for synthesis: SC2Mafia (by Dark.Revenant) is the direct ancestor of Town of Salem — BlankMediaGames lifted the trial/defense/judgment loop, last wills, death notes, whispers, role-category randoms, and many role designs (Jailor, Veteran, Executioner, Jester, SK, Arsonist) nearly verbatim, so ToS docs are a usable secondary reference, but SC2Mafia is notably more permissive (free-text everything, host-configurable everything) and includes systems ToS dropped (Triad, Auditor/Judge/Marshall/Crier, Bus Driver chaos, court, multi-jailor chat). Primary sources: sc2mafia.fandom.com wiki pages — Game Guide, Hosting Guide, Mechanics (developer-confirmed night order), Commands, Last Will, Setups, all role/category pages (fetched via MediaWiki API; raw text cached under /tmp/sc2mafia/); supplemented by sc2mafia.com forum threads on Triad tie-wins and witch/jailor edge-case rulings."
+    },
+    "stack": {
+      "options": [
+        {
+          "name": "Web tech: TypeScript + Electron (+ optional PixiJS) + steamworks.js",
+          "steamIntegration": "steamworks.js (ceifa/steamworks.js): Rust-based N-API bindings, prebuilt binaries on npm, full TypeScript definitions, Electron/NW.js/Node support. Not archived; last push Apr 2026, 613 stars, 67 open issues, effectively single-maintainer (the 'not maintained' quote in its README refers to greenworks, the legacy alternative). Covers achievements, cloud, auth tickets, matchmaking/lobbies, workshop, overlay activation. KNOWN HARD LIMIT: Steam overlay does not work on macOS for Electron apps at all (electron/electron#42656, ceifa/steamworks.js#50) and only works on Windows with --in-process-gpu plus repaint caveats — architectural multi-process browser limitation, not fixable by config. Tauri alternative is immature: only tauri-plugin-hal-steamworks v0.0.4 on crates.io, and the Steam overlay cannot hook Tauri's system webview (tauri-apps/tauri#6196); Electron/NW.js are the only frameworks the established JS Steam bindings officially support (webgamedev.com/publishing/desktop).",
+          "pros": [
+            "Maximum dev velocity for THIS dev: reuses TypeScript/Node/Postgres end-to-end; shared types/validation between client and game server (socket.io/tRPC/zod), hot reload, Chrome DevTools",
+            "Best-in-class UI tooling for a chat-heavy game: HTML/CSS/React (or Svelte/Solid) gives rich text, emoji, virtualized scrollback (react-virtuoso), tooltips, theming, accessibility — strictly better than any game-engine UI system for this genre",
+            "Proven shipping path: CrossCode (NW.js, 93% positive, 10k+ reviews) and shapez (Electron, Overwhelmingly Positive) shipped Win/macOS/Linux on Steam this way; gamedevjs.com and overactiongamestudio.com publish current Electron+steamworks.js pipelines",
+            "Strategic bonus unique to this route: same codebase can ship a free browser version to seed the multiplayer player base (Town of Salem itself started as a browser game); social deduction games live or die on concurrent players",
+            "Server stays 100% TypeScript/Node on his own Linux boxes — server-authoritative design needs no Steam networking at all (plain WebSockets), so the weakest parts of Steamworks bindings are irrelevant",
+            "electron-builder automates macOS signing/notarization (with known entitlements: disable-library-validation + allow-dyld-environment-variables required for the Steamworks dylib per Valve docs)"
+          ],
+          "cons": [
+            "Steam overlay broken on macOS, flaky on Windows — friend invites must flow through the Steam client launching the game with a connect arg rather than Shift+Tab; some players notice and complain",
+            "Electron macOS notarization/hardened-runtime is a documented pain (electron-builder issues #3989/#4040: every nested binary must be signed, entitlements-inherit required) — solvable, well-trodden, but a real day or two of yak-shaving",
+            "~250 MB download and 'it's Electron' perception/memory overhead; mostly cosmetic for this genre",
+            "steamworks.js bus factor: one maintainer, 67 open issues; mitigations exist (forks like ai-zen/steamworks.js, or raw steamworks-rs via a small native module)",
+            "If the game later grows real-time gameplay (animations beyond CSS/PixiJS, particles, shaders), engine features must be hand-assembled from npm parts",
+            "No engine-experience résumé value; future console ports would require a rewrite (Steam-only plan makes this moot for now)"
+          ],
+          "fitScore": 9
+        },
+        {
+          "name": "Godot 4 + GDScript + GodotSteam",
+          "steamIntegration": "GodotSteam is the strongest open-source Steamworks binding of any engine: GDExtension 4.19.1 released 2026-05-29 already tracking Steamworks SDK 1.64 (released ~2 weeks prior), supports Windows/Linux/macOS, drop-in via Asset Library, includes auto-update checker. Active development moved from GitHub (archived 2026-05-23) to Codeberg (codeberg.org/godotsteam/godotsteam) — a hosting move, not abandonment; godotsteam.com has dedicated tutorials including Mac export. Near-complete Steamworks API coverage.",
+          "pros": [
+            "Free, MIT-licensed, no revenue caps, no company risk of Unity-style license whiplash",
+            "Control-node UI system is the best among real game engines for menus/lists/themes; RichTextLabel has BBCode, its own scrollbar, append_text() incremental parsing and a Threaded mode for chat logs (docs.godotengine.org BBCode guide explicitly discusses multiplayer chat, including sanitizing user BBCode injection)",
+            "macOS export is first-class: export dialog has built-in codesign + notarization integration including rcodesign, which signs/notarizes from Linux/Windows without a Mac (godotengine PR #64207)",
+            "Server can stay TypeScript/Node: Godot's WebSocketPeer client talks to his existing stack, so only the client is 'new territory'",
+            "GDScript is a small Python-like language — days, not months, for a strong TS dev; enormous tutorial ecosystem; lightweight editor, fast iteration",
+            "Future-proof: if the game grows animations/minigames/juice, the engine absorbs it; Linux export trivially covers Steam Deck"
+          ],
+          "cons": [
+            "Whole-engine learning curve (scenes, nodes, signals, themes) before first pixel of real product — weeks of ramp-up a web stack wouldn't need",
+            "Chat UI is achievable but clunkier than DOM: RichTextLabel stutters on thousands-of-lines logs without the documented workarounds; no CSS, no virtualized-list library, theming system is its own skill",
+            "GDScript is dynamically typed and tooling (refactors, LSP) is weaker than TypeScript's; code can't be shared with the Node server — game rules logic gets duplicated or moved fully server-side",
+            "No browser-demo synergy with a native-feeling codebase (Godot web export exists but is heavy and C#/web export still unsupported)",
+            "Asset-store ecosystem smaller than Unity's, though largely irrelevant for a UI-first game"
+          ],
+          "fitScore": 7
+        },
+        {
+          "name": "Godot 4 + C# (.NET) + GodotSteam C# bindings",
+          "steamIntegration": "Same excellent GodotSteam core, but the C# layer lags: LauraWebdev/GodotSteam_CSharpBindings targets GodotSteam 4.6.1 / Godot 4.4+ and hasn't tracked GodotSteam 4.11+ — a community fork (craethke/GodotSteam_CSharpBindings) carries updated bindings. Workaround: call the GDExtension directly from C# via Godot's cross-language Call() per godotsteam.com/tutorials/c-sharp (works but loses typed API). steam-multiplayer-peer-csharp exists for Steam transport but is irrelevant given his own servers.",
+          "pros": [
+            "C# is statically typed and closer to TypeScript ergonomics than GDScript; Rider/VS tooling is excellent",
+            "All Godot UI/export strengths from the GDScript option apply",
+            "Larger transferable-skill payoff (C# also unlocks Unity/MonoGame later)"
+          ],
+          "cons": [
+            "Steam bindings are the weakest link: official-ish C# bindings version-lag the rapidly-updated GodotSteam, forcing a fork or untyped Call() interop — ongoing friction for the project's most Steam-critical dependency",
+            "C# is still a new language for this dev (async model, .NET project system) on top of the engine learning curve",
+            "Godot's C# path has historically trailed GDScript in docs/tutorials and platform support (no web export), so community answers often need translation from GDScript",
+            "No code sharing with the Node server, same as GDScript"
+          ],
+          "fitScore": 6
+        },
+        {
+          "name": "Unity 6 + Steamworks.NET (or Facepunch.Steamworks)",
+          "steamIntegration": "Most mature Steam ecosystem of any engine. Steamworks.NET: faithful 1:1 wrapper of Valve's C++ API, decades of community guidance apply directly, broad third-party tooling (Heathen's Toolkit at kb.heathen.group/steam). Facepunch.Steamworks: idiomatic C# re-interpretation, shorter code, but diverges from Valve docs and tooling, maintenance historically spottier. Known macOS notarization recipes exist (Steamworks.NET issue #305, yemi.me Unity-Steam-macOS guide). Either binding fully covers auth/achievements/rich presence.",
+          "pros": [
+            "Deepest asset store and largest community; an answer exists for everything",
+            "Steamworks.NET is the de-facto industry standard binding; lowest Steam-integration risk of all options",
+            "Town of Salem 2 itself is a Unity game — direct genre precedent",
+            "Runtime Fee cancelled (Sep 2024); Unity Personal free to $200k revenue/funding, splash screen optional in Unity 6 — licensing risk for a solo dev is currently low (unity.com/blog/unity-is-canceling-the-runtime-fee)"
+          ],
+          "cons": [
+            "UI is the project's core and Unity's UI story is split: UI Toolkit is the recommended modern path for chat/data-heavy UIs but still has documented runtime gaps in 2025 — scroll-view behavior pain, no built-in runtime tooltips or drag-drop (Angry Shark Studio 2025 guide, Unity UI Toolkit status threads); uGUI is mature but verbose and dated, with TextMeshPro confined to uGUI",
+            "Heaviest learning curve here: large opaque editor, C# (new language), prefab/serialization model, slow domain reloads — worst dev-velocity match for a web-native solo dev",
+            "Closed source; company strategy risk (post-runtime-fee trust damage, 5% Pro price rise Jan 2026) even though Personal terms are fine today",
+            "Engine is overkill: 3D-capable runtime, longer build times, larger baseline complexity for a game that is lobby + chat + timers",
+            "No code sharing with Node server; no browser-demo synergy comparable to web stack"
+          ],
+          "fitScore": 5
+        },
+        {
+          "name": "Others (brief): Bevy, MonoGame, Defold, Ebitengine",
+          "steamIntegration": "Bevy: steamworks-rs / bevy_steamworks exist and Rust bindings are solid, but engine UI is the blocker. Defold: official, actively maintained extension-steam with hand-written Lua bindings (defold.com/extension-steam), macOS dev requires copying Steam dylibs to /usr/local/lib for editor runs. MonoGame: uses Steamworks.NET directly — binding fine, everything else manual. Ebitengine: official Steam shipping guide (ebitengine.org/en/documents/steam.html) but go-steamworks 'has not yet implemented most of the API'; macOS requires manual .app assembly, notarization, and ditto-zip quirks; known Steam-launch hang and overlay issues (ebiten #3181, #3338).",
+          "pros": [
+            "Defold is the most credible of the four: tiny runtime, official Steam extension, good 2D, free with no revenue share",
+            "Bevy 0.18 (Mar 2026) shows real momentum — first editor preview, bevy_feathers widgets — for anyone already in Rust",
+            "MonoGame and Ebitengine offer total code-level control with no engine lock-in"
+          ],
+          "cons": [
+            "Bevy: Rust learning curve is the steepest possible jump from TypeScript; bevy_ui remains low-level for a rich chat UI (community consensus still patches it with egui/sickle_ui) — wrong tool for a UI-first game in 2026",
+            "MonoGame: no UI system at all — chat, scrollbars, tooltips, text layout all hand-rolled or via third-party libs; macOS packaging fully manual; worst-case velocity",
+            "Defold: gui system is built for HUDs, not thousand-line rich-text chat scrollback; Lua + smaller community; ecosystem thin for this genre",
+            "Ebitengine: minimal immediate-mode drawing, Go UI ecosystem nearly empty, go-steamworks API coverage explicitly incomplete, fiddly macOS/Steam quirks"
+          ],
+          "fitScore": 3
+        }
+      ],
+      "recommendation": "Build it in web tech: TypeScript client (React or Svelte; add PixiJS only if/when you want canvas-rendered flair) wrapped in Electron with steamworks.js, talking WebSockets to your own Node/Postgres servers. Runner-up if you want to bet on an engine anyway: Godot 4 with GDScript + GodotSteam, keeping the server in Node.",
+      "reasoning": "Honest answer to the framing question: no, a game engine is not necessary for this game, and for this developer it is actively the slower path. A social deduction game is a lobby, a chat scrollback, vote/role panels, timers, and tooltips — exactly the workload DOM/CSS was built for and exactly where every game engine's UI system is the weak point (Godot's RichTextLabel needs documented workarounds for large chat logs; Unity's UI Toolkit still lacks runtime tooltips/drag-drop and has scroll-view pain per 2025 status threads; MonoGame/Ebitengine/Bevy have effectively nothing). Meanwhile the dev's existing TypeScript/Node/Postgres skills transfer 1:1, including shared types between client and authoritative server — the single biggest correctness lever in a protocol-heavy deduction game. The route is commercially proven on Steam for Win+macOS (CrossCode via NW.js, shapez via Electron), steamworks.js is alive (pushed Apr 2026, prebuilt npm binaries, TS definitions), and Steam-side needs are thin anyway because game networking runs on his own servers — Steamworks is only auth tickets, achievements, rich presence, and presence-based invites. The unique strategic kicker: the same codebase ships a free browser build to seed the player base, which is existential for an online social deduction game (Town of Salem itself grew from a browser game). The two real costs are known and bounded: (1) Steam overlay does not work on macOS for Electron and is flaky on Windows — route invites through the Steam client launch flow instead; (2) Electron macOS signing/notarization yak-shaving — solved by electron-builder plus Valve's documented entitlements (disable-library-validation, allow-dyld-environment-variables). Tauri is rejected for Steam specifically: the overlay cannot hook its system webview, the only Steamworks plugin is v0.0.4, and macOS WKWebView adds rendering inconsistency — Electron is the web wrapper that works. If the dev prefers insurance for a more game-like future (animated night phases, minigames, juice), Godot 4 GDScript + GodotSteam is a strong 7/10: best-in-engine-class UI nodes, the most actively maintained Steam binding in any engine (4.19.1, May 2026, now on Codeberg), built-in macOS signing/notarization including Mac-less rcodesign, and the server still stays in Node via WebSockets. Avoid the Godot C# path (C# Steam bindings version-lag GodotSteam, forcing forks or untyped interop). Unity (5/10) is the safe-but-slow industrial choice whose strengths (3D, asset store, console ports) this project doesn't use, bought with the steepest ramp for a web-native solo dev. Key sources: codeberg.org/godotsteam/godotsteam (releases), godotsteam.com/blog, github.com/ceifa/steamworks.js + GitHub API (activity), electron/electron#42656 and ceifa/steamworks.js#50 (macOS overlay), tauri-apps/tauri#6196 (Tauri overlay), docs.godotengine.org (RichTextLabel/BBCode, exporting_for_macos + PR #64207 rcodesign), unity.com/blog/unity-is-canceling-the-runtime-fee, angry-shark-studio.com UI Toolkit vs UGUI 2025, partner.steamgames.com macOS requirements + steamcommunity Steamworks announcement (64-bit/notarization, entitlements), defold.com/extension-steam, ebitengine.org/en/documents/steam.html, strayspark.studio Bevy-2026 and thisweekinbevy (Bevy 0.18 maturity), LauraWebdev/GodotSteam_CSharpBindings + craethke fork (C# lag), wiki.facepunch.com/steamworks and kb.heathen.group/steam (Steamworks.NET vs Facepunch)."
+    },
+    "net": {
+      "whyServerAuthoritative": "In a hidden-information game the only working defense is to NEVER transmit the secret. Anti-cheat, obfuscation, and encryption all fail because the cheat runs on the client, which must be able to decrypt whatever it receives — any data delivered to the client is readable via packet inspection or memory reads. Two case studies prove both directions: (1) Among Us used host-authoritative P2P-style architecture; role assignment happened on the host device, and clients received enough state that 'role reveal' / ESP mod menus were trivial and 'virtually undetectable' because they were pure client-side information reads. The 2020 cheating wave forced Innersloth into emergency server-side work (sources: pcgamer.com/of-course-there-are-already-among-us-cheaters/, burgercheats.com mod-menu listings, screenrant.com vent-hack coverage). (2) Town of Salem kept roles server-side: community/dev discussions confirm role-view 'hacks' don't work precisely because 'the client doesn't know the other player's roles' — but players did experiment with packet readers, so anything that IS sent is compromised (steamcommunity.com/app/334230 discussions threads on role-view hacks). Design rule: per-client need-to-know filtering at the serialization layer. Each client receives only: its own role/abilities, public game events (deaths, vote tallies as revealed by rules), chat channels it belongs to, and information its role has legitimately learned (e.g., investigator results). Night actions of other players are never echoed; faction chat is routed server-side only to faction members; vote/night resolution happens entirely server-side from queued intents. Subtle leaks to also close: side channels — if mafia clients receive extra messages or larger payloads at night than town clients, packet-size/timing analysis leaks faction; unify or pad per-phase message patterns. Also never embed the full role list in lobby payloads, never send 'you were targeted but protected' details beyond what rules reveal, and strip secrets from spectator and post-game data until game end. Academic backing: arxiv.org/pdf/2501.10881 (Addressing Network Packet-based Cheats in Multiplayer Games) treats packet-based hidden-info cheats as an architectural problem, not a detection problem.",
+      "architecture": "Two-tier split. TIER 1 — stateless lobby/matchmaking/auth service (plain HTTP/REST, horizontally scalable, no game state): handles login, party/queue, leaderboards reads, and issues a short-lived signed token {accountId, roomId} that admits the client to a specific game room. Also keeps a player→active-room registry so a restarted client can rediscover its in-progress game. TIER 2 — per-game room: one in-memory authoritative state machine instance per match (Colyseus 'Room' maps 1:1 to this; or a plain class in a Node process — at 50-500 CCU all rooms fit in one process). State machine phases: LOBBY → ROLE_ASSIGNMENT (single server-side seeded RNG; seed stored for audit/replay) → DAY_DISCUSSION → NOMINATION → TRIAL → VERDICT_VOTE → NIGHT (action queue collection) → NIGHT_RESOLUTION → check win → loop or GAME_OVER. Phase timers live server-side; on expiry the machine auto-transitions and applies defaults (abstain, no action) so a stalled/disconnected client can never block the game (pattern per mplgaming.com/server-authoritative-games/ and techtidesolutions.com/blog/game-server-architecture-basics/). NIGHT_RESOLUTION must be deterministic: collect all submitted intents into a queue during the night phase, validate each (alive? correct role? legal target? not roleblocked?), then resolve in a fixed published priority order (transports/roleblocks → protections → kills → investigations/info roles), producing an event list; this makes outcomes reproducible from (seed, intents) and enables replays and dispute audits. Message flow: client sends INTENTS only ({type:'vote', target}, {type:'night_action', target}, {type:'chat', channel, text}) → server validates against role+phase+alive status → mutates authoritative state → emits per-client FILTERED views (Colyseus StateView / boardgame.io playerView pattern: docs.colyseus.io/state/view, github.com/boardgameio/boardgame.io secret-state.md). Chat is just another server-routed channel: day chat broadcast to alive players, mafia chat only to mafia members, dead chat only to dead, whispers per game rules. Persistence boundary: live state in memory; append-only event log per match (for crash recovery, replays, ELO recompute, moderation evidence); transactional Postgres write of results at game end. Crash recovery via periodic snapshot or event-log replay is a nice-to-have at this scale, not a launch blocker.",
+      "transportOptions": [
+        {
+          "name": "Plain WebSockets (Node ws/uWebSockets.js, or Go)",
+          "verdict": "CORRECT CHOICE. A Mafia-style game is turn-based + chat: low message rate, no latency sensitivity below ~200ms, and TCP head-of-line blocking is irrelevant — exactly the profile where reliable ordered WebSocket transport is recommended (blog.algomaster.io/p/websocket-use-cases-system-design, techtidesolutions.com game-server-architecture-basics). One Node process trivially holds 500 concurrent sockets. TLS via Caddy/nginx reverse proxy. Node fits the dev's TypeScript profile better than Go here; Go buys nothing at this scale."
+        },
+        {
+          "name": "Socket.IO on top of WebSockets",
+          "verdict": "ACCEPTABLE. Adds rooms primitive (maps neatly to game/faction/dead chat channels), acks, auto-reconnect, and HTTP long-poll fallback. Costs: protocol overhead, and its room broadcast model still requires you to build the per-client state filtering yourself. The Redis adapter is only needed when scaling past one node — not needed at 500 CCU (socket.io/docs/v4/redis-adapter/, ably.com/topic/scaling-socketio). Reasonable DIY base, but Colyseus supersedes it for this genre."
+        },
+        {
+          "name": "Steam networking / Steam Datagram Relay (SDR)",
+          "verdict": "DEFER UNTIL A STEAM RELEASE, AND ONLY AS TRANSPORT. SDR relays traffic over Valve's backbone: hides server and player IPs, gives DoS protection, encrypted+authenticated, free if the game ships on Steam (partner.steamgames.com/doc/features/multiplayer/steamdatagramrelay, github.com/ValveSoftware/GameNetworkingSockets). But it is a transport layer into your own authoritative server — it does not change the authority model, requires Steamworks SDK integration and a matchmaking service issuing auth tickets, and is pointless for a web-first launch. If/when shipping on Steam, route Steam clients through SDR into the same room servers; web clients keep WebSockets."
+        },
+        {
+          "name": "Peer-to-peer",
+          "verdict": "NEVER ACCEPTABLE FOR THIS GENRE. Three independent disqualifiers: (1) hidden information — some peer must know all roles to arbitrate night resolution; whoever that is can cheat undetectably. This is exactly the Among Us host-authority failure: host-side role assignment enabled always-impostor mods and role-reveal ESP (pcgamer.com, screenrant.com). (2) IP exposure — peers learn each other's IPs, enabling DDoS/doxxing of players, uniquely toxic in a game whose core loop is accusing people. SDR exists largely to solve this for games that DO need P2P. (3) No trustworthy arbiter — votes, timers, and RNG can be manipulated by the host; host migration on rage-quit is unsolved pain. The bandwidth savings P2P offers are meaningless for a text game. There is no configuration in which P2P is acceptable here."
+        }
+      ],
+      "offTheShelf": [
+        {
+          "name": "Colyseus",
+          "verdict": "BEST FIT — recommended. Open-source (MIT) Node/TypeScript authoritative multiplayer framework; Room abstraction maps 1:1 to a Mafia game; built-in matchmaking, room lifecycle, and binary delta state sync (colyseus.io, github.com/colyseus/colyseus). Critically for hidden information: StateView (v0.16+, replacing the old @filter decorators) provides per-client state filtering — @view()-tagged fields are only serialized to clients whose StateView includes them, explicitly designed for 'private fields' and 'team-owned data' (docs.colyseus.io/state/view, colyseus.io/blog/colyseus-016-is-here/). Built-in allowReconnection() with private per-client reconnection tokens (hardened after a sessionId-impersonation vuln, github.com/colyseus/colyseus/issues/354). Self-hosts on any Linux box; single process fine to ~thousands CCU; Redis-backed scaling exists when needed. Caveats: StateView not optimized for huge datasets (irrelevant for 15-player rooms); persistence/accounts are your own (good — dev wants Postgres); double-check that nothing secret sits outside view-filtered fields."
+        },
+        {
+          "name": "Nakama (Heroic Labs)",
+          "verdict": "CAPABLE BUT MISMATCHED. Apache-2 open-source Go server with batteries included: auth, friends, chat channels, leaderboards, matchmaking, authoritative match handlers in Go/Lua/TS runtime (github.com/heroiclabs/nakama). Friction for this dev: officially requires CockroachDB (Postgres only 'unofficially, dev environments only' per heroiclabs.com docs — though many run Postgres in prod anyway), authoritative match logic lives in Nakama's embedded runtime rather than a normal Node codebase, and the learning curve is widely reported as steep (saashub.com comparison). Self-hosts for ~$10/mo (snopekgames.com tutorial). Choose it only if the built-in social features (friends/chat/leaderboards) outweigh writing them yourself; per-client hidden-state filtering is still hand-rolled inside match handlers."
+        },
+        {
+          "name": "Hathora",
+          "verdict": "ELIMINATED — SERVICE SHUT DOWN. Hathora announced on 2026-03-04 that its game server hosting platform shuts down 2026-05-05; the company pivoted to AI inference infrastructure (team joined Fireworks AI). Verified via gameye.com/gameye-vs-hathora/. Do not build on it. Its niche (per-room container orchestration, Edgegap/Gameye as successors) is overkill for 50-500 CCU anyway — that's one VPS."
+        },
+        {
+          "name": "PlayFab (Microsoft)",
+          "verdict": "WRONG SHAPE FOR THIS DEV. Mature BaaS (since 2014): identity, economy, matchmaking, lobby, Party voice/chat; Standard/Premium tiers with $400/$8,000 of included usage meters then pay-as-you-go; dev mode capped at 1,000 lifetime accounts (playfab.com/pricing, learn.microsoft.com/en-us/gaming/playfab/pricing). But: no self-hosting (hard conflict with this dev's profile), Azure/C#-flavored ecosystem, usage-metered lock-in, and the actual game room logic still has to run on your own/Azure servers — PlayFab solves the parts (accounts, stats) this dev already does comfortably in Postgres. Skip."
+        },
+        {
+          "name": "Raw Socket.IO (DIY)",
+          "verdict": "VIABLE FALLBACK. Gives transport, rooms, acks, reconnect; you hand-roll room lifecycle, state machine, per-client filtered serialization, reconnection tokens, and matchmaking — i.e., you rebuild ~60% of Colyseus. Defensible if the dev wants zero framework magic and full control; otherwise Colyseus is the same stack with the hard parts done and audited (socket.io docs, dev.to/sauravmh/building-a-multiplayer-game-using-websockets-1n63)."
+        },
+        {
+          "name": "boardgame.io (bonus reference)",
+          "verdict": "PATTERN DONOR, NOT A PLATFORM. Its playerView / PlayerView.STRIP_SECRETS is the canonical open-source implementation of server-side secret stripping for turn-based games (github.com/boardgameio/boardgame.io secret-state.md) — worth reading even if not adopted. Maintenance is sleepy and its multiplayer server is less production-hardened; note its issue #399 (secrets leaking via ctx._undo/_initial) as a cautionary tale: secrets leak through ANY unfiltered side path, not just main state."
+        }
+      ],
+      "persistence": "Postgres for everything durable (matches dev profile; no reason for anything else at this scale). Live game state stays in room memory — DB is for identity, history, and moderation. Schema-level sketch: accounts(id, email, auth_provider+provider_id or password_hash, display_name, created_at, last_login); sessions(refresh tokens, device info); player_stats(account_id, mode, rating, rating_deviation, games_played, wins; consider per-role/per-faction win-rate columns or a side table) — prefer Glicko-2 over vanilla Elo for a multiplayer team game (rating deviation handles sparse play; compute team-vs-team expected outcome per faction); matches(id, mode, started_at, ended_at, settings_json, winner_faction, rng_seed); match_players(match_id, account_id, seat, role, faction, outcome, rating_before, rating_after, left_early bool); match_events(match_id, seq, ts, type, payload JSONB, append-only) — this event log is triple-duty: replays, deterministic ELO/result recomputation, and moderation evidence; chat_messages either inside match_events or its own table (account_id, match_id, channel, text, ts) with a retention policy column/partitioning by month for cheap deletion; reports(id, reporter_id, reported_id, match_id, category, message_refs, free_text, status, resolution, resolved_by, created_at/resolved_at); sanctions(id, account_id, type[mute|ban|chat_ban], scope, reason, issuer_id, created_at, expires_at NULL=permanent) — checked at login and room-join; enforce mutes server-side in the chat path. Ranked queue can live in-process or Redis, but at 500 CCU an in-memory queue with Postgres write-through is fine; Postgres LISTEN/NOTIFY covers cross-service pokes. Write match results in one transaction at game end (matches + match_players + rating updates). GDPR hook: account deletion anonymizes account row and match_players linkage but keeps aggregate/match integrity (replace with tombstone id).",
+      "hostingCosts": "Cheap — this genre is text-plus-timers. 500 CCU ≈ ~35-50 concurrent rooms; per-client traffic is well under 1 KB/s with bursts at phase changes; a single Node process on 2 vCPU handles it with headroom. Realistic self-host stack (fits dev's existing Linux habits): 1× Hetzner CPX21/CCX13-class VPS (2-4 vCPU, 4-8 GB) for lobby+rooms: €8-15/mo (hetzner.com/cloud — entry instances from €3.49; 300-500 Mbit and ~20 TB traffic included, far beyond need); Postgres on the same box or a second small VPS: €0-10/mo; backups/object storage: €1-5/mo; TLS free (Let's Encrypt/Caddy); Cloudflare free tier in front of the lobby HTTP API for basic DDoS posture (game WebSocket connects direct or via proxied hostname). Total: roughly €15-40/mo (~$20-50). Comfort ceiling with managed Postgres (DO/Supabase ~$15-25/mo), a staging box, and uptime monitoring: $50-100/mo. At 50 CCU it's one $5-8 VPS. Per-room orchestration platforms are unjustified at this scale (and Hathora, the obvious one, shut down May 2026; Edgegap-style pricing ~$0.00115/min/vCPU only makes sense for latency-sensitive global session games). Cost only inflects past ~5-10k CCU, when you'd shard rooms across processes/boxes — a process-per-shard model the room architecture already permits. The dev's own hardware (existing fleet) could host this at ~$0 marginal, but a rented VPS gives clean IP reputation and keeps player traffic off the home/office network.",
+      "reconnection": "Disconnects are routine (mobile networks, tab closes) and in this genre a disconnect must neither forfeit the game nor leak anything. Pattern (Colyseus has it built-in; replicate if DIY): (1) On socket drop, keep the player's seat and mark them 'disconnected' with a grace window — 60-120s or until current phase end, whichever is longer; other players see only a connectivity badge. (2) Reconnection auth uses a PRIVATE per-session reconnection token issued at join and ROTATED on every reconnect — Colyseus moved to this after a real vulnerability where knowing a victim's sessionId+roomId let an attacker reconnect as them and act on their behalf (github.com/colyseus/colyseus/issues/354). If hand-rolling: token is secret, single-use, bound to accountId+roomId. (3) On resume, the server sends a FULL fresh filtered snapshot for that client (their role, everything their role has learned, vote state, chat history for channels they belong to, current phase + remaining timer) — never trust or diff against the client's stale state; chat backfill bounded to the current match. (4) The stateless lobby keeps player→active-room mapping, so a fully restarted client can ask 'am I in a game?' and rejoin after app restart, not just socket blips. (5) Timer policy: phase timers never pause for disconnects; on expiry the state machine applies defaults (abstain, no night action) — the game always advances. (6) Abandonment policy for ranked: Colyseus allowReconnection('manual') supports custom logic like 'reject if player missed >2 rounds' (0-15-x.docs.colyseus.io/server/room/); convert to abandon + loss + escalating queue penalty after N missed phases. (7) Heartbeat ping/pong to detect half-open TCP promptly. Socket.IO's auto-reconnect handles transport retry but NOT identity/state resume — the token+snapshot layer is yours regardless of transport.",
+      "moderation": "Minimum viable set for launch (social deduction chat is high-toxicity by construction — accusation is the core loop): (1) REPORTS: in-game report attached to match_id + specific message/event refs, with category picklist + free text. Shape it DSA Article 16-style from day one since EU users are likely: user-accessible flagging with substantiated reason and exact content location; store the report; notify both reporter and affected user of the decision; target ~72h human-review turnaround; maintain a monitored human contact point (blog.promise.legal/eu-digital-services-act-game-studios/, ggwp.com/the-digital-services-act/). Because the server logged the authoritative match_events stream, every report comes with verifiable evidence — no client screenshots needed. (2) MUTES/SANCTIONS: enforced server-side in the chat path (drop at server; never trust client-side hiding); sanctions table drives mute/chat-ban/account-ban checks at login and room-join; escalating durations; ban appeals path recommended (DSA pressure on unexplained bans is increasing — esportslegal.news 2025 coverage of gaming bans under DSA). (3) PROFANITY FILTER: server-side pass on every message before broadcast; use a maintained evasion-aware library (e.g., 'obscenity' on npm handles leetspeak/spacing tricks) rather than a naive regex list; launch policy: mask matches + keep report path, optionally let users toggle display filtering client-side — but the canonical stored log keeps the original for moderation. (4) LOG RETENTION (GDPR-ish): chat logs tied to accounts are personal data (gdpreu.org gaming-harassment analysis). No fixed statutory period — retention must match stated purpose (EDPB Guidelines 3/2025 on DSA/GDPR interplay). Practical policy: 30-90 days hot retention of chat/match logs for moderation purposes; logs referenced by open reports or active sanctions are retained until resolution + appeal window; then delete or anonymize; document this in the privacy policy; support access/export/erasure requests; partition chat tables by month so deletion is a DROP, not a scan. Defer to post-launch: ML toxicity scoring, voice, trust-score matchmaking.",
+      "recommendation": "Build server-authoritative from line one: Colyseus (Node/TypeScript) self-hosted on a single Hetzner-class Linux VPS, plain WebSockets behind Caddy/nginx TLS, stateless HTTP lobby/auth service issuing signed room tokens, one Colyseus Room per match running an explicit phase state machine with server-side timers, queued night intents, and deterministic seeded resolution. Use StateView per-client filtering so secret roles, night actions, and faction chat are never serialized to unauthorized clients — this single architectural choice is what killed role-reveal cheats in Town of Salem and what Among Us lacked. Postgres for accounts, Glicko-2 ratings, match history (append-only match_events JSONB log), reports, and sanctions. Reconnection via Colyseus allowReconnection with private rotated tokens + full filtered snapshot on resume; phase timers never pause. Launch moderation: server-side mutes, evasion-aware profanity masking ('obscenity'), DSA-style report queue with 30-90 day log retention. Rejected: P2P (categorically — hidden info + IP exposure + no arbiter), Hathora (shut down 2026-05-05), PlayFab (no self-host, lock-in, wrong stack), Nakama (CockroachDB/Go runtime friction; only reconsider if built-in friends/chat/leaderboards become must-haves), raw Socket.IO (viable but rebuilds Colyseus by hand). Add Steam Datagram Relay later only as an additional transport into the same authoritative rooms if shipping on Steam (free, hides IPs, DDoS protection). Expected cost: ~$20-50/mo through 500 CCU; the architecture shards by room/process when growth demands it. Key sources: docs.colyseus.io/state/view; colyseus.io/blog/colyseus-016-is-here/; github.com/colyseus/colyseus/issues/354; steamcommunity.com/app/334230 role-hack threads; pcgamer.com Among Us cheaters; partner.steamgames.com/doc/features/multiplayer/steamdatagramrelay; github.com/heroiclabs/nakama; gameye.com/gameye-vs-hathora/ (shutdown); playfab.com/pricing; hetzner.com/cloud; github.com/boardgameio/boardgame.io secret-state docs; blog.promise.legal/eu-digital-services-act-game-studios/; edpb.europa.eu Guidelines 3/2025."
+    },
+    "steam": {
+      "shippingSteps": [
+        "Create a Steamworks partner account at partner.steamgames.com/steamdirect: requires a Steam account that has spent at least $5, legal entity/individual info, US tax interview (W-8BEN for non-US individuals -- relevant since user appears Japan-based), banking details for payouts, and identity verification. Onboarding paperwork typically clears in 1-3 days. (Source: https://partner.steamgames.com/steamdirect)",
+        "Pay the Steam Direct fee: $100 USD per app, non-refundable but recoupable once the app reaches $1,000 Adjusted Gross Revenue (store + in-app). (Source: https://partner.steamgames.com/doc/gettingstarted/appfee)",
+        "Hard timing constraints baked into Steam Direct: you cannot release until 30 days after paying the app fee, AND your 'Coming Soon' store page must be publicly visible for at least 2 weeks before launch. Plan ~30 days minimum from signup to earliest possible release. (Sources: https://partner.steamgames.com/doc/gettingstarted/appfee, https://ziva.sh/blogs/publish-game-steam)",
+        "Build the store page: name, description, capsule art in all required sizes, at least 5 screenshots, trailer, tags, pricing, content survey. Submit the store page for Valve review -- typically 3-5 business days; rejections (usually for capsule art or missing assets) restart the cycle. Once approved, set it live as 'Coming Soon' to start the 2-week clock and accumulate wishlists. (Sources: https://partner.steamgames.com/steamdirect, https://www.summerengine.com/blog/how-to-publish-game-on-steam)",
+        "Upload builds via SteamPipe: use the SDK's ContentBuilder (steamcmd + run_app_build), with an app_build_[AppID].vdf referencing depot_build_[DepotID].vdf scripts that map local files into depots. Files are chunked (~1MB), diffed, compressed, encrypted, and uploaded; each upload gets a BuildID you assign to a branch. (Source: https://partner.steamgames.com/doc/sdk/uploading)",
+        "Depot layout for Windows+macOS: create one depot per platform, set each depot's OS filter (Windows-only / macOS-only), keep shared assets in an all-OS depot if desired, and define separate launch options with 'oslist' (windows / macos) pointing at the right executable (.exe vs .app bundle). (Source: https://partner.steamgames.com/doc/sdk/uploading)",
+        "Use beta branches for testing: push builds to a passworded beta branch, test via the real Steam client (overlay, invites, auth all behave differently than dev builds), then promote the build to the default branch. Setting the default branch live requires phone/Steam Mobile two-factor on the uploading account. (Source: https://partner.steamgames.com/doc/sdk/uploading)",
+        "Submit the build for release review: Valve runs the game to check it launches, matches the store page, and follows content guidelines. Typically 1-5 business days. Multiplayer-only games should provide Valve test instructions/accounts since reviewers must be able to reach gameplay. (Sources: https://ziva.sh/blogs/publish-game-steam, https://pixune.com/blog/how-to-publish-a-game-on-steam/)",
+        "Steam Deck: Valve automatically runs a Deck compatibility review post-launch and assigns Verified/Playable/Unsupported. There is no macOS path on Deck -- it runs the WINDOWS depot under Proton on Linux, so the Windows build is what gets tested. For a chat-heavy social deduction game the make-or-break items are: text input (invoke the on-screen keyboard via ISteamUtils::ShowFloatingGamepadTextInput or you fail review), full controller support or touch fallback, legible UI/fonts at 1280x800, and any anti-cheat/networking must work under Proton. You can also request a re-review after fixes. (Sources: https://partner.steamgames.com/doc/steamhardware/compat, https://partner.steamgames.com/doc/steamdeck/proton)",
+        "Realistic total timeline 2026: ~1 week onboarding + store page build, 3-5 days store review, 2+ weeks Coming Soon, 1-5 days build review, gated by the 30-day post-fee minimum -- so 4-6 weeks if everything is ready. (Source: https://ziva.sh/blogs/publish-game-steam, https://www.summerengine.com/blog/how-to-publish-game-on-steam)"
+      ],
+      "steamworksFeatures": [
+        {
+          "feature": "Lobbies & Matchmaking (ISteamMatchmaking)",
+          "relevance": "Core fit for a Mafia-style game. Steam lobbies are exactly the 'named room people join before the game starts' primitive: create lobby, set arbitrary key/value lobby metadata (room name, player count, game mode/role list), search/filter the lobby list, lobby chat before start. Important caveat from Valve's own docs: the lobby is matchmaking only -- 'the lobby itself does not facilitate multiplayer gameplay. That's your job, through your networking layer.' Free, no servers needed for the lobby phase. (Source: https://partner.steamgames.com/doc/features/multiplayer/matchmaking)"
+        },
+        {
+          "feature": "Friend invites & Rich Presence (ISteamFriends)",
+          "relevance": "High value, near-free virality: ISteamMatchmaking::InviteUserToLobby sends a Steam chat invite with a one-click join link; Rich Presence 'status' key shows 'In lobby 7/15 - Night 3' in the friends list and the 'connect' key enables the Join Game button on a friend's profile. Up to 20 RP keys per user, localizable. For a party game whose growth loop is 'friend sees friend playing', this is one of the highest-ROI integrations. (Sources: https://partner.steamgames.com/doc/features/multiplayer/matchmaking, https://partner.steamgames.com/doc/api/isteamfriends)"
+        },
+        {
+          "feature": "Steam Auth (ISteamUser session tickets)",
+          "relevance": "Eliminates running your own account system entirely. Client calls ISteamUser::GetAuthTicketForWebApi('your-backend-identity-string'), sends the ticket to your backend, backend calls the ISteamUserAuth/AuthenticateUserTicket Web API with the same identity string, and gets back a verified 64-bit SteamID plus ownership/ban flags. SteamID becomes the durable player identity for stats, friends, bans, and progression -- no passwords, no email verification, no GDPR-laden credential store. Best practice: one identity string per consuming service. (Sources: https://partner.steamgames.com/doc/features/auth, https://partner.steamgames.com/doc/webapi/isteamuserauth)"
+        },
+        {
+          "feature": "Networking: ISteamNetworkingSockets / ISteamNetworkingMessages + Steam Datagram Relay (SDR)",
+          "relevance": "Two viable topologies for a 15-player social deduction game: (a) host-as-server P2P -- CreateListenSocketP2P/ConnectP2P automatically routes through Valve's SDR relay backbone, which hides all player IPs (critical for a game where angry players might dox/DDoS the lynch-vote winner) and often improves ping; (b) your own authoritative dedicated servers -- arguably better for Mafia since the host must not be able to read hidden roles; dedicated-server SDR access requires applying to Valve, or you can just use plain TCP/WebSockets to your own infra and use Steam only for auth/lobbies. ISteamNetworkingMessages offers a connectionless UDP-like API if preferred. (Sources: https://partner.steamgames.com/doc/features/multiplayer/networking, https://partner.steamgames.com/doc/features/multiplayer/steamdatagramrelay, https://partner.steamgames.com/doc/api/ISteamnetworkingSockets)"
+        },
+        {
+          "feature": "Achievements & Stats (ISteamUserStats)",
+          "relevance": "Standard integration ('win as Jester', 'survive 10 games'); configured in the Steamworks partner site, low effort, meaningfully improves store page appeal and retention. Note for trust systems: stats are client-writable unless you push them server-side via the Web API, so don't hang anti-abuse logic off client-reported stats."
+        },
+        {
+          "feature": "Anti-abuse: Game Bans via ICheatReportingService -- NOT VAC",
+          "relevance": "VAC is irrelevant here: it detects client-side cheat software (wallhacks, injectors) on VAC-secured servers; the abuse vector in Mafia is behavioral -- gamethrowing, chat abuse, vote-griefing, multi-accounting. What applies instead: (1) Game Bans -- developer-issued bans through the ICheatReportingService Web API (publisher key, secure-server-only); banned players get a permanent 'Game Ban' marker on their Steam profile and are blocked from secure multiplayer for the duration you set, which is the real deterrent because ban evasion costs a new game purchase; (2) your own report/review pipeline keyed on verified SteamIDs from Steam Auth (authoritative server logs chat + actions, players file reports, you or moderators issue bans); (3) ISteamUtils::FilterText -- Steam's built-in legally-required text filtering for user chat, very relevant for a chat-centric game; (4) account-quality signals (Steam account age, phone-verified, prior game bans visible via Web API) to gate ranked play. (Sources: https://partner.steamgames.com/doc/features/anticheat, https://partner.steamgames.com/doc/webapi/ICheatReportingService, https://help.steampowered.com/en/faqs/view/46DB-4CEC-F7E9-49E5)"
+        }
+      ],
+      "macNotes": "Valve policy since October 2019 ('Updated Requirements for New macOS Applications on Steam', https://steamcommunity.com/groups/steamworks/eventcomments/1742266164814599752/): new macOS apps on Steam must be 64-bit and must be signed + notarized with an Apple Developer ID. Practical chain: (1) join the Apple Developer Program ($99/yr) and obtain a 'Developer ID Application' certificate; (2) sign every executable, dylib, and framework in the .app bundle inside-out with codesign, using --timestamp and the hardened runtime (hardened runtime is mandatory for notarization); (3) CRITICAL Steam-specific gotcha: enable the com.apple.security.cs.disable-library-validation entitlement -- without Disable Library Validation the Steam overlay/Steamworks dylib injection fails and 'the app will not work right when launched from Steam' (https://blog.xojo.com/2026/03/24/code-signing-on-macos-what-developers-need-to-know-part-3/); (4) submit with notarytool (altool is dead), wait for the ticket, then staple it (stapler staple) so Gatekeeper can verify offline (https://developer.apple.com/documentation/security/notarizing-macos-software-before-distribution, https://developer.apple.com/developer-id/). Nuances: files downloaded by the Steam client don't carry the quarantine xattr, so Gatekeeper often wouldn't block an unsigned app in practice -- but Valve requires notarization for new apps regardless, and signing protects users who copy the app around. Apple Silicon: ship a universal (arm64 + x86_64) binary or accept Rosetta 2 translation; for a lightweight lobby game either works, but native arm64 is increasingly expected in 2026. Architect the build pipeline so the .app is signed/notarized BEFORE the SteamPipe depot upload (SteamPipe must not modify the bundle afterward or the signature breaks -- upload the exact notarized bundle). macOS depot gets its own launch option with oslist=macos pointing at the .app. Also note Steam Deck does NOT use the macOS build -- it runs the Windows depot under Proton -- so macOS support buys you Mac players only.",
+      "legalAnalysis": "FRAMEWORK (not legal advice -- practical risk assessment). Three legal layers apply to cloning SC2Mafia: (1) copyright in the SC2Mafia map's expression, complicated by Blizzard's ownership claim; (2) the non-copyrightability of game mechanics; (3) trademark around names. --- LAYER 1, Blizzard's claim: Blizzard's Custom Game Acceptable Use Policy (https://www.blizzard.com/en-us/legal/2749df07-2b53-4990-b75e-a7cb3610318b/custom-game-acceptable-use-policy) states 'Custom Games are and shall remain the sole and exclusive property of Blizzard' and the creator 'hereby assign[s] to Blizzard all of your rights, title, and interest' including copyrights, and bars selling custom games. Consequence: whatever copyrightable expression exists IN the SC2Mafia map (Galaxy trigger code, in-map text, role description strings, any custom art, the map file itself) is claimed by Blizzard, and Dark.Revenant likely couldn't license it to you even if willing. So the clone must not lift anything FROM the map: no exported assets, no decompiled triggers, no verbatim text. A clean-room reimplementation of the RULES in your own engine with your own assets/text is outside the AUP's reach -- the AUP governs content made WITH Blizzard's tools, and rules/mechanics aren't ownable by anyone (see Layer 2). Enforcement reality check: the Valve-Blizzard DotA dispute (settled May 2012) shows Blizzard's actual posture -- the fight was over the 'DotA' TRADEMARK, not over copyright in mechanics; Valve kept commercial rights to the Dota name and shipped Dota 2, built openly on a WC3 custom map's design (https://www.gamedeveloper.com/business/blizzard-and-valve-settle-ongoing-dota-trademark-controversy, https://liquipedia.net/dota2/Blizzard_Entertainment,_Inc._v_Valve_Corporation). Blizzard has never, as far as the record shows, sued a standalone remake of a custom map's mechanics that used original assets and a non-Blizzard name. --- LAYER 2, mechanics are not copyrightable (idea/expression distinction, 17 U.S.C. 102(b)): Tetris Holding v. Xio Interactive, 863 F.Supp.2d 394 (D.N.J. 2012) -- rules and functional gameplay are unprotectable ideas, BUT the specific audiovisual expression ('look and feel': piece colors/shapes/dimensions, board proportions, visual style) is protected; Xio lost because it copied the visuals nearly pixel-for-pixel, not because it copied falling-block rules (https://en.wikipedia.org/wiki/Tetris_Holding,_LLC_v._Xio_Interactive,_Inc.). DaVinci Editrice v. ZiKo Games (S.D. Tex. 2014) -- a functionally identical clone of the card game Bang! with different art/theme did NOT infringe: 'game mechanics and the rules are not entitled to protection,' including the roles-and-interactions structure (Sheriff/Deputy/Outlaw/Renegade -- directly analogous to Town/Mafia/Neutral role structures) (https://www.gamedeveloper.com/business/texas-court-affirms-game-mechanics-not-protected-under-copyright-law, https://www.govinfo.gov/content/pkg/USCOURTS-txsd-4_13-cv-03415/pdf/USCOURTS-txsd-4_13-cv-03415-0.pdf). Spry Fox v. LOLApps (W.D. Wash. 2012) -- the cautionary middle case: court excluded functional elements (6x6 grid) and scenes-a-faire (coins as score) but held the overall selection/arrangement of expressive elements plus closely-mapped theme (bear->yeti, bush->sapling) could state a claim; aggravated by the defendant having had NDA access. Lesson: don't do a 1:1 reskin where every expressive element has an obvious counterpart, and don't copy the 'total concept and feel' (https://en.wikipedia.org/wiki/Spry_Fox,_LLC_v._Lolapps,_Inc.). --- LAYER 3, the underlying game is public domain: Mafia/Werewolf was created by Dimitry Davidoff at Moscow State University in 1986 and has been freely reimplemented for decades (Werewolf variant by Andrew Plotkin 1997); nobody owns day/night, lynching, or informed-minority-vs-uninformed-majority (https://en.wikipedia.org/wiki/Mafia_(party_game)). --- THE KEY PRECEDENT, Town of Salem: BlankMediaGames' Town of Salem (Steam, Dec 2014) is openly and admittedly based on SC2Mafia -- community sources confirm 'Town of Salem is based off of SC2:Mafia' and SC2Mafia's creator Dark.Revenant even helped promote it (http://www.sc2mafia.com/forum/archive/index.php/t-25658.html, https://steamcommunity.com/app/334230/discussions/0/610573009238451786/). ToS kept the day/night/trial structure, the faction layout, the role MECHANICS, and even dozens of literal ROLE NAMES from SC2Mafia (Jailor, Veteran, Escort, Consort, Lookout, Spy, Blackmailer, Framer, Janitor, Disguiser, Consigliere, Mafioso, Godfather, Bodyguard, Investigator, Witch, Arsonist, Serial Killer, Jester, Executioner, Amnesiac, Survivor...) -- it changed the name, the theme (Salem witch trials), and all art/audio/text, and it shipped commercially for a decade with zero Blizzard action. A second-generation precedent exists too: Throne of Lies and other ToS-likes shipped fine on Steam. --- ROLE NAMES analysis: copyright does not protect names, titles, or short phrases at all (US Copyright Office Circular 33), so role names are only ever a trademark/trade-dress question, and neither Blizzard nor BMG has trademarked individual role names. Generic tier (predates SC2Mafia in the broader Mafia community -- MafiaScum/EpicMafia used Cop/Sheriff, Doctor, Vigilante, Godfather, Mayor, Jester, Serial Killer, Survivor, Mason long before 2010): zero risk. Middle tier (popularized by SC2Mafia, copied wholesale by Town of Salem: Jailor, Escort/Consort, Veteran, Lookout, Consigliere, Framer, Janitor, Blackmailer, Disguiser, Witch, Arsonist, Executioner, Amnesiac): very low risk -- ToS itself proves these traveled freely, and as single descriptive words they're unprotectable; copying the ENTIRE list verbatim with identical descriptions edges toward a selection-and-arrangement claim (Spry Fox), so vary the lineup and write all descriptions fresh. Distinctive tier (SC2Mafia-specific flavor, esp. the Triad faction's Chinese-themed names -- Dragon Head, Incense Master, Vanguard, Enforcer, Administrator, Silencer, Informant, Liaison, Sweeper -- plus oddballs like Beguiler/Auditor): these are SC2Mafia's recognizable creative fingerprint; individually still just short phrases, but reproducing the whole distinctive set signals copying and invites a look-and-feel argument -- rename or re-theme these. --- BOTTOM LINE RISK: a clean-room clone with original name/art/text/theme that reuses the mechanics and the generic-to-middle-tier role vocabulary sits squarely in DaVinci v. ZiKo safe territory, is exactly what Town of Salem already did commercially without incident, and the realistic Blizzard risk is approximately zero provided no StarCraft marks/assets appear anywhere. The marginally larger practical risk is actually a look-and-feel complaint from BlankMediaGames if the clone reads as a Town-of-Salem reskin -- so differentiate theme/UI from ToS as well as from SC2.",
+      "mustChange": [
+        "The name 'SC2Mafia' -- 'SC2' invokes Blizzard's StarCraft trademark; pick a wholly original title (also check USPTO/Steam for collisions, and note 'Mafia' alone collides with 2K's Mafia franchise trademark for video games -- safer as part of a longer distinctive mark or avoided)",
+        "Any StarCraft II assets: unit models/portraits used as character avatars, Blizzard sound effects, music, UI textures, fonts, icons -- all Blizzard property, zero tolerance",
+        "Any code or data exported from the map: Galaxy script, trigger logic, the map file, data tables -- Blizzard claims ownership of the map's contents under the Custom Game AUP; reimplement from observed behavior (clean-room), never from extracted files",
+        "All verbatim text from SC2Mafia: role descriptions, help/tutorial text, flavor text, investigator result strings, death announcements -- rewrite everything from scratch even where the underlying fact conveyed is the same",
+        "References to Blizzard, Battle.net, StarCraft, or Arcade anywhere in the game, store page, or marketing; do not market it as 'SC2Mafia on Steam' (nominative references in press interviews about inspiration are fine; trading on the mark in the product is not)",
+        "The SC2Mafia logo and any community-made art associated with the map",
+        "The distinctive SC2Mafia-specific role-name set, especially the Triad faction's themed names (Dragon Head, Incense Master, Vanguard, Enforcer, Administrator, Silencer, Informant, Liaison, Sweeper) and oddball original names (e.g. Beguiler, Auditor) -- rename or re-theme; these are the map's creative fingerprint",
+        "Avoid a 1:1 expressive mapping (Spry Fox lesson): don't reproduce the exact full role list, exact setup lists, and exact UI layout simultaneously -- vary the lineup, add original roles, design an original visual theme distinct from BOTH StarCraft and Town of Salem's Salem-witch-trial trade dress",
+        "Original visual identity overall: character art, setting/theme, UI design, color language, sound -- the 'total look and feel' is where Tetris v. Xio says clones actually lose"
+      ],
+      "safeToKeep": [
+        "The core Mafia/Werewolf framework itself: hidden roles, informed minority vs uninformed majority, day/night cycle -- public domain party game (Davidoff 1986), unprotectable rules",
+        "Day/night phase structure with timed phases, night actions resolved simultaneously, day discussion",
+        "Voting, trial, defense statement, and lynch mechanics (vote to put on trial, defense speech, guilty/innocent vote) -- pure mechanics under DaVinci v. ZiKo / 17 USC 102(b)",
+        "Faction structure: Town vs Mafia vs a second evil faction vs Neutrals, with faction win conditions -- role-interaction structure explicitly held unprotectable in DaVinci v. ZiKo",
+        "Role MECHANICS as behaviors: investigate alignment, heal/protect, roleblock, jail-and-execute, douse-then-ignite, witch-control, bus-drive/swap, frame, clean death, disguise, last-will notes, whispers, death notes -- mechanics are ideas, not expression",
+        "Generic role names with pre-SC2Mafia community provenance: Sheriff, Doctor, Investigator/Detective, Vigilante, Mayor, Bodyguard, Godfather, Mafioso, Jester, Serial Killer, Survivor, Witch, Mason -- standard Mafia-genre vocabulary (scenes-a-faire), used across MafiaScum/EpicMafia/Town of Salem/Town of Salem 2 without incident",
+        "Middle-tier role names popularized by SC2Mafia and already freely propagated through Town of Salem (Jailor, Veteran, Escort, Lookout, Consigliere, Framer, Janitor, Blackmailer, Disguiser, Arsonist, Executioner, Amnesiac) -- individually safe as unprotectable short phrases; just don't clone the entire roster verbatim with identical descriptions",
+        "Lobby/host model: 15-player named lobbies, host-configurable role lists, repick/host migration -- functional design, fully reimplementable",
+        "Game-flow conventions: graveyard with revealed roles, last words, whisper system, day chat / mafia night chat split -- functional/scenes-a-faire for the genre",
+        "Marketing truthfully in interviews/devlogs that the game is 'inspired by the classic Mafia party game' and by the SC2 Arcade community scene -- factual statements, nominative fair use; just keep marks out of the title/store assets"
+      ]
+    },
+    "comps": {
+      "games": [
+        {
+          "name": "Town of Salem (2014)",
+          "stack": "Originally Adobe Flash browser client + Steam wrapper; custom PHP/phpBB web backend (the forum software became the breach vector). Ported to Unity 2019-2020 when Flash died: Steam Unity client Oct 28, 2019; browser client re-released as Unity WebGL May 28, 2020. Funded by a $17,190 Kickstarter (Feb 2014, $15k goal); released Dec 15, 2014. Mobile (Unity) Oct 2018.",
+          "outcome": "Player lifecycle: huge web population (7.6M+ registered accounts by 2018) plus Steam all-time peak 3,687 CCU (Jan 2018). Dec 2018: data breach of 7.6M accounts (>95% of registered users) via phpBB forum vulnerabilities + admin password reuse; exposed usernames, emails, weakly-hashed (MD5/phpass-class) passwords — 27% cracked quickly — IPs, partial payment data. Breach went unacknowledged until Jan 2019; attackers persisted in the network for an extended period and compromised creds still authenticated months later (inadequate forced resets); likely GDPR violations. Weeks before the breach disclosure (Nov 3, 2018) the free web version moved to a paid model, officially to combat spam/bot attacks. The game is still alive 11+ years on but tiny: ~97 CCU current, ~101 30-day average (June 2026), stable in the 90s. Sustained by: cheap one-time price (~$4.99) + Coven DLC (2017) + cosmetic Town Points economy, and by being the canonical browser-accessible Mafia implementation for years. Sources: haveibeenpwned.com/breach/blankmediagames, bleepingcomputer.com 27%-cracked article, en.wikipedia.org/wiki/Town_of_Salem, steamcharts.com/app/334230.",
+          "lessons": [
+            "Forum/CMS software bolted onto a game account database is an attack surface: phpBB, shared admin passwords, and weak hashing turned a small indie into a 7.6M-account breach.",
+            "Slow disclosure (breach Dec 13, discovered publicly via DeHashed in Jan) and not forcing password resets did lasting reputation damage that outweighed the technical fix.",
+            "Engine-platform risk is real: betting on Flash forced a full Unity rewrite mid-life; the rewrite consumed dev capacity that could have gone to content.",
+            "Switching a F2P web game to paid (anti-bot rationale) cut off the new-player funnel that deduction games depend on.",
+            "A 15-player deduction game can survive a decade at ~100 CCU if matchmaking pools concentrate in a few modes and the price of keeping servers up is low."
+          ]
+        },
+        {
+          "name": "Town of Salem 2 (2023)",
+          "stack": "Unity, BlankMediaGames LLC. Early Access on Steam May 26, 2023; 1.0 Aug 25, 2023. Later on Epic Games Store (free-game-of-the-week promotion April 2024) and mobile (iOS app late 2023).",
+          "outcome": "Launched paid; all-time Steam peak only 3,022-3,755 CCU (May/June 2023) — i.e., the sequel never exceeded the original's 2018 peak. Sharp 26.9% drop June→July 2023. Went free-to-play Sept 15, 2023 with an energy-gate: free players get 1 'key' per 8 hours (max 5 banked), one key per match; pre-F2P buyers got a 'Super Deed' unlock. F2P did NOT recover the population — recent-review sentiment fell to ~40% positive, with complaints about ramped-up MTX including the Cauldron loot box with gacha mechanics, and 'less playercount than launch even after going free to play.' Current state: ~263-333 CCU, ~273 30-day average (June 2026). Community threads titled 'Town of Salem 2 is on its way out.' Sources: steamcharts.com/app/2140510, steamcommunity.com F2P announcement and discussions.",
+          "lessons": [
+            "A sequel splits an already-small deduction population across two games; ToS1 + ToS2 combined are under 400 CCU.",
+            "Energy/key gating is poison for a genre that needs warm bodies in lobbies — limiting free matches directly starves matchmaking.",
+            "Going F2P after charging early adopters generated resentment twice: buyers felt burned, free players felt nickel-and-dimed by loot boxes.",
+            "F2P conversion cannot resurrect a game whose population already fell below the matchmaking-viability threshold; the funnel must be open from day one."
+          ]
+        },
+        {
+          "name": "Among Us (2018)",
+          "stack": "Unity (C#), Innersloth (3-5 person team at launch). Custom lightweight networking ('Hazel' UDP library); architecture was lobby-host-authoritative (one player's client runs game logic) with Innersloth relay/matchmaking servers — effectively peer-hosted logic. Free on iOS/Android, $4.99 on Steam (June 2018 PC). After the 2020 explosion Innersloth partnered with Unity: Multiplay hybrid dedicated-server hosting (30+ bare-metal providers + 4 clouds, 99.95% SLA), Unity Analytics, Vivox. Connected 500M+ lifetime players on this infra.",
+          "outcome": "Near-dead at launch (double-digit CCU through 2018-2019; Innersloth kept updating anyway). Mid-2020: Twitch/YouTube streamers ignited it; featured on Steam Aug 2020; >1M DAU, doubling in 9 days, eventually 8-digit DAU; ~500M MAU at the Nov 2020 peak; Steam all-time peak 438,524 CCU (Sept 2020). Revenue: $24.5M in Oct 2020 alone; ~$86M in first three years; $100M+ lifetime — from a $5 PC price plus mobile cosmetics/ads. Cheating crisis Oct 2020: 'Eris Loris' spam attack hit ~1.5M games / ~5M players (pro-Trump + YouTube-sub spam) by exploiting the trust-the-host/client architecture; emergency server update pushed; accelerated server-authority work. Free mobile + no accounts made ban evasion trivial, so: Quick Chat for accountless guests, full account system March 31, 2021 (free chat requires account; bans extend to alts), cross-device accounts Nov 2021, plus in-game reporting categories. Long tail: ~20M MAU and 2.5-2.9M DAU in 2025; Steam ~7.2k 30-day average CCU, ~10k current, monthly peaks ~20k (early 2026) — cyclical spikes with updates/sales. Among Us 3D launched 2025 as a separate SKU. Sources: unity.com/resources/innersloth-among-us, multiplayunity.medium.com case study, kotaku.com & engadget.com Eris Loris coverage, among-us.fandom.com/wiki/Account, steamcharts.com/app/945360, blog.udonis.co player-count report.",
+          "lessons": [
+            "Peer-hosted/host-authoritative networking is fine for 50 CCU and catastrophic at 1M DAU: no server validation meant one person with a dozen volunteers could spam 1.5M lobbies.",
+            "Account systems can be retrofitted (took ~6 months) but moderation debt compounds; guest-mode-with-Quick-Chat was the pragmatic bridge for child safety + ban evasion.",
+            "Streamability (simple visuals, 10-player lobbies, betrayal moments) is the single biggest acquisition channel this genre has; the game changed nothing in 2020 — streamers found it.",
+            "Keep shipping while dead: Among Us survived two years of obscurity because the team was tiny and costs were near zero.",
+            "$5 one-time on PC + free-with-cosmetics mobile monetized 500M players without poisoning goodwill; they cancelled Among Us 2 and reinvested in the original.",
+            "Buying scaling (Unity Multiplay) instead of building it let a 5-person team survive a 10,000x load spike."
+          ]
+        },
+        {
+          "name": "Throne of Lies: Medieval Politics (2017)",
+          "stack": "Unity 3D, Imperium42 (husband-and-wife founders Dylan & Elsa Hunt, Las Vegas/Taiwan). Kickstarter Jan-Feb 2017: $21,795 from 393 backers ($20k goal). Launched Steam Sept 2017 at $9.99; upgraded to Unity 2018 mid-life (introduced gamebreaking bugs); F2P relaunch Dec 23, 2020.",
+          "outcome": "~500k activations lifetime; all-time peak just 1,381-1,382 CCU (May 2019). Single active developer on an indie budget; activity concentrated into one daily window (~7pm EST) as population shrank. F2P relaunch in Dec 2020 — riding the Among Us wave — failed to flourish. Community cited heavy-handed community management as a retention factor. Current: 30-day average ~1.2 CCU, peaks of ~13 (June 2026) — functionally dead, servers still up. Sources: steamcharts.com/app/595280, kickstarter.com Imperium42 campaign, gamespress.com F2P announcement, steamcommunity.com app/595280 discussions.",
+          "lessons": [
+            "$10 paid entry + niche theme + small marketing = never reached critical mass; the all-time peak (~1.4k) was already marginal for 10-16-player lobbies.",
+            "When CCU drops, surviving communities self-organize into scheduled play windows — a death-spiral symptom worth instrumenting for.",
+            "F2P conversion done after the population collapsed recovers nothing (same lesson as ToS2).",
+            "Moderation style is a retention variable: in small communities, perceived unfair community management churns the regulars who keep lobbies alive.",
+            "3D production values added cost but not retention vs. 2D competitors."
+          ]
+        },
+        {
+          "name": "Feign (2021)",
+          "stack": "Unity (PC + Android/iOS), Turkish studio Teneke Kafalar, later published with Kwalee. Built-in lobby voice chat. Steam Early Access Oct 23, 2021 at ~€4.99 (~$5); $1.99 on Android. 12-player Innocents/Impostors/Neutrals format with werewolf-style night roles.",
+          "outcome": "Modest but unusually durable mid-tail: all-time peak 2,688 CCU (Dec 2021), and still ~97-150 CCU with spikes to ~434 in June 2026 — i.e., four-plus years later it retains a higher share of its peak than most genre peers. Periodic resurgences (Nov 2025 +77% month) track Turkish streamer waves; very strong regional (Turkey) identity and 14-language localization. ~4,810 Steam reviews, 91% positive. Sources: steamcharts.com/app/1436990, store.steampowered.com/app/1436990, tenekekafalar.com/feign.html, steamspy.com/app/1436990.",
+          "lessons": [
+            "Owning one regional/language community (Turkey) gives a small deduction game a defensible lobby population that global also-rans lack.",
+            "Built-in voice chat keeps casual groups inside the game instead of fragmenting into Discord-only private lobbies.",
+            "Cheap one-time price (~$5) with high review score sustains a slow steady funnel; recurring streamer spikes re-seed the population.",
+            "A 12-player game idling at ~100 CCU concentrated in one region/timezone still fills lobbies; the same 100 CCU spread globally would not."
+          ]
+        },
+        {
+          "name": "Goose Goose Duck (2021)",
+          "stack": "Unity, Gaggle Studios (NY). Free-to-play from launch (Oct 2021). Built-in voice chat including proximity voice — its key differentiator vs Among Us. Easy Anti-Cheat added to combat ESP/speedhack cheats. Monetization: cosmetics + 'Flight Pass' battle pass; ~$21.5M revenue in 2024. Separate China mobile version launched Jan 2026 (crashed on day one under load).",
+          "outcome": "The genre's second viral event: BTS member Kim Taehyung (V) streamed it Nov 2022 → explosion in China → Steam servers crashed twice under the surge → all-time peak 701,898-703,000 Steam CCU (Jan 12, 2023), beating Among Us's Steam record; ~800k CCU including mobile. Chinese streaming platforms restricted GGD streams after players used politically sensitive handles (Jan 2023). Post-peak decline was steep but landed on a real plateau: ~40k peak Jan 2024, ~37k Oct 2024, ~8.3k current / ~3.9k 30-day average with 13k monthly peaks (June 2026) — still the second-most-populated game in the genre. Sustained by constant cosmetic events, the battle pass, voice-first casual play, and the China mobile launch. Sources: gamedeveloper.com 800k article, dualshockers.com record article, newsletter.gamediscover.co/p/how-goose-goose-duck-hit-700k-ccu, steamcharts.com/app/1568590, technode.com China-launch article, rfa.org stream-restriction article.",
+          "lessons": [
+            "F2P + built-in proximity voice out-executed the incumbent: zero price friction plus not needing Discord captured the casual wave Among Us created.",
+            "Celebrity/streamer ignition (one BTS stream) can 100x a population overnight — and infrastructure must absorb it or the moment is wasted (servers crashed twice; they apologized and scaled).",
+            "China concentration is high-beta: it created the record peak, brought platform-censorship interference, and its retreat caused most of the crash; they re-bet on it with a localized mobile launch.",
+            "F2P deduction games attract industrial-scale cheating (public ESP/radar tools); EAC became necessary — a cost paid only because the game was big enough to matter.",
+            "Live-ops cadence (events, Flight Pass, cosmetics) is what separated its ~$21.5M/yr plateau from peers that fell to double-digit CCU."
+          ]
+        },
+        {
+          "name": "Project Winter (2019)",
+          "stack": "Unity, Other Ocean Interactive (established work-for-hire studio). Paid title (~$19.99) + cosmetic DLC packs (e.g., Blackout DLC); released May 23, 2019 after Early Access; Xbox Game Pass (2021) with crossplay; Switch port. 8-player survival + social deception hybrid with integrated voice chat (proximity + radio). Partnered with Modulate to trial ToxMod ML voice moderation after acknowledging rising toxicity.",
+          "outcome": "Steady mid-size population for years (peaks ~2,865 CCU as late as Aug 30, 2024; Game Pass drove console/crossplay population). Notable as an early adopter of automated voice moderation — devs publicly posted 'Addressing Community Toxicity' and deployed ToxMod trials because voice-first deception games concentrate abuse. Despite a 2025 roadmap and a 'Cabin Fever / Project Winter 2.0' relaunch attempt (Sept 2025, brief spike to ~686 avg), population collapsed: ~11-14 CCU, -48% month-over-month (June 2026) — below matchmaking viability for an 8-player game. Sources: steambase.io/games/project-winter/steam-charts, store.steampowered.com/news/app/774861 (toxicity post, 2025 roadmap), en.wikipedia.org/wiki/Project_Winter, trueachievements.com Game Pass coverage.",
+          "lessons": [
+            "Survival-mechanics + deduction hybrid raises match length and skill floor, shrinking the casual funnel the genre needs.",
+            "Voice-required deception gameplay concentrates toxicity; Other Ocean's ToxMod partnership shows the moderation burden is heavy enough that studios outsource it to ML.",
+            "Game Pass inclusion buys population temporarily but it evaporates when the catalog rotates.",
+            "A '2.0' relaunch update (Sept 2025) produced only a one-month spike — content drops cannot fix a structurally depleted matchmaking pool.",
+            "$20 price point is hostile to the 'bring 7 friends' acquisition loop this genre runs on."
+          ]
+        },
+        {
+          "name": "Blood on the Clocktower — official digital (botc.app)",
+          "stack": "Browser-based web app (Windows/Mac/Linux, all major browsers), official app developed under The Pandemonium Institute; release repo on GitHub (ThePandemoniumInstitute/botc-release). Integrated audio/video: microphone required, camera optional. No matchmaking algorithm — games are human-run: a Storyteller (referee with full grimoire access and private-chat visibility) hosts public or private (link/code) games; spectator seats; private whisper chats with neighbor animations; hand-raising for nominations.",
+          "outcome": "Long Patreon-gated beta ('under construction' for years, community 'arriving early'); now free to play with optional Patreon membership unlocking avatar cosmetics and supporting development; Patreon also gates the official Discord/early access. The digital app deliberately complements a premium physical product (~$130+ board game) rather than replacing it. Coexists with a free open-source unofficial tool, clocktower.online (bra1n/townsquare on GitHub) — a virtual grimoire/town square used with Discord/Zoom voice — which the publisher tolerates. Population is not Steam-trackable but the game's online community (Patreon, Discord, public game listings across languages/difficulties) is active and growing; the BGG consensus treats it as the best-in-class social deduction design. Key structural difference: every game needs a trained human Storyteller, which caps scale but near-eliminates the dead-lobby and moderation problems — the Storyteller is the moderator. Sources: botc.app, release.botc.app, beardytas.com/botc-app-instructions, patreon.com/cw/botconline, github.com/bra1n/townsquare, bloodontheclocktower.com.",
+          "lessons": [
+            "Human-hosted games (Storyteller model) trade scalability for quality: no matchmaking death spiral because games are scheduled social events, and moderation is built into the role.",
+            "Free digital app as marketing for a premium physical game + Patreon-for-cosmetics is a viable model that avoids MTX resentment entirely.",
+            "Web-native (browser + WebRTC-style AV) removes install friction for a 10-20 player game where one reluctant friend not installing kills the night.",
+            "Tolerating a free open-source community tool (clocktower.online) grew the online scene during the years the official app wasn't ready.",
+            "Patreon-gated beta built a paying community before launch and funded multi-year development without a publisher."
+          ]
+        },
+        {
+          "name": "EpicMafia (2008) → UltiMafia",
+          "stack": "EpicMafia: custom web app (live chat-based mafia), created Jan 2008, run by 'lucidrains'; volunteer moderators; free. Successor UltiMafia (fork launched June 12, 2023): open-source MERN stack — React frontend, Node.js/Express with websockets, MongoDB + Redis — github.com/UltiMafia/Ultimafia, volunteer-run, free, community-driven with deep role/setup customization.",
+          "outcome": "EpicMafia ran 13 years as the definitive browser mafia site and the proving ground for competitive setups (Town of Salem borrowed heavily from this lineage). It died socially, not technically: in March 2021 moderators were outed for predatory/pedophilic behavior; a moderator ('Charley') self-deleted after deleting banned users' posts, completing a collapse of governance; owner lucidrains shut the site permanently on March 20, 2021, refusing buyout offers. Community recreations followed; UltiMafia is the active successor as of 2025, sustained by open-source contributors and volunteer moderation. Sources: epicmafia.fandom.com/wiki/The_Death_of_EpicMafia, github.com/UltiMafia/Ultimafia, ultimafia.com.",
+          "lessons": [
+            "Anonymous-volunteer moderation with absentee ownership is an existential risk: EpicMafia was killed by moderator misconduct and governance collapse, not by technology or population loss.",
+            "Long-lived deduction communities accumulate child-safety liability — text chat + minors + anonymous adults requires real trust-and-safety, even for a hobby site.",
+            "A devoted community will rebuild the platform (UltiMafia, open-source) if the code/concept is replicable — the durable asset is the ruleset and community, not the site.",
+            "MERN + websockets is entirely sufficient tech for text-based real-time mafia; the hard part is governance.",
+            "Refusing to sell and hard-killing the site destroyed 13 years of community capital overnight — succession planning matters for community platforms."
+          ]
+        },
+        {
+          "name": "werewolf.chat (lykos IRC) / Mafia.gg / werewolv.es — small web implementations",
+          "stack": "werewolf.chat: MediaWiki documentation hub for 'lykos', an open-source Werewolf IRC bot (Python, GitHub); games run in #werewolf on irc.libera.chat and other IRC networks — pure text, zero hosting cost beyond the bot. Mafia.gg: free browser SPA (JS client-rendered; page serves no static content to crawlers) offering real-time lobbies, chat, role customization, spectating, host controls for private groups. werewolv.es: free browser Werewolf with live community games, long-form and 'turbo' formats. Also Discord-bot mafia and forum mafia (e.g., Mafia Universe community) as adjacent zero-infrastructure formats.",
+          "outcome": "These survive indefinitely at tiny scale because their costs round to zero and their communities self-host the social layer. lykos's wiki shows only moderate activity (last notable edit 2023) but the IRC games continue across multiple networks; leaderboards and quote databases indicate an entrenched micro-community. Mafia.gg persists as a private-group tool — players bring their own group, so it has no matchmaking-pool problem. None monetize meaningfully; none died of population collapse because they never depended on strangers-matchmaking. Sources: werewolf.chat (lykos wiki), mafia.gg, werewolv.es, forums.online-go.com forum-werewolf threads.",
+          "lessons": [
+            "Bring-your-own-group tools are immune to the population death spiral — the existential risk of matchmade deduction games simply doesn't apply.",
+            "Text-only/IRC/Discord-bot implementations prove the genre's floor cost is ~zero; a web deduction game competes against free forever.",
+            "Hostable private-lobby tooling (role customization, host controls, spectating) is the feature set that retains organized communities.",
+            "These platforms cap out small: no onboarding funnel for strangers means no growth, the mirror image of the matchmade games' problem."
+          ]
+        }
+      ],
+      "monetization": "What worked: (1) Cheap one-time purchase on PC + free mobile with cosmetics — Among Us's $4.99 + cosmetics/ads/Stars currency generated $86M in three years and $100M+ lifetime with near-zero goodwill damage; the low price preserved the 'convince 9 friends to buy it' loop. (2) F2P from day one + cosmetics + battle pass + built-in voice — Goose Goose Duck rode zero price friction to a 703k CCU record and still cleared ~$21.5M in 2024 on cosmetics and its Flight Pass, funding the live-ops cadence that keeps it the #2 survivor. (3) Free digital client as a funnel for a premium physical product + Patreon patronage for cosmetics/early access — Blood on the Clocktower's botc.app is free, monetizing fandom rather than gameplay, with human Storytellers eliminating per-match server-moderation costs. (4) Modest price + strong regional community — Feign's ~$5 sustains a small studio off one loyal market. What poisoned the well: ToS2's late F2P pivot with an energy/key system (1 free match-key per 8 hours) plus gacha loot boxes ('Cauldron') — energy gates directly starve the lobby population the genre lives on, and converting paid early adopters to F2P-with-MTX burned both audiences (40% positive recent reviews). Charging $10-20 upfront for an unknown deduction game (Throne of Lies at $9.99, Project Winter at $19.99) suppressed the initial population below critical mass; both games' later F2P/relaunch attempts failed because conversion after the pool collapses recovers nothing. ToS1's switch of its free web client to paid (Nov 2018, anti-bot rationale) closed its funnel. Pattern: monetization must never gate match participation or group acquisition; cosmetics, patronage, and a sub-$5 entry are the only models with surviving examples.",
+      "pitfalls": [
+        "Population death spiral: deduction needs 7-16 players per lobby, so matchmade games have a hard CCU floor (~a few hundred globally, less if concentrated in one timezone). Below it, queues lengthen, casuals leave, and collapse is self-reinforcing — Throne of Lies (1.4k peak → 1 CCU), Project Winter (2.9k → 11), ToS2 (~3k → ~270). Symptoms appear early as 'the game is only alive at 7pm EST' scheduling.",
+        "Sequels and spin-offs cannibalize the same fixed pool: ToS1+ToS2 combined hold under 400 CCU; Innersloth cancelled Among Us 2 and reinvested in the original — the correct call.",
+        "Cheating amplified by friends-in-voice-chat and client trust: Among Us's host-authoritative/peer-hosted architecture let the Eris Loris attack spam ~1.5M lobbies in three days; F2P titles (GGD) attract commercial ESP/radar/speedhack tools requiring Easy Anti-Cheat; private-info leakage via out-of-band Discord voice is unsolvable technically and must be absorbed by design (built-in voice, proximity chat, private-lobby culture).",
+        "Free accounts = trivial ban evasion: Among Us needed Quick Chat for guests, then a full account system (Mar 2021) with alt-account bans; ToS1 made its web version paid specifically against bot/spam floods. Plan identity/abuse infrastructure before going F2P.",
+        "Account security and web-stack debt: ToS1's 7.6M-account breach came from phpBB forum software, admin password reuse, weak hashing, slow disclosure, and no forced resets — the company nearly defined GDPR-era negligence for indies. Any auxiliary web surface (forums, wikis) shares blast radius with the game DB.",
+        "Toxicity/moderation burden scales worse in voice-first deception games: Project Winter publicly partnered with Modulate ToxMod (ML voice moderation); werewolf communities burn out volunteer mods. EpicMafia is the terminal case — the site died in 2021 from moderator predatory misconduct and governance collapse, not load or money. Text+minors+anonymous adults = real trust-and-safety obligations.",
+        "Virality is also a stress event: GGD's Steam servers crashed twice during its BTS/China surge and its China mobile launch crashed on day one; capacity must be elastic (Among Us bought Unity Multiplay rather than building).",
+        "Geo-concentration risk: GGD's record peak was mostly China and so was its crash; Chinese platforms restricted its streams over politically sensitive player handles.",
+        "Engine/platform mortality: Flash EOL forced ToS1's full Unity rewrite; Throne of Lies's Unity 2018 upgrade shipped gamebreaking bugs. Mid-life engine migrations consume the content budget that retention requires.",
+        "Energy gates, loot boxes, or any pay-per-match friction directly attack lobby liquidity — ToS2's key system is the canonical self-inflicted wound."
+      ],
+      "successFactors": [
+        "Streamability is the genre's acquisition engine: Among Us 2020 (Twitch) and Goose Goose Duck 2022-23 (one BTS member's stream) were both ignited by streamers, not marketing. Design for spectacle: readable 2D art, betrayal reveals, short rounds, clippable moments. Feign's periodic Turkish-streamer waves repeatedly re-seed its population.",
+        "Built-in voice (especially proximity voice) is now table stakes: GGD's voice-first design out-executed Among Us; Feign and Project Winter shipped it; BotC requires a mic. It keeps casual groups in-game instead of losing them to Discord and lowers the friend-group assembly cost.",
+        "Survive the quiet years cheaply: Among Us's 3-5-person team kept shipping for two dead years before the explosion; ToS1 persists 11 years at ~100 CCU because costs are tiny. Low burn is a strategy.",
+        "Buy infrastructure, don't build: Unity Multiplay (30+ bare-metal + 4 cloud providers, 99.95% SLA) absorbed Among Us's 10,000x spike for a team of five; GGD scaled after crashing; the lesson is elastic capacity ready before the viral moment.",
+        "Live-ops cadence sustains the plateau: GGD's events/cosmetics/Flight Pass keep it at thousands of CCU and ~$21.5M/yr while content-starved peers fell to double digits.",
+        "Bring-your-own-group and human-hosted models are death-spiral-proof: BotC's Storyteller-run scheduled games, Mafia.gg/Discord-bot private lobbies, and IRC lykos games never depend on stranger matchmaking — they cap small but never die. A hybrid (matchmaking + first-class private/community hosting tools) hedges the population risk.",
+        "Community ownership extends life beyond the company: open-source UltiMafia (MERN) resurrected EpicMafia's community; clocktower.online (open-source grimoire) carried BotC online before the official app. Moddability/hostability converts players into infrastructure.",
+        "Regional/language community depth beats shallow global reach for small titles: Feign's Turkey-centric population fills lobbies at CCU levels that would be fatal if globally dispersed; localization (14 languages) is cheap insurance.",
+        "Zero or near-zero entry price keeps the group-acquisition loop alive: every surviving title is free or under $5; every $10+ title in the genre is dead.",
+        "Account systems, reporting, and (for voice games) ML moderation tooling are retention features, not compliance overhead — toxicity churns exactly the casual majority the lobbies need; Among Us's accounts/Quick Chat and Project Winter's ToxMod trial mark the genre's minimum bar."
+      ]
+    }
+  },
+  "critique": {
+    "topRisks": [
+      {
+        "risk": "Population cold-start is the existential risk and the dossier documents it without solving it. A 15-player lobby needs roughly 10x the concurrent pool of Among Us's 4-10 player rooms; the dossier's own comps show every matchmade deduction game under ~300 CCU is functionally dead (Throne of Lies 1.4k peak -> 1 CCU, Project Winter 2.9k -> 11). A text-only clone of a 2011 SC2 Arcade map launches with zero acquisition channel: no streamer appeal, no marketing budget, no existing funnel. The most likely failure mode is launching to empty lobbies, collecting 'can't find a game' Steam reviews that are permanent, and spiraling within 4-8 weeks.",
+        "mitigation": "Design out dependence on stranger matchmaking: make bring-your-own-group private lobbies the first-class mode (the dossier's own werewolf.chat/Mafia.gg lesson — BYO-group tools are death-spiral-immune); support 7-15 players with auto-scaling role lists so a 9-person lobby starts instead of waiting; recruit the SC2Mafia diaspora, UltiMafia, and Discord mafia communities as founding hosts BEFORE launch; ship scheduled-event tooling (community game nights) instead of pretending a quickmatch queue will fill; launch the free browser client months before Steam to build the pool, and only pull the Steam launch trigger when there's a measurable nightly population."
+      },
+      {
+        "risk": "Solo-dev playtest impossibility is the hidden schedule killer. Every balance/UX iteration of a 15-player, 30-60 minute game requires 10-15 simultaneous humans; that throttles iteration to maybe two real sessions a week, and the genre's fun lives entirely in emergent multi-player dynamics no unit test reaches. The dossier never addresses how one person tests this game at all.",
+        "mitigation": "Build the deterministic headless simulator and scripted bot clients on day one — the dossier's own (seed, intents) -> deterministic-resolution design enables this; add property-based and golden-case tests for the night-resolution pipeline; run 1-human-plus-14-bots smoke tests for every flow; use Steam Playtest (free, separate app, missing from the dossier's shipping steps) plus a standing Discord playtest group with scheduled sessions; accept that bots verify mechanics, not the social game, and budget calendar time for human playtests accordingly."
+      },
+      {
+        "risk": "Night-resolution engine correctness will be litigated by the community, and silent bugs are trust-fatal: in a deduction game, a wrong Sheriff result is indistinguishable from server cheating to the player. The published resolution order includes a 'repeat the Witch->BusDriver->Roleblocker cycle a random number of times' paradox solver, an acknowledged Jailor witch-immunity bug, and dozens of conversion/redirection edge cases documented only as wiki prose and forum rulings — a reimplementation from that material will diverge in ways veterans will catch in week one.",
+        "mitigation": "Write your own formal spec rather than transliterating the wiki; replace 'random number of iterations' with deterministic fixed-point iteration plus a documented tie-break; build an exhaustive interaction test suite seeded from the wiki edge cases (witch-on-witch, escort-blocks-escort-blocking-witch, MM-at-jailed-target); publish the resolution spec so the community debugs alongside you; expose per-match replays/audits from (seed, intents) so disputes resolve with evidence; decide explicitly, per mechanic, whether you want bug-for-bug fidelity or a clean fix, and document it."
+      },
+      {
+        "risk": "Product-market contradiction the dossier states but never reconciles: its comps section proves the genre acquires players via streamers, built-in voice, and short clippable rounds — and the game being cloned is the exact opposite (text-only, 30-60 minute matches, dense jargon, dead players idling in a graveyard). Drifting into that gap means building a product with neither the niche depth veterans demand nor the casual funnel strangers need.",
+        "mitigation": "Force the positioning decision now: commit to being a niche community product for the text-mafia audience (MafiaScum/EpicMafia/SC2Mafia lineage), size expectations to a sustainable 100-500 CCU at near-zero burn, and lean into what that audience values — host tools, setup sharing, spectating, replays, private lobbies. Still ship a spectator/streamer mode (hide own-role/whispers from capture) and make trial/execution moments visually clippable, because streamer waves are free re-seeding even for niche titles (Feign's Turkish-streamer cycles)."
+      },
+      {
+        "risk": "Scope blowout. Even the 15-role MVP plus the setup editor, per-role option toggles, four day types, trials, whispers, wills, reconnection, moderation tooling, bot/test harness, and the Steam pipeline is realistically 12-24 months solo; the full 60-role surface with Cult conversion bookkeeping, Triad, and the option matrix is multi-year. First Steam release + first multiplayer game + first game ever is a compounding-unknowns stack.",
+        "mitigation": "Cut below the dossier's MVP: one day type (Majority + Trial), 2-3 fixed curated setups instead of the custom editor, 9-12 players; ship the setup editor and option toggles as the post-launch retention beat (they're also the features that multiply the QA matrix); hold Triad/Cult/Bus Driver/Witch until the game is live and stable; timebox a playable 9-player vertical slice (lobby -> roles -> day/vote/trial -> night -> win check) in 6-8 weeks as a go/no-go checkpoint."
+      },
+      {
+        "risk": "The real legal threat is takedown asymmetry, not a lawsuit. The dossier's 'approximately zero' Blizzard-risk conclusion is sound, but a cheap Steam complaint — from BlankMediaGames on look-and-feel, 2K on the 'Mafia' video-game trademark, or even a troll — can delist a live multiplayer game for weeks during dispute resolution, which is fatal to a small population even when you'd ultimately win.",
+        "mitigation": "Pick an original title with distance from both 'SC2' and standalone 'Mafia'; build a theme visually distinct from both StarCraft and Town of Salem's Salem trade dress; rename the distinctive-tier roles (Triad set, Beguiler, Auditor) as the dossier says; document the clean-room process (sources used, no extracted assets) contemporaneously; have a counter-notice template and a games-IP lawyer contact ready before launch, not after the takedown lands."
+      },
+      {
+        "risk": "Moderation and child-safety load on one person. Accusation-as-core-loop chat plus minors plus (likely) free accounts creates real obligations — DSA notice-and-action, and the UK Online Safety Act duties the dossier omits entirely — and a solo dev cannot staff a 72-hour human review queue at any traction level. EpicMafia died of governance, not technology; that lesson cuts against both no-moderation and hastily-deputized volunteer moderation.",
+        "mitigation": "Build the data model day one (reports, sanctions, append-only match_events — the dossier is right here) but phase the ceremony with scale; automate first: server-side evasion-aware filtering, rate limits, heuristic flags; when volunteers become necessary, give them scoped, fully-logged tools and a removal process (the EpicMafia failure was unaccountable mods); add an age gate and consider restricted chat defaults for minors; read the OSA's small-service duties before launch since UK players are inevitable."
+      },
+      {
+        "risk": "Platform fragility in the recommended stack: steamworks.js is effectively single-maintainer with 67 open issues; the Steam overlay is broken on macOS and flaky on Windows for Electron; Steam Deck runs the Windows Electron build under Proton where a text-input-heavy game is borderline; and the dossier cites Valve C++ API features (FilterText, ShowFloatingGamepadTextInput, ICheatReportingService) without verifying the JS binding actually exposes them.",
+        "mitigation": "Wrap all Steamworks access behind a thin adapter so swapping to a fork or raw steamworks-rs is a contained change; keep Steam surface area minimal (auth tickets, achievements, rich presence — the dossier's own advice); spike-test the specific binding calls you depend on in week one, not at integration time; route invites through Steam-client launch args from the start instead of fighting the overlay; target Deck 'Playable' at most and don't spend MVP time on controller UI."
+      },
+      {
+        "risk": "Off-platform collusion and dead-chat omniscience break stranger matches by design: friends in Discord voice sharing roles is technically unsolvable, and SC2Mafia's dead players see ALL hidden information — one dead friend in a voice call ruins the game for the living. Ranked integrity (win-trading, gamethrowing, multi-accounting, the Jester/thrower ambiguity) has no concrete design anywhere in the dossier.",
+        "mitigation": "Make dead-player information visibility a per-mode setting: full omniscience in private lobbies (it's fun with friends), restricted-until-game-end in matchmade games; accept collusion in private lobbies as out of scope; defer ranked entirely (see pushback) but log everything now so behavioral detection (vote-pattern anomalies, premature-knowledge tells) is possible later; treat 'reported for gamethrowing' as the dominant report category it will be and design the triage UI for it."
+      },
+      {
+        "risk": "Browser+Steam dual-SKU complexity arrives earlier than the dossier admits: two distribution channels mean identity unification (SteamID vs email/web accounts), version skew between always-fresh browser clients and Steam-updated desktop clients hitting one server fleet, double the cheat/abuse surface (devtools-open browser client makes scripted clients trivial), and running two release pipelines as one person.",
+        "mitigation": "One account system from day one with Steam as a linked auth provider rather than a parallel identity; server-enforced protocol version with a force-refresh/update message; sequence rather than parallelize — browser-first launch, Steam SKU only after traction — so you never operate both channels before product-market fit; assume hostile scripted clients from the start (the server-authoritative design already covers correctness; add rate limiting and account-quality gates for abuse)."
+      }
+    ],
+    "missingConsiderations": [
+      "Phase-timer client sync and deadline races: server-side timers are specified, but not countdown drift correction on clients, what happens to a vote/night-action packet that arrives 200ms after phase cutoff (need an authoritative grace-window policy), 'Trial Pauses Day' timer arithmetic, or re-sync after tab sleep/background throttling in the browser build.",
+      "AFK/leaver design depth: does leaving reveal your role (information leak either way — SC2Mafia 'suicides' the leaver but their queued kill still lands)? Role-dodge quitting right after assignment, AFK detection escalation (default action -> seat kill -> bot replacement?), lobby ready-checks, and a leaver-penalty system. All of this hits in the first week of human playtests and none is specified.",
+      "Lobby host powers and migration: host disconnect during setup/naming phase, the -repick vote, kick/ban from lobby, and host griefing via degenerate setups in public lobbies (the SC2Mafia 'save built offline because lobbies get impatient' etiquette is itself a UX failure to fix, e.g. setup browser/vetted presets, not replicate).",
+      "Variable player-count support: every SC2Mafia setup assumes 15 players; matchmade reality is 7-12. Auto-scaling role lists with balance rules per count is a significant missing design system, and the single biggest lever against the cold-start problem.",
+      "Bots as two separate problems: scripted bots for testing (achievable, essential) versus bots for lobby backfill (a social deduction bot that chats convincingly is out of solo scope; LLM bots bring cost, latency, and moderation risk). The dossier should not let backfill bots be assumed as a cold-start solution.",
+      "Steam Playtest and Next Fest are absent from the shipping steps — Steam Playtest is the canonical free mechanism for pre-launch multiplayer testing at scale, and a Next Fest demo is the main wishlist-building event for an unknown multiplayer title.",
+      "New-player onboarding: this is a 60-role jargon-dense genre (N1, WIFOM, claims) and the dossier has zero on tutorialization — in-game role cards, contextual ability help, a bots-only tutorial match, glossary, simplified default setups for new accounts. Onboarding is the genre's biggest funnel filter.",
+      "Art and asset budget: nothing in the profile suggests art skills, and the legal analysis demands an original visual identity. Capsule art, role icons, execution animations, store assets, and any cosmetics pipeline must be contracted — unbudgeted money and schedule, and 'original look and feel' is precisely the legal mitigation, so it can't be skipped.",
+      "The monetization decision for THIS game is never actually made: comps conclude 'free or under $5, never gate matches,' but the dossier ends without a recommendation. F2P on Steam invites the bot/ban-evasion problems the dossier itself documents (Among Us, ToS1); paid suppresses the population it can't afford to lose. This is a core open decision, not a detail.",
+      "Deploy/ops with live games: you cannot restart the room server mid-match. Needs graceful drain (stop allocating new rooms, wait out running games), per-process room sharding or blue-green from day one, and a stated crash-recovery policy — the dossier calls event-log recovery a 'nice-to-have,' which stops being true the day real users exist.",
+      "Localization and language-split lobbies: chat-based deduction is unplayable cross-language, so the lobby list/queue must segment by language; the Feign lesson implies deliberately picking one or two launch languages and owning those communities. String externalization is near-free in the web stack if done from day one, expensive retrofitted.",
+      "Accessibility specifics: faction identity is literally red/green (colorblind-hostile — needs shapes/labels), text scaling, keyboard-only play, reduced-motion for execution sequences, and screen-reader-friendly DOM — the last being a genuine web-stack advantage no engine competitor can match, worth exploiting deliberately.",
+      "Telemetry and population health instrumentation: lobby wait time, match completion rate, first-session retention, geographic/timezone concentration — the comps explicitly say 'alive only at 7pm EST' is the death-spiral early-warning, but the dossier specs no analytics to detect it.",
+      "Spectator mode and a replay viewer as concrete scoped features: the event log enables them, but the UI is real work; also a streamer-safety mode (hide own role/whispers from capture until reveal) given streamability is the genre's only free acquisition channel.",
+      "Chat infrastructure mundanities: per-channel rate limiting, paste-flood and mention spam control, link/markup sanitization (the Godot section worries about BBCode injection but the web stack has its own XSS-in-chat surface), whisper metadata rules, persistent client-side mutes.",
+      "Verification that steamworks.js exposes the specific APIs the plan leans on (FilterText, ShowFloatingGamepadTextInput, overlay-invite flows) — the dossier cites Valve's C++ documentation throughout but never checks binding coverage; ICheatReportingService game bans are a server-side Web API call and fine, but client-side surface needs a spike.",
+      "Marketing beyond shipping mechanics: the Steam section covers how to ship, not how anyone finds out — wishlist campaign, dev-logging to the SC2Mafia/ToS diaspora (Reddit r/TownofSalem2, sc2mafia forum remnants, UltiMafia Discord), browser-portal distribution (itch.io, CrazyGames) for the web client, and the explicit 'why switch from free UltiMafia/ToS2' differentiation argument, which the dossier never makes.",
+      "Bug-for-bug fidelity vs clean redesign as an explicit, documented per-mechanic decision (Jailor witch-immunity bug, random-iteration paradox solver, Triad-beats-Mafia tie rules): veterans will demand fidelity, newcomers won't care, and drifting silently between the two produces the worst of both."
+    ],
+    "pushback": [
+      "Steam-first sequencing is wrong-ordered relative to the dossier's own best insight. If the browser version is the population-seeding strategy, it should LAUNCH first — Steam 6-12 months later once nightly lobbies demonstrably fill. The Steam release is a one-shot visibility event (new-release feed, first reviews); burning it on empty lobbies converts the cold-start problem into permanent 'dead game' reviews. The 4-6 week Steam pipeline and $100 fee should wait for traction, not anchor the plan.",
+      "macOS effort is heavily overweighted: $99/yr Apple Developer, notarization yak-shaving, entitlements gotchas — for a platform that is single-digit-percent of this audience, where the Steam overlay is broken anyway, and which the browser build covers completely. Ship Windows+web at launch; add the Mac depot post-traction if Mac players actually materialize.",
+      "Colyseus StateView is oversold as the security lever. Tagging fields to hide is a blacklist model; for hidden-information secrecy you want whitelist-by-default — explicit per-client event sends where nothing reaches a socket unless deliberately addressed to it. That's trivially built on plain ws + zod with the dev's existing skills, and the 'you'd rebuild 60% of Colyseus' claim is inflated: the hard 60% (phase state machine, night resolution, per-client filtering discipline) is game-specific and yours to write regardless. Colyseus is a fine convenience choice; it is not what makes the game cheat-proof, and boardgame.io's own secrets-leaked-via-side-paths issue (#399) shows why send-discipline beats field-tagging.",
+      "Glicko-2/ranked at launch is premature and mildly harmful: a ranked queue splits an already-thin population, and the dossier has no answer for win-trading, multi-accounting, or gamethrowing detection that ranked immediately invites. Launch unranked with visible stats; add ratings when CCU can support split queues. Keep the rating_before/rating_after schema columns — recomputable later from the event log anyway.",
+      "The 15-player, 15-slot frame should not survive contact with launch reality: filling 15 strangers is brutal at realistic launch CCU. Make 9-12 the designed default with auto-scaling setups and let 15 be the community-event format. Same pushback applies to the option matrix — 4 day types x 3 night types x dozens of per-role toggles exists because SC2 Arcade hosts had captive lobbies; quickmatch strangers need 2-3 curated setups, and every toggle multiplies a QA matrix one person cannot cover. Ship the configurator late as a retention feature, not early as a foundation.",
+      "The packet-size/timing side-channel padding advice is over-engineering for MVP: traffic-shape analysis to infer faction is a threat worth a backlog note, not launch work, for a sub-1k-CCU text game. Need-to-know serialization is the 99% defense; do that and move on.",
+      "The DSA-shaped moderation prescription is compliance-overweight pre-traction: build the data model (reports, sanctions, evidence-linked event log) from day one — that part is correct and cheap — but a 72h human-review SLA and formal Article 16 notice flows for a game with 50 CCU is ceremony; a working server-side mute, a filter, and a Discord channel is the honest launch bar, with the formal machinery phased in as user counts justify it. Meanwhile the dossier omits the UK Online Safety Act, which in 2026 is arguably the more aggressive regime for a small chat platform.",
+      "The comps section's scaling lessons (Unity Multiplay, elastic capacity 'ready before the viral moment') are mostly inapplicable and risk infra-anxiety spending: a text-mafia niche title will not 10,000x overnight, and if lightning somehow strikes, a room-based architecture shards horizontally fast enough. One box plus a tested drain-and-shard plan is genuinely sufficient; resist pre-buying for a spike that will not come.",
+      "Hosting cost analysis prices the VPS but not the human: the binding constraint on a solo live-service operator is attention — on-call, moderation, community management, content cadence — which argues for the most boring possible stack (fewer moving parts beats framework features) and for designing community self-service (host tools, volunteer-runnable events) as load-shedding, not just as features.",
+      "The dossier's two strongest sections argue against its implicit ambition and nobody calls it: the comps prove this genre rewards either viral casual products (voice, short rounds, streamable) or zero-burn community platforms (BYO-group, hostable, open-ish) — and punishes everything in between. A faithful SC2Mafia clone is structurally the second thing. The plan should explicitly embrace hobby-business economics (sub-$5 or free, ~100-500 CCU ceiling, near-zero burn, community-as-infrastructure) or explicitly diverge from the source design toward voice/short-rounds — the dossier currently lets him believe he can split the difference.",
+      "'Approximately zero' legal risk conflates probability with severity: the realistic vector is a cheap takedown complaint (BMG look-and-feel, 2K's 'Mafia' mark) delisting a population-dependent live game for weeks during dispute — low probability, but the mitigation (naming distance, theme distance, documented clean-room, counter-notice readiness) costs almost nothing and should be framed as mandatory, not optional polish.",
+      "Trusting the dossier's Steamworks feature analysis without a binding spike is a trap: it consistently cites Valve's C++ API docs (lobbies, FilterText, floating keyboard, rich presence connect keys) while the actual dependency is steamworks.js's coverage of those calls in Electron. Week-one task: a throwaway Electron app exercising every Steam call the plan needs, on Windows and on a Deck, before any architecture hardens around them."
+    ]
+  }
+}
