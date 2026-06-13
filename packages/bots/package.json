@@ -1,0 +1,42 @@
+{
+  "name": "@nocturne/bots",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "main": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "default": "./dist/index.js"
+    },
+    "./runtime": {
+      "types": "./dist/runtime.d.ts",
+      "default": "./dist/runtime.js"
+    }
+  },
+  "bin": {
+    "nocturne-sim": "./dist/cli/sim.js",
+    "nocturne-dev-solo": "./dist/cli/dev-solo.js",
+    "nocturne-leakcheck": "./dist/cli/leakcheck.js"
+  },
+  "scripts": {
+    "build": "tsc -p tsconfig.json",
+    "typecheck": "tsc -p tsconfig.json --noEmit",
+    "test": "vitest run",
+    "sim": "node dist/cli/sim.js",
+    "dev:solo": "node dist/cli/dev-solo.js",
+    "leakcheck": "node dist/cli/leakcheck.js"
+  },
+  "dependencies": {
+    "@nocturne/engine": "workspace:*",
+    "@nocturne/shared": "workspace:*",
+    "ws": "^8.18.0"
+  },
+  "devDependencies": {
+    "@nocturne/server": "workspace:*",
+    "@types/ws": "^8.5.13",
+    "typescript": "^5.7.2",
+    "vitest": "^2.1.8"
+  }
+}

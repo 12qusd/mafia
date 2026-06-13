@@ -1,0 +1,132 @@
+/*
+ * NOCTURNE — original 1920s noir / Prohibition visual identity (BUILD_SPEC §2.1.4,
+ * §13.2). Dark palette, art-deco geometric accents, CSS-only. No StarCraft / Town
+ * of Salem references. Faction color is NEVER the only signal — every faction tag
+ * also carries an icon + label (§13.1 Settings, colorblind requirement).
+ *
+ * Day/night scene tinting is driven by a `data-scene` attribute on the app root.
+ */
+
+:root {
+  /* Core noir palette — deep charcoals, smoke, brass/amber art-deco accents. */
+  --c-ink: #0c0b10;
+  --c-ink-2: #141320;
+  --c-panel: #1b1a28;
+  --c-panel-2: #232233;
+  --c-line: #34324a;
+  --c-line-soft: #2a2940;
+  --c-text: #e8e4d8;
+  --c-text-dim: #a9a395;
+  --c-text-faint: #6f6b60;
+
+  --c-brass: #c9a45a; /* primary art-deco accent */
+  --c-brass-dim: #8a763e;
+  --c-amber: #e0b65c;
+  --c-blood: #a3343a; /* danger / death / mafia */
+  --c-blood-dim: #732127;
+  --c-verdigris: #3f7d6e; /* secondary cool accent */
+
+  /* Faction colors (paired ALWAYS with icon + label). */
+  --f-town: #5c8fc9;
+  --f-mafia: #b14a50;
+  --f-nk: #b07ad6; /* neutral killing */
+  --f-nb: #c9a45a; /* neutral benign */
+
+  --radius: 4px;
+  --shadow: 0 6px 24px rgba(0, 0, 0, 0.55);
+  --font-display: 'Georgia', 'Times New Roman', serif;
+  --font-body: ui-sans-serif, system-ui, 'Segoe UI', Roboto, sans-serif;
+
+  --scale: 1;
+}
+
+/* Colorblind-safe palette: shift faction hues to a distinguishable set and
+   raise contrast. Faction icons/labels remain the primary signal regardless. */
+[data-colorblind='true'] {
+  --f-town: #3a86ff; /* blue */
+  --f-mafia: #fb5607; /* orange-red */
+  --f-nk: #ffbe0b; /* yellow */
+  --f-nb: #8338ec; /* violet */
+  --c-blood: #fb5607;
+}
+
+[data-textscale='small'] {
+  --scale: 0.9;
+}
+[data-textscale='large'] {
+  --scale: 1.15;
+}
+
+* {
+  box-sizing: border-box;
+}
+
+html,
+body,
+#root {
+  height: 100%;
+  margin: 0;
+}
+
+body {
+  background: var(--c-ink);
+  color: var(--c-text);
+  font-family: var(--font-body);
+  font-size: calc(16px * var(--scale));
+  line-height: 1.5;
+  -webkit-font-smoothing: antialiased;
+}
+
+h1,
+h2,
+h3,
+.display {
+  font-family: var(--font-display);
+  letter-spacing: 0.02em;
+  font-weight: 600;
+}
+
+a {
+  color: var(--c-amber);
+}
+
+button {
+  font-family: var(--font-body);
+  font-size: calc(14px * var(--scale));
+}
+
+/* --- Art-deco background motif (pure CSS, no assets) --------------------- */
+.deco-bg {
+  position: relative;
+  min-height: 100%;
+  background:
+    radial-gradient(1200px 600px at 50% -10%, rgba(201, 164, 90, 0.06), transparent 60%),
+    repeating-linear-gradient(
+      135deg,
+      rgba(255, 255, 255, 0.012) 0 2px,
+      transparent 2px 22px
+    ),
+    var(--c-ink);
+}
+
+/* Scene tinting (BUILD_SPEC §13.2 day/night ambiance). */
+[data-scene='night'] {
+  --c-ink: #07060d;
+  --c-panel: #15131f;
+}
+[data-scene='night'] .deco-bg {
+  background:
+    radial-gradient(1000px 500px at 50% 120%, rgba(63, 125, 110, 0.08), transparent 60%),
+    radial-gradient(900px 480px at 50% -10%, rgba(40, 40, 90, 0.16), transparent 60%),
+    var(--c-ink);
+}
+[data-scene='day'] .deco-bg {
+  background:
+    radial-gradient(1100px 560px at 50% -10%, rgba(224, 182, 92, 0.1), transparent 60%),
+    var(--c-ink);
+}
+[data-scene='dusk'] .deco-bg {
+  background:
+    radial-gradient(1100px 560px at 50% -10%, rgba(163, 52, 58, 0.1), transparent 60%),
+    var(--c-ink);
+}

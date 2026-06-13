@@ -517,7 +517,14 @@ last_will        {text}
 death_note       {text}
 report_player    {seat, category, comment?}
 ping             {t}
+test_control     {action, ...}                     // TEST MODE host only (see §9.3)
 ```
+
+`test_control` actions (gated TEST MODE only; host of a test lobby):
+`end_phase` {} · `request_state` {} · `add_bot` {count?, policy?: 'scripted'|'llm'} (pre-game) ·
+`remove_bot` {seatOrAll: SeatId|'all'} (pre-game). `create_lobby.config` gains
+`testMode?: boolean`, honored only when env `NOCTURNE_TEST_MODE=1` or the creator is an admin;
+test lobbies are forced private and badged in `lobby_state.lobby.testMode`.
 
 ### 9.2 Server → client (complete MVP catalog)
 
@@ -541,7 +548,16 @@ seat_status      {seat, connected, afk}
 error            {code, detail?}
 pong             {t}
 force_update     {minProtocolVersion}              // client must refresh
+debug_state      {phase, dayNumber, nightNumber, seats[], mafiaRoster, intents[], jailTarget,
+                  pendingJesterGrief, voteTallies, votesBySeat, trial, executionerTargets}
+debug_trace      {dayNumber, nightNumber, traces[], deaths[]}   // after each night resolution
+debug_event      {seq, phase, eventType, seat?, payload, ts}    // mirror of each GameEvent
 ```
+
+`debug_*` frames (TEST MODE god-view) are delivered ONLY to the test-lobby host audience — never
+in a normal game (enforced by the §12.3 leak auditor allowlist). Full schemas in
+`packages/shared/src/protocol/debug.ts`. HTTP audit: `GET /api/test/match/:roomId/audit`
+(host/admin, test rooms only) → setup, seed, action log, all traces, per-seat private results.
 
 `SeatSnapshot` (resume) = everything in §8. All payload schemas live in `packages/shared` as the
 single source of truth; server and client import the same zod objects.

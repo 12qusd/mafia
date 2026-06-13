@@ -1,0 +1,26 @@
+# Dev Postgres for Project NOCTURNE (BUILD_SPEC §10).
+#
+# Port 5433 on the host (not 5432) to avoid clashing with other containers on
+# this box. Bring up with: docker compose -f packages/server/docker-compose.yml up -d
+# Then migrate:           DATABASE_URL=postgres://nocturne:nocturne@localhost:5433/nocturne \
+#                         pnpm --filter @nocturne/server migrate
+services:
+  postgres:
+    image: postgres:16-alpine
+    container_name: nocturne-pg
+    environment:
+      POSTGRES_USER: nocturne
+      POSTGRES_PASSWORD: nocturne
+      POSTGRES_DB: nocturne
+    ports:
+      - '5433:5432'
+    volumes:
+      - nocturne_pg_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ['CMD-SHELL', 'pg_isready -U nocturne']
+      interval: 5s
+      timeout: 5s
+      retries: 5
+
+volumes:
+  nocturne_pg_data:
