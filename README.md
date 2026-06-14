@@ -68,7 +68,9 @@ place and deployed.
   implemented; the server is deployed behind a Cloudflare tunnel.
 - [ ] **M5** — Electron + Steam packaging (deferred).
 
-Test suite: 122 (shared) + 47 (engine) + 47 (client) + 36 (server) + 18 (bots).
+Test suite: run `pnpm -r test` for the full suite across all five packages (shared / engine /
+client / server / bots). The exact per-package counts grow as roles and features land, so they're
+deliberately not hand-listed here.
 
 ## Development
 
@@ -107,7 +109,57 @@ Server environment variables:
 | `NO_DB` | `false` | `1` runs guests-only, in-memory, no Postgres (dev / CI / bots). |
 | `DATABASE_URL` | — | Postgres connection string (used when `NO_DB` is unset). |
 | `SESSION_SECRET` | dev placeholder | Secret used to derive session-token hashes — **set in production**. |
+| `SESSION_TTL_MS` | 30 days | Session lifetime in milliseconds. |
+| `SERVER_BUILD` | `dev` | Server build identifier persisted with matches. |
+| `DRAIN_MAX_MS` | 1 hour | Max time a draining server lets running games finish (§4.4, §13.4). |
 | `ADMIN_TOKEN` | — | Bootstrap token for the admin endpoints (`x-admin-token` header). |
+| `CLIENT_DIST_DIR` | `../client/dist` | Directory of the built client to serve statically (§4.2). |
+| `NOCTURNE_TEST_MODE` | `false` | `1` lets **any** caller create a `testMode` lobby (god-view + Director UI + audit endpoint). See [Test mode & smoke checks](#test-mode--smoke-checks) and the **SECURITY** note below. |
+| `LLM_BASE_URL` | — | OpenAI-compatible base URL for TEST-MODE LLM bots; unset ⇒ LLM bots disabled. |
+| `LLM_MODEL` | `llama3.2` | Model name passed to the LLM endpoint. |
+| `LLM_API_KEY` | — | API key for the LLM endpoint (omit for a local/unauthenticated model). |
+| `LLM_MAX_CONCURRENCY` | `2` | Max concurrent in-flight LLM bot requests. |
+| `LLM_TIMEOUT_MS` | `8000` | Per-request LLM timeout in milliseconds. |
+
+All of the above are read by [`packages/server/src/config.ts`](packages/server/src/config.ts); the
+live pm2 deployment sets them in [`ecosystem.config.cjs`](ecosystem.config.cjs).
+
+### Test mode & smoke checks
+
+`NOCTURNE_TEST_MODE=1` opens a **test-mode gate** on the server. When the gate is open, any caller
+(not just admins) can create a lobby with `config.testMode=true`; the lobby is forced `private` and
+TEST-badged, and its host becomes the "god" audience. A test-mode game grants the host:
+
+- **god-view** — full `debug_state` / `debug_trace` snapshots of every seat's hidden role and the
+  night-resolution pipeline (normally never sent to any client; §5).
+- the **Director UI** — `test_control` messages (add/remove bots, `end_phase`, etc.) driven from the
+  client's `DirectorPanel`.
+- `GET /api/test/match/:roomId/audit` — a downloadable full-match audit JSON (setup, seed, action
+  log, all resolution traces, per-seat private-result history). Gated to the test lobby's host or an
+  admin (`x-admin-token`); non-test/unknown rooms always 404.
+
+Two real smoke scripts exercise this path end to end (see [`scripts/`](scripts/)):
+
+```sh
+node scripts/smoke-test-mode.mjs   # boots the real server with NOCTURNE_TEST_MODE=1 NO_DB=1, runs a
+                                   # full 7-player bot game, asserts debug_trace + the audit endpoint
+                                   # (also: pnpm smoke:test-mode)
+node scripts/smoke-llm-bots.mjs    # against an already-running server (defaults to the live :8080
+                                   # pm2 deploy with LLM_BASE_URL set): backfills LLM bots into a
+                                   # test lobby and confirms they produce legal moves end to end
+```
+
+> **⚠️ SECURITY — known, accepted exposure (as of 2026-06-14).**
+> The live pm2 deploy ([`ecosystem.config.cjs`](ecosystem.config.cjs)) currently sets
+> `NOCTURNE_TEST_MODE=1` in production. With the gate open, the admin check in
+> `packages/server/src/lobby/manager.ts` (`testModeEnv === true || conn.identity?.isAdmin`) passes
+> for **anyone** — so any visitor to the public site can create a `testMode` lobby and obtain
+> god-view, the Director (`test_control`) controls, and the `/api/test/match/:id/audit` endpoint
+> for their own match. The lobby is forced private, but the creator still sees all hidden roles and
+> resolution traces in a game they control. This is a **deliberate, operator-accepted exposure for
+> now** (kept on to support live testing); it is **not** an inadvertent leak of other players'
+> public games. To close it, drop `NOCTURNE_TEST_MODE` from the production env and rebuild/restart.
+> See also [`OPERATIONS.md`](OPERATIONS.md).
 
 ### Postgres (full-persistence mode)
 
