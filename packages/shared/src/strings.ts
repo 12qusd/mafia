@@ -101,6 +101,10 @@ export function deathLine(cause: DeathCause, seatLabel: string, roleName: string
       return `${seatLabel} knocked on the wrong door and met a barrel of buckshot. They were the ${roleName}.`;
     case 'arsonist':
       return `${seatLabel} woke to a house full of fire and never made it out. They were the ${roleName}.`;
+    case 'crusader':
+      return `${seatLabel} came calling on the wrong doorstep and met a righteous blade. They were the ${roleName}.`;
+    case 'ambush':
+      return `${seatLabel} walked into a stakeout and never walked back out. They were the ${roleName}.`;
     default: {
       // Exhaustiveness guard.
       const _never: never = cause;
@@ -139,6 +143,7 @@ export const PRIVATE_RESULT_TEXT: Record<PrivateResultKind, string> = {
   tracker_result: '', // resolved via trackerResultLine (needs the visited seats)
   spy_result: '', // resolved via spyResultLine (needs the mafia-visited seats)
   remember_result: '', // resolved via rememberResultLine (needs the new role)
+  psychic_vision: '', // resolved via psychicVisionLine (needs the seats + parity)
 };
 
 /** Sheriff result line (BUILD_SPEC §6.6). */
@@ -191,6 +196,21 @@ export function spyResultLine(visitedLabels: string[]): string {
 /** Amnesiac remember result line (batch B). The caller supplies the new role name. */
 export function rememberResultLine(targetLabel: string, roleName: string): string {
   return `You knelt at ${targetLabel}'s grave and it all came back — you are the ${roleName} now.`;
+}
+
+/**
+ * Psychic vision result line (batch C). The caller formats the seat labels; the
+ * `parity` says whether the vision promises at least one EVIL face or one GOOD
+ * face among them. Carries only seat labels — never roles.
+ */
+export function psychicVisionLine(parity: 'evil' | 'good', seatLabels: string[]): string {
+  const list = seatLabels.join(', ');
+  if (seatLabels.length === 0) {
+    return 'The vision came and went, but no faces would hold still tonight.';
+  }
+  return parity === 'evil'
+    ? `The cards turn dark: at least one of these carries a black heart — ${list}.`
+    : `The cards turn kind: at least one of these is true and good — ${list}.`;
 }
 
 /** Error-code → human message (BUILD_SPEC §9). */

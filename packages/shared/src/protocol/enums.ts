@@ -47,6 +47,9 @@ export type TrialOutcome = z.infer<typeof TrialOutcomeSchema>;
  * - tracker_result      — the list of seats your tracked target VISITED (batch B).
  * - spy_result          — the list of seats the MAFIA visited this night (batch B).
  * - remember_result     — the role the Amnesiac remembered and became (batch B).
+ * - psychic_vision      — a set of seats among which at least one is evil (odd
+ *                         nights) or good (even nights); seats only, no roles
+ *                         (Town Psychic; batch C).
  */
 export const PRIVATE_RESULT_KINDS = [
   'sheriff_result',
@@ -65,6 +68,7 @@ export const PRIVATE_RESULT_KINDS = [
   'tracker_result',
   'spy_result',
   'remember_result',
+  'psychic_vision',
 ] as const;
 export const PrivateResultKindSchema = z.enum(PRIVATE_RESULT_KINDS);
 export type PrivateResultKind = z.infer<typeof PrivateResultKindSchema>;

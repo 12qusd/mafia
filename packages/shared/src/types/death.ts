@@ -19,6 +19,11 @@ import { z } from 'zod';
  * - arsonist       — an Arsonist ignition burning a doused seat (batch B). A
  *                    powerful attack: pierces basic defense (heal/guard/vest) but
  *                    is stopped by jail and night-immunity.
+ * - crusader       — a Crusader striking down a visitor to its ward (batch C). A
+ *                    Town-aligned basic attack (stopped by night-immunity/vest,
+ *                    interceptable by a Bodyguard).
+ * - ambush         — an Ambusher killing a visitor to the house it staked out
+ *                    (batch C). A Mafia-aligned basic attack.
  */
 export const DEATH_CAUSES = [
   'mafia',
@@ -32,6 +37,8 @@ export const DEATH_CAUSES = [
   'bodyguard',
   'veteran',
   'arsonist',
+  'crusader',
+  'ambush',
 ] as const;
 
 export const DeathCauseSchema = z.enum(DEATH_CAUSES);

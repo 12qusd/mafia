@@ -94,6 +94,19 @@ export const RememberResultPayload = z.object({
   role: RoleIdSchema,
 });
 
+/**
+ * Psychic vision result (batch C). A set of living seats among which AT LEAST
+ * ONE is evil (`parity: 'evil'`, odd nights) or AT LEAST ONE is good
+ * (`parity: 'good'`, even nights). Carries ONLY seat ids and the parity tag —
+ * NO role or faction strings — so it is leak-trivial and needs no whitelist.
+ * Delivered to the Psychic alone.
+ */
+export const PsychicVisionPayload = z.object({
+  kind: z.literal('psychic_vision'),
+  parity: z.enum(['evil', 'good']),
+  seats: z.array(SeatIdSchema),
+});
+
 /** Discriminated union of all private-result payloads (without envelope). */
 export const PrivateResultPayloadSchema = z.discriminatedUnion('kind', [
   SheriffResultPayload,
@@ -112,5 +125,6 @@ export const PrivateResultPayloadSchema = z.discriminatedUnion('kind', [
   TrackerResultPayload,
   SpyResultPayload,
   RememberResultPayload,
+  PsychicVisionPayload,
 ]);
 export type PrivateResultPayload = z.infer<typeof PrivateResultPayloadSchema>;

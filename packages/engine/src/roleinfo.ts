@@ -42,6 +42,14 @@ export function roleToNightAbility(role: RoleId): NightAbility | null {
       return 'protect';
     case 'BODYGUARD':
       return 'guard';
+    case 'CRUSADER':
+      return 'crusade';
+    case 'AMBUSHER':
+      return 'ambush';
+    case 'PSYCHIC':
+      return 'divine';
+    case 'HYPNOTIST':
+      return 'hypnotize';
     case 'SURVIVOR':
       return 'vest';
     case 'ESCORT':

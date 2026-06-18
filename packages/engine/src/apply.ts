@@ -467,14 +467,15 @@ function handleNightAction(
 
   // Remove any prior intent for this seat (last submission wins).
   state.nightIntents = state.nightIntents.filter((i) => i.seat !== seat);
-  // `vest`/`alert`/`spy`/`ignite` are self-only toggles with no external target;
-  // any other ability with a null target is a cancellation.
+  // `vest`/`alert`/`spy`/`ignite`/`divine` are self-only toggles with no external
+  // target; any other ability with a null target is a cancellation.
   if (
     target === null &&
     ability !== 'vest' &&
     ability !== 'alert' &&
     ability !== 'spy' &&
-    ability !== 'ignite'
+    ability !== 'ignite' &&
+    ability !== 'divine'
   ) {
     return; // cancel
   }

@@ -33,7 +33,7 @@ const NOIR_LINES = [
 ];
 
 /** Night abilities that target the self / no one (no external target needed). */
-const SELF_ONLY_ABILITIES = new Set<string>(['vest', 'alert', 'spy', 'ignite']);
+const SELF_ONLY_ABILITIES = new Set<string>(['vest', 'alert', 'spy', 'ignite', 'divine']);
 
 export interface PolicyOptions {
   /** Deterministic per-bot seed string. */

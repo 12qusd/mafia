@@ -236,4 +236,9 @@ const KNOWN_ROLES = new Set<string>([
   'MEDIUM',
   'DISGUISER',
   'ARSONIST',
+  // --- Role-expansion batch C ---
+  'CRUSADER',
+  'AMBUSHER',
+  'PSYCHIC',
+  'HYPNOTIST',
 ]);

@@ -55,6 +55,8 @@ function renderPayload(p: PrivateResultPayload, label: (seat: number) => string)
       return strings.trackerResultLine(label(p.target), p.visited.map(label));
     case 'spy_result':
       return strings.spyResultLine(p.seats.map(label));
+    case 'psychic_vision':
+      return strings.psychicVisionLine(p.parity, p.seats.map(label));
     case 'roleblocked':
     case 'block_failed':
     case 'target_unreachable':

@@ -104,27 +104,29 @@ export const GUNSMOKE: GameSetup = {
  * Bodyguard, a Veteran, a Tracker, a Spy, and a Medium — plus a wandering
  * Amnesiac and a patient Arsonist among the neutrals.
  *
- * Town (8): Jailor, Sheriff, Bodyguard, Veteran, Tracker, Spy, Medium, Doctor.
+ * Town (8): Jailor, Sheriff, Bodyguard, Crusader, Veteran, Tracker, Psychic,
+ *           Medium.
  * Mafia (3): Godfather, Janitor, + one RANDOM_MAFIA (Consigliere / Forger /
- *            Blackmailer / Disguiser / Consort / Framer).
+ *            Blackmailer / Disguiser / Ambusher / Hypnotist / Consort / Framer).
  * Neutral (4): Serial Killer, Arsonist, Amnesiac, Executioner.
  *
  * Showcases the full expanded roster: the Janitor is fixed (it is not in the
  * random pool) and the other Mafia support rotates through the RANDOM_MAFIA slot
- * (which now includes the Disguiser); the Town fields the batch-B information
- * roles (Tracker, Spy, Medium) and the batch-A protectives; the neutrals add the
- * batch-B Amnesiac and Arsonist alongside the Serial Killer.
+ * (which now includes the Disguiser, Ambusher, and Hypnotist); the Town fields
+ * the batch-B information roles (Tracker, Psychic, Medium) and the batch-A/C
+ * protectives (Bodyguard, Crusader, Veteran); the neutrals add the batch-B
+ * Amnesiac and Arsonist alongside the Serial Killer.
  */
 const SMOKE_AND_MIRRORS_15: SetupSlot[] = [
   // Town
   F('JAILOR'),
   F('SHERIFF'),
   F('BODYGUARD'),
+  F('CRUSADER'),
   F('VETERAN'),
   F('TRACKER'),
-  F('SPY'),
+  F('PSYCHIC'),
   F('MEDIUM'),
-  F('DOCTOR'),
   // Mafia
   F('GODFATHER'),
   F('JANITOR'),
@@ -145,7 +147,17 @@ export const SMOKE_AND_MIRRORS: GameSetup = {
     'play their own games in the margins.',
   minPlayers: 15,
   maxPlayers: 15,
-  townPool: ['CITIZEN', 'DOCTOR', 'SHERIFF', 'LOOKOUT', 'TRACKER', 'SPY', 'MEDIUM'],
+  townPool: [
+    'CITIZEN',
+    'DOCTOR',
+    'SHERIFF',
+    'LOOKOUT',
+    'TRACKER',
+    'SPY',
+    'MEDIUM',
+    'CRUSADER',
+    'PSYCHIC',
+  ],
   slotsByPlayerCount: {
     '15': SMOKE_AND_MIRRORS_15,
   },

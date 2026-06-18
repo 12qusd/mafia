@@ -222,7 +222,11 @@ export function effectForCause(cause: DeathCause): CauseEffect {
     case 'vigilante':
     case 'bodyguard':
     case 'veteran':
+    case 'ambush':
       return 'shot';
+    case 'crusader':
+      // A righteous blade — the knife flourish reads as a struck-down caller.
+      return 'knife';
     case 'lynch':
     case 'jailor_execute':
       return 'noose';

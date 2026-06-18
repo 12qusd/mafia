@@ -53,12 +53,12 @@ describe('investigator result classes (§6.6)', () => {
   const SPEC_TABLE: Record<string, RoleId[]> = {
     R1: ['CITIZEN', 'SURVIVOR', 'EXECUTIONER', 'AMNESIAC'],
     R2: ['SHERIFF', 'JAILOR', 'BLACKMAILER', 'TRACKER'],
-    R3: ['INVESTIGATOR', 'JESTER', 'CONSIGLIERE', 'SPY'],
+    R3: ['INVESTIGATOR', 'JESTER', 'CONSIGLIERE', 'SPY', 'PSYCHIC'],
     R4: ['DOCTOR', 'SERIAL_KILLER', 'MEDIUM'],
-    R5: ['ESCORT', 'CONSORT', 'JANITOR'],
-    R6: ['VIGILANTE', 'MAFIOSO', 'VETERAN'],
+    R5: ['ESCORT', 'CONSORT', 'JANITOR', 'HYPNOTIST'],
+    R6: ['VIGILANTE', 'MAFIOSO', 'VETERAN', 'CRUSADER'],
     R7: ['GODFATHER', 'MAYOR', 'BODYGUARD', 'ARSONIST'],
-    R8: ['FRAMER', 'LOOKOUT', 'FORGER', 'DISGUISER'],
+    R8: ['FRAMER', 'LOOKOUT', 'FORGER', 'DISGUISER', 'AMBUSHER'],
   };
 
   it('the class table matches §6.6 exactly', () => {
@@ -102,6 +102,8 @@ describe('sheriff alignment table (§6.6)', () => {
     'CONSIGLIERE',
     'BLACKMAILER',
     'DISGUISER',
+    'AMBUSHER',
+    'HYPNOTIST',
     'SERIAL_KILLER',
     'ARSONIST',
   ];
@@ -153,6 +155,7 @@ describe('ability metadata (§6.5)', () => {
       .sort();
     expect(mafia).toEqual(
       [
+        'AMBUSHER',
         'BLACKMAILER',
         'CONSIGLIERE',
         'CONSORT',
@@ -160,6 +163,7 @@ describe('ability metadata (§6.5)', () => {
         'FORGER',
         'FRAMER',
         'GODFATHER',
+        'HYPNOTIST',
         'JANITOR',
         'MAFIOSO',
       ].sort(),

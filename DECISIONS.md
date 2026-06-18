@@ -968,3 +968,92 @@ No win-condition / faction logic changed: new roles reuse existing factions
   neutrals placed as fixed slots in the showcase (neutrals are never in the
   RANDOM_TOWN/RANDOM_MAFIA category pools). The batch-B leak sweep target stays
   `smoke-and-mirrors` at >=120 games / 15 players.
+
+---
+
+## Role expansion batch C (Crusader, Ambusher, Trapper, Psychic, Hypnotist)
+
+Fifth/sixth role wave (mirrors batches A/B exactly — determinism + the §5
+information-leak invariant held throughout; every new RoleId added to the leak
+auditor's KNOWN_ROLES; new role-carrying private_results whitelisted). All copy
+is ORIGINAL noir; all names are generic/real-world (no coined source names).
+
+These roles REUSE the existing factions + win conditions — no `wincheck.ts`
+faction-logic change, no new faction.
+
+### Crusader (Town, faction TOWN) — `crusade`
+- Mirrors the Bodyguard wiring (protective/killing). Guards a ward; the ward is
+  protected from ONE basic attack (like a doctor shield), AND the Crusader kills
+  ONE visitor to the ward that night. The killed visitor is the LOWEST-seat
+  visitor, excluding the ward itself, the Crusader, and any non-visiting/astral
+  actor (reuses the same `actorVisits` visit set the Lookout/Veteran use).
+- New TOWN-aligned death cause `crusader`. It is a BASIC attack (added to
+  `BASIC_ATTACK_SOURCES` so a Bodyguard could intercept it, and so it is stopped
+  by night-immunity / vest) — a holy strike, but not piercing.
+- DECISION — how Crusader differs from Bodyguard: the Bodyguard trades its OWN
+  life for the ward and counterattacks the specific assailant; the Crusader does
+  NOT die and strikes the lowest-seat VISITOR (which may be an innocent visitor,
+  the classic Crusader hazard). The ward protection is a one-attack shield like
+  a doctor's, not a body-swap.
+- Uses: UNLIMITED (classic Crusader guards every night). Investigator class R6
+  (with Vigilante/Mafioso/Veteran — the town "striker" class). Sheriff = not
+  suspicious. Visits the ward (Lookout sees the Crusader).
+
+### Ambusher (Mafia, faction MAFIA) — `ambush`
+- Mafia mirror of the Crusader's kill. Lies in wait at a target location and
+  kills ONE visitor to that target (lowest-seat visitor, excluding the Ambusher
+  itself; the target/ward is NOT excluded here — anyone who visits the watched
+  house is fair game, classic Ambusher). Death cause `ambush` (Mafia-aligned,
+  BASIC attack). The Ambusher VISITS the location (Lookout sees them at the
+  watched house — classic tell).
+- Uses: UNLIMITED. Investigator class R8 (with Framer/Lookout/Forger/Disguiser).
+  Sheriff = suspicious (a mafia killer). No new private_result (the kill surfaces
+  via the normal dawn death announce + the standard attacker notices).
+
+### Trapper — SKIPPED (overlaps Crusader)
+- A Trapper that "kills the lowest-seat hostile visitor to the trapped player"
+  is mechanically the Crusader minus the ward-shield (or the Crusader minus the
+  innocent-visitor hazard if it only hits HOSTILE visitors). Distinguishing it
+  safely (a multi-night "build" timer, or a hostile-only filter that must read
+  factions of visitors without leaking) adds determinism/leak surface for little
+  design payoff and risks the gate. Per the prompt's explicit allowance, SKIPPED
+  to keep the tree green and the roster distinct.
+
+### Psychic (Town, faction TOWN) — `divine` (self-only, no target)
+- Each night the Psychic receives a VISION: a set of living seats among which at
+  least one is evil (odd nights) or at least one is good (even nights), drawn
+  deterministically from the seeded PRNG. Implementation: pick a guaranteed
+  anchor seat of the required alignment (evil = MAFIA ∪ NEUTRAL_KILLING; good =
+  TOWN ∪ NEUTRAL_BENIGN) using the engine PRNG, then fill the vision with
+  PRNG-shuffled other living seats up to a fixed size (3 on a full board, fewer
+  near the endgame), then sort the seats so the payload reveals NOTHING about
+  which seat is the anchor. The vision NEVER carries roles or factions — only a
+  sorted seat list — so it needs no leak whitelist.
+- New private_result `psychic_vision` (carries `seats: SeatId[]` and the `parity`
+  ('evil'|'good') so the client can word it). The leak test asserts no role
+  string ever appears in a psychic_vision frame.
+- Self-only ability (no street visit — the Psychic stays home). Investigator
+  class R3 (with Investigator/Jester/Consigliere/Spy). Sheriff = not suspicious.
+  Unlimited.
+
+### Hypnotist (Mafia, faction MAFIA) — `hypnotize`
+- Plants a FALSE night feedback in the target: the target receives a fabricated
+  private_result that did not actually happen. To add NO new leakable surface,
+  the Hypnotist REUSES existing private_result kinds that carry no secrets —
+  specifically it can send a fake `roleblocked` ("you were distracted") or a fake
+  `was_attacked` ("a blade came for you and missed"). DECISION: the fake message
+  is fixed/deterministic per night — it sends `roleblocked` (the most common
+  benign feedback) so the target wastes a day chasing a phantom roleblocker.
+  These kinds carry only the bare kind (no seats, no roles), so they reveal no
+  real secret and add no leak surface.
+- The Hypnotist's plant has NO real mechanical effect (the target's action still
+  resolves normally). Visits the target (Lookout sees the Hypnotist). Investigator
+  class R5 (with Escort/Consort/Janitor — the mafia "support" class). Sheriff =
+  suspicious. Unlimited. No new private_result kind, no new death cause.
+
+### Setups / pools
+- Crusader + Psychic (Town) join the `smoke-and-mirrors` curated `townPool` and
+  one is added as a fixed showcase slot. Ambusher + Hypnotist (Mafia) join
+  `RANDOM_MAFIA_POOL`. Trapper not shipped. The classic-9p leak gate is unchanged
+  (classic uses none of these); the 15p smoke-and-mirrors sweep (orchestrator-run)
+  exercises them.

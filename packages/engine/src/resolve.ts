@@ -20,7 +20,7 @@ import {
 } from '@nocturne/shared';
 import type { Effect } from '@nocturne/shared';
 import type { GameState, SeatState, NightIntent, ResolutionTrace } from './state.js';
-import { pick } from './prng.js';
+import { pick, shuffle, type PrngState } from './prng.js';
 import { resolveBlocks, type BlockIntent } from './roleblock.js';
 import { toSeat, seatOf } from './helpers.js';
 import { initialUses } from './init.js';
@@ -30,19 +30,26 @@ const KILL_SOURCE_ORDER: DeathCause[] = [
   'jailor_execute',
   'bodyguard',
   'veteran',
+  'crusader',
   'vigilante',
   'mafia',
+  'ambush',
   'serial_killer',
   'arsonist',
   'jester_grief',
 ];
 
-/** Attack sources a Bodyguard intercepts (basic attacks, batch A). */
+/**
+ * Attack sources a Bodyguard intercepts (basic attacks, batch A; batch C adds the
+ * Crusader and Ambusher strikes — both basic attacks, not piercing).
+ */
 const BASIC_ATTACK_SOURCES: ReadonlySet<DeathCause> = new Set<DeathCause>([
   'mafia',
   'vigilante',
   'serial_killer',
   'veteran',
+  'crusader',
+  'ambush',
 ]);
 
 interface KillIntent {
@@ -199,6 +206,14 @@ export function resolveNight(state: GameState): ResolveResult {
       const q = guardsByWard.get(i.target) ?? [];
       q.push(i.seat);
       guardsByWard.set(i.target, q);
+    } else if (i.ability === 'crusade' && i.target !== null && i.target !== i.seat) {
+      // Crusader (batch C): the ward gets a one-attack basic shield, exactly like a
+      // doctor heal (lowest-seat crusader wins if two ward the same seat). The
+      // separate "strike a visitor" half is resolved in the kill step below.
+      if (!seatOf(state, i.target).mayorRevealed && !doctorShield.has(i.target)) {
+        doctorShield.set(i.target, i.seat);
+        traces.push({ step: 'protect', doctor: i.seat, target: i.target, kind: 'doctor' });
+      }
     }
   }
   // Keep each ward's bodyguard queue deterministic (lowest seat intercepts first).
@@ -220,6 +235,10 @@ export function resolveNight(state: GameState): ResolveResult {
   // the body is cleaned (role + will hidden publicly) and the janitor privately
   // learns them. Lowest-seat janitor wins if two mark the same (with uses left).
   const cleanByTarget = new Map<SeatId, SeatId>();
+  // Hypnotist marks (batch C): target seat → hypnotist. The target receives a
+  // FAKE benign feedback at the end of resolution (no real effect). Lowest-seat
+  // hypnotist wins if two target the same seat.
+  const hypnotized = new Map<SeatId, SeatId>();
   for (const i of intentBySeat.values()) {
     if (i.ability === 'frame' && i.target !== null) {
       framed.add(i.target);
@@ -261,6 +280,15 @@ export function resolveNight(state: GameState): ResolveResult {
         t.doused = true;
         traces.push({ step: 'douse', arsonist: i.seat, target: i.target });
       }
+    } else if (i.ability === 'hypnotize' && i.target !== null && i.target !== i.seat) {
+      // Hypnotist (batch C): plant a FALSE memory of the night in the target. No
+      // real mechanical effect — the target's action still resolves normally. We
+      // reuse the existing `roleblocked` private_result (a benign "you were
+      // distracted" feedback that carries NO seats and NO roles), so this adds no
+      // leakable surface and reveals no real secret. The fake is queued here and
+      // delivered after the real night results are computed, so it does NOT
+      // overwrite a real roleblocked/result the target legitimately earned.
+      if (!hypnotized.has(i.target)) hypnotized.set(i.target, i.seat);
     }
   }
 
@@ -322,6 +350,38 @@ export function resolveNight(state: GameState): ResolveResult {
     for (const vet of [...alerting].sort((a, b) => a - b)) {
       traces.push({ step: 'alert', veteran: vet, visitors: (veteranVisitors.get(vet) ?? []).slice() });
     }
+  }
+
+  // Crusader (batch C): each Crusader strikes the LOWEST-seat visitor to its ward
+  // this night. The strike is a basic Town-aligned attack (death cause
+  // `crusader`). Excluded from the candidate visitors: the ward itself, the
+  // Crusader, and any non-visiting / astral actor (reuses the same `actorVisits`
+  // visit set the Lookout/Veteran use). The ward's one-attack shield was set up in
+  // step 3. Resolved in deterministic Crusader-seat order.
+  for (const i of [...intentBySeat.values()].sort((a, b) => a.seat - b.seat)) {
+    if (i.ability !== 'crusade' || i.target === null || i.target === i.seat) continue;
+    const ward = i.target;
+    const visitor = lowestVisitorTo(state, intentBySeat, ward, [i.seat, ward]);
+    if (visitor !== null) {
+      kills.push({ source: 'crusader', attacker: i.seat, target: visitor });
+    }
+    traces.push({ step: 'crusade', crusader: i.seat, ward, struck: visitor });
+  }
+
+  // Ambusher (batch C): the Mafia mirror of the Crusade strike. Each Ambusher
+  // stakes out a house and kills the LOWEST-seat visitor to it (death cause
+  // `ambush`, a basic Mafia attack). Excludes only the Ambusher itself — anyone
+  // who calls on the watched house is fair game (the watched seat IS a valid
+  // victim if someone else also visits it; the watched seat is never excluded).
+  // The Ambusher visits the house (handled by `actorVisits`), so a Lookout sees
+  // them. Resolved in deterministic Ambusher-seat order.
+  for (const i of [...intentBySeat.values()].sort((a, b) => a.seat - b.seat)) {
+    if (i.ability !== 'ambush' || i.target === null) continue;
+    const visitor = lowestVisitorTo(state, intentBySeat, i.target, [i.seat]);
+    if (visitor !== null) {
+      kills.push({ source: 'ambush', attacker: i.seat, target: visitor });
+    }
+    traces.push({ step: 'ambush', ambusher: i.seat, target: i.target, struck: visitor });
   }
 
   // Arsonist ignite (batch B): an arsonist who strikes the match burns EVERY
@@ -568,6 +628,29 @@ export function resolveNight(state: GameState): ResolveResult {
     effects.push(toSeat(i.seat, { type: 'private_result', kind: 'spy_result', seats: mafiaVisitedSorted.slice() }));
   }
 
+  // Psychic (batch C): each Psychic receives a vision — a sorted list of living
+  // seats among which AT LEAST ONE is evil (odd nights) or good (even nights),
+  // drawn deterministically from the seeded PRNG. Carries seats only, never roles
+  // or factions. Skipped for a jailed/blocked Psychic (their intent was removed).
+  for (const i of [...intentBySeat.values()].sort((a, b) => a.seat - b.seat)) {
+    if (i.ability !== 'divine') continue;
+    const vision = buildPsychicVision(state, i.seat);
+    state.prng = vision.prng;
+    traces.push({ step: 'divine', psychic: i.seat, parity: vision.parity, seats: vision.seats.slice() });
+    effects.push(
+      toSeat(i.seat, { type: 'private_result', kind: 'psychic_vision', parity: vision.parity, seats: vision.seats.slice() }),
+    );
+  }
+
+  // Hypnotist (batch C): deliver each planted FAKE feedback. We reuse the benign
+  // `roleblocked` private_result (carries no seats / no roles), so it adds no
+  // leakable surface. It is delivered even if the target had no real result —
+  // that is the point: a phantom roleblocker the target will chase tomorrow.
+  for (const [target, hypnotist] of [...hypnotized.entries()].sort((a, b) => a[0] - b[0])) {
+    effects.push(toSeat(target, { type: 'private_result', kind: 'roleblocked' }));
+    traces.push({ step: 'hypnotize', hypnotist, target, fake: 'roleblocked' });
+  }
+
   // -------------------------------------------------------------------------
   // Step 7 (partial): record deaths in fixed report order. Mutate seat state.
   // The caller composes death_announce effects for DAWN (or game_over).
@@ -749,6 +832,29 @@ function readJailorExecution(
   return null;
 }
 
+/**
+ * The LOWEST-seat actor that VISITS `target` this night (per `actorVisits`,
+ * excluding self-targets), among the post-block intents, skipping any seat in
+ * `exclude`. Returns null if no qualifying visitor (batch C: Crusader/Ambusher).
+ */
+function lowestVisitorTo(
+  state: GameState,
+  intents: Map<SeatId, NightIntent>,
+  target: SeatId,
+  exclude: readonly SeatId[],
+): SeatId | null {
+  const excluded = new Set<SeatId>(exclude);
+  let best: SeatId | null = null;
+  for (const i of intents.values()) {
+    if (i.target !== target) continue;
+    if (i.seat === i.target) continue; // a self-target is not a visit
+    if (excluded.has(i.seat)) continue;
+    if (!actorVisits(seatOf(state, i.seat), i)) continue;
+    if (best === null || i.seat < best) best = i.seat;
+  }
+  return best;
+}
+
 function actorVisits(_actor: SeatState, intent: NightIntent): boolean {
   // GF control never visits; mafia kill performer (kill_mafia) DOES visit.
   switch (intent.ability) {
@@ -764,6 +870,8 @@ function actorVisits(_actor: SeatState, intent: NightIntent): boolean {
       return false; // the Spy stays home and listens
     case 'ignite':
       return false; // the Arsonist strikes the match at home
+    case 'divine':
+      return false; // the Psychic stays home; the vision comes to them
     case 'investigate_sheriff':
     case 'investigate_investigator':
     case 'investigate_consigliere':
@@ -779,6 +887,9 @@ function actorVisits(_actor: SeatState, intent: NightIntent): boolean {
     case 'remember':
     case 'disguise':
     case 'douse':
+    case 'crusade':
+    case 'ambush':
+    case 'hypnotize':
     case 'kill_vigilante':
     case 'kill_mafia':
     case 'kill_serial':
@@ -794,6 +905,53 @@ function actorVisits(_actor: SeatState, intent: NightIntent): boolean {
  */
 function apparentRoleOf(target: SeatState): RoleId {
   return target.apparentRole ?? target.role;
+}
+
+/** Factions the Psychic's vision treats as "evil" (batch C). */
+const PSYCHIC_EVIL_FACTIONS: ReadonlySet<Faction> = new Set<Faction>([
+  'MAFIA',
+  'NEUTRAL_KILLING',
+]);
+
+/** Target size of a Psychic vision on a full board (capped by living seats). */
+const PSYCHIC_VISION_SIZE = 3;
+
+/**
+ * Build a Psychic vision for `psychic` (batch C): a sorted set of living seats
+ * (excluding the Psychic) that is GUARANTEED to contain at least one seat of the
+ * required alignment — evil on odd nights, good on even nights — drawn from the
+ * seeded PRNG. The payload carries only seat ids + the parity tag (no roles), so
+ * it leaks nothing. If no anchor of the required alignment exists, an empty
+ * vision is returned (the classic "no read tonight").
+ */
+function buildPsychicVision(
+  state: GameState,
+  psychic: SeatId,
+): { parity: 'evil' | 'good'; seats: SeatId[]; prng: PrngState } {
+  const parity: 'evil' | 'good' = state.nightNumber % 2 === 1 ? 'evil' : 'good';
+  let prng = state.prng;
+
+  const living = state.seats.filter((s) => s.alive && s.seat !== psychic);
+  const isEvil = (s: SeatState): boolean => PSYCHIC_EVIL_FACTIONS.has(s.faction);
+  const anchors = living.filter((s) => (parity === 'evil' ? isEvil(s) : !isEvil(s)));
+  if (anchors.length === 0) {
+    return { parity, seats: [], prng };
+  }
+
+  // Pick the guaranteed anchor seat of the required alignment.
+  const pickedAnchor = pick(prng, anchors.map((s) => s.seat));
+  prng = pickedAnchor.state;
+  const anchorSeat = pickedAnchor.value;
+
+  // Fill the rest of the vision from the OTHER living seats, PRNG-shuffled, up to
+  // the target size. Then sort, so the payload reveals nothing about which seat
+  // is the anchor.
+  const others = living.map((s) => s.seat).filter((seat) => seat !== anchorSeat);
+  const shuffled = shuffle(prng, others);
+  prng = shuffled.state;
+  const fill = shuffled.value.slice(0, Math.max(0, PSYCHIC_VISION_SIZE - 1));
+  const seats = [anchorSeat, ...fill].sort((a, b) => a - b);
+  return { parity, seats, prng };
 }
 
 function sheriffRead(target: SeatState, framed: ReadonlySet<SeatId>): SheriffResult {

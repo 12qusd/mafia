@@ -63,6 +63,11 @@ const FACTION_OF: Record<RoleId, GameState['seats'][number]['faction']> = {
   MEDIUM: 'TOWN',
   DISGUISER: 'MAFIA',
   ARSONIST: 'NEUTRAL_KILLING',
+  // --- Role-expansion batch C ---
+  CRUSADER: 'TOWN',
+  AMBUSHER: 'MAFIA',
+  PSYCHIC: 'TOWN',
+  HYPNOTIST: 'MAFIA',
 };
 
 const USES: Partial<Record<RoleId, { uses: number; self: number }>> = {
@@ -153,6 +158,19 @@ export function night(state: GameState, seat: SeatId, ability: NightAbility, tar
 /** Resolve the current NIGHT, returning state + all effects emitted at resolution. */
 export function resolveNightPhase(state: GameState): { state: GameState; effects: ReturnType<typeof apply>['effects'] } {
   return endPhase(state);
+}
+
+/**
+ * From a NIGHT phase, resolve it and drive forward (DAWN → DAY_DISCUSSION →
+ * DAY_VOTING → next NIGHT) so the caller can submit the following night's
+ * actions. Returns the state now in the next NIGHT phase.
+ */
+export function toNextNight(state: GameState): GameState {
+  let s = resolveNightPhase(state).state; // NIGHT → DAWN
+  s = endPhase(s).state; // DAWN → DAY_DISCUSSION
+  s = endPhase(s).state; // DAY_DISCUSSION → DAY_VOTING
+  s = endPhase(s).state; // DAY_VOTING → (no lynch) → next NIGHT
+  return s;
 }
 
 /** Collect traces from the most recent night resolution (all traces in state). */

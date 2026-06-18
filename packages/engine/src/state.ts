@@ -130,6 +130,11 @@ export type NightAbility =
   | 'disguise' // Disguiser: take a dead seat's role appearance
   | 'douse' // Arsonist: mark a target as doused (no kill)
   | 'ignite' // Arsonist: kill all doused seats (self, no target)
+  // --- Role-expansion batch C ---
+  | 'crusade' // Crusader: shield a ward + strike its lowest-seat visitor
+  | 'ambush' // Ambusher: stake out a house + strike its lowest-seat visitor
+  | 'divine' // Psychic: receive a vision (self, no target)
+  | 'hypnotize' // Hypnotist: plant a false night feedback in a target
   | 'kill_vigilante'
   | 'kill_mafia'
   | 'kill_serial'
@@ -180,6 +185,11 @@ export type ResolutionTrace =
   | { step: 'disguise'; disguiser: SeatId; target: SeatId; apparentRole: RoleId }
   | { step: 'douse'; arsonist: SeatId; target: SeatId }
   | { step: 'ignite'; arsonist: SeatId; victims: SeatId[] }
+  // --- Role-expansion batch C ---
+  | { step: 'crusade'; crusader: SeatId; ward: SeatId; struck: SeatId | null }
+  | { step: 'ambush'; ambusher: SeatId; target: SeatId; struck: SeatId | null }
+  | { step: 'divine'; psychic: SeatId; parity: 'evil' | 'good'; seats: SeatId[] }
+  | { step: 'hypnotize'; hypnotist: SeatId; target: SeatId; fake: string }
   | {
       step: 'kill';
       source: DeathCause;

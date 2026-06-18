@@ -30,6 +30,10 @@ import { AMNESIAC } from './amnesiac.js';
 import { MEDIUM } from './medium.js';
 import { DISGUISER } from './disguiser.js';
 import { ARSONIST } from './arsonist.js';
+import { CRUSADER } from './crusader.js';
+import { AMBUSHER } from './ambusher.js';
+import { PSYCHIC } from './psychic.js';
+import { HYPNOTIST } from './hypnotist.js';
 
 export type { RoleDefinition } from './types.js';
 export type { NightActionKind, DayActionKind, TargetScope, AbilityUses } from './types.js';
@@ -64,6 +68,10 @@ export {
   MEDIUM,
   DISGUISER,
   ARSONIST,
+  CRUSADER,
+  AMBUSHER,
+  PSYCHIC,
+  HYPNOTIST,
 };
 
 /** Registry of every role definition, keyed by id (BUILD_SPEC §6.5). */
@@ -97,6 +105,10 @@ export const ROLES: Readonly<Record<RoleId, RoleDefinition>> = {
   MEDIUM,
   DISGUISER,
   ARSONIST,
+  CRUSADER,
+  AMBUSHER,
+  PSYCHIC,
+  HYPNOTIST,
 };
 
 /** Look up a role definition by id. */
@@ -115,12 +127,12 @@ export const ALL_ROLES: readonly RoleDefinition[] = Object.values(ROLES);
 export const INVESTIGATOR_CLASS_TABLE: Readonly<Record<InvestigatorClass, readonly RoleId[]>> = {
   R1: ['CITIZEN', 'SURVIVOR', 'EXECUTIONER', 'AMNESIAC'],
   R2: ['SHERIFF', 'JAILOR', 'BLACKMAILER', 'TRACKER'],
-  R3: ['INVESTIGATOR', 'JESTER', 'CONSIGLIERE', 'SPY'],
+  R3: ['INVESTIGATOR', 'JESTER', 'CONSIGLIERE', 'SPY', 'PSYCHIC'],
   R4: ['DOCTOR', 'SERIAL_KILLER', 'MEDIUM'],
-  R5: ['ESCORT', 'CONSORT', 'JANITOR'],
-  R6: ['VIGILANTE', 'MAFIOSO', 'VETERAN'],
+  R5: ['ESCORT', 'CONSORT', 'JANITOR', 'HYPNOTIST'],
+  R6: ['VIGILANTE', 'MAFIOSO', 'VETERAN', 'CRUSADER'],
   R7: ['GODFATHER', 'MAYOR', 'BODYGUARD', 'ARSONIST'],
-  R8: ['FRAMER', 'LOOKOUT', 'FORGER', 'DISGUISER'],
+  R8: ['FRAMER', 'LOOKOUT', 'FORGER', 'DISGUISER', 'AMBUSHER'],
 };
 
 /**
@@ -140,4 +152,6 @@ export const RANDOM_MAFIA_POOL: readonly RoleId[] = [
   'FORGER',
   'BLACKMAILER',
   'DISGUISER',
+  'AMBUSHER',
+  'HYPNOTIST',
 ];
