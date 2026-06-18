@@ -407,6 +407,10 @@ export const TRACE_STEP_LABEL: Record<string, string> = {
   ignite: '5 · Arsonist ignite',
   crusade: '5 · Crusader strike',
   ambush: '5 · Ambush',
+  rampage: '5 · Werewolf rampage',
+  massacre: '5 · Mass Murderer',
+  shield: '3 · Guardian Angel',
+  juggernaut: '5 · Juggernaut',
   divine: '6 · Psychic vision',
   investigate: '6 · Investigate',
   death: '7 · Death',
@@ -429,6 +433,9 @@ export const DEATH_CAUSE_LABEL: Record<DeathCause, string> = {
   arsonist: 'Arsonist',
   crusader: 'Crusader',
   ambush: 'Ambusher',
+  werewolf: 'Werewolf',
+  massacre: 'Mass Murderer',
+  juggernaut: 'Juggernaut',
 };
 
 /** Faction display names (machine key → noir label). */
@@ -447,6 +454,7 @@ export const WINNER_LABEL: Record<WinningParty, string> = {
   JESTER: 'The Jester got the last laugh',
   EXECUTIONER: 'The Executioner got their man',
   SURVIVOR: 'The Survivor lived to see the dawn',
+  GUARDIAN_ANGEL: 'The Guardian Angel kept their charge alive',
   DRAW: 'The night ends in a stalemate',
 };
 

@@ -1057,3 +1057,150 @@ faction-logic change, no new faction.
   `RANDOM_MAFIA_POOL`. Trapper not shipped. The classic-9p leak gate is unchanged
   (classic uses none of these); the 15p smoke-and-mirrors sweep (orchestrator-run)
   exercises them.
+
+---
+
+## Role expansion batch D (Werewolf, Mass Murderer, Guardian Angel, Juggernaut)
+
+Fourth/seventh role wave — iconic NEUTRAL roles (37 total). Determinism + the §5
+information-leak invariant held throughout; every new RoleId added to the leak
+auditor's KNOWN_ROLES. All copy is ORIGINAL noir; all names are generic/real-world.
+
+These roles REUSE existing win machinery. The three lone killers are
+NEUTRAL_KILLING, so they fall into the existing `t.sk` tally in `wincheck.ts` and
+win via the unchanged `serial_killer_last` / `one_v_one` / stalemate paths exactly
+like the SK and the Arsonist — NO faction-logic change for them. The only
+`wincheck.ts` change is the Guardian Angel personal-win rider (below).
+
+### Werewolf (Neutral Killing, faction NEUTRAL_KILLING) — `rampage`
+- Full-moon rule (recorded): a FULL MOON is deterministically every EVEN-numbered
+  night (`state.nightNumber % 2 === 0`). Night 1 is odd ⇒ no full moon (no kill on
+  N1, classic); night 2 is the first full moon. `isFullMoon(state)` in resolve.ts.
+- On a full-moon night the Werewolf RAMPAGES: kills its chosen target AND every
+  seat that VISITED the Werewolf that night (keyed off visitors to ITSELF, via the
+  new `visitorsTo` helper over the same post-block `actorVisits` set the Lookout/
+  Veteran use). A self-target means "stay home and only maul visitors". Victims are
+  sorted and de-duped; all pushed as `werewolf` kills.
+- On a NON-full-moon night the beast SLEEPS (the simpler classic rule, recorded):
+  the `rampage` intent is DROPPED at the top of resolution so the Werewolf neither
+  kills NOR visits (a Lookout on the Werewolf sees nothing). A `rampage` trace with
+  `fullMoon:false, victims:[]` is still recorded.
+- New death cause `werewolf` — a POWERFUL attack (pierces doctor heal / bodyguard /
+  vest) but stopped by jail and night-immunity. Implemented via a generalized
+  `isPowerfulAttack(k)` in the kill pass (replacing the old arsonist-only branch),
+  with `KillIntent.powerful` carrying the flag. Night-immune like the SK; sheriff =
+  suspicious; investigator class R6 (with Vigilante/Mafioso/Veteran/Crusader/
+  Juggernaut). UNIQUE (one per setup, like the SK/Arsonist). No new private result
+  (kills surface via the normal dawn death_announce).
+
+### Mass Murderer (Neutral Killing, faction NEUTRAL_KILLING) — `massacre`
+- Distinct from the Werewolf: keys off a CHOSEN HOUSE, not visitors-to-self. Visits
+  the target's house and kills the RESIDENT plus every OTHER visitor to that house
+  (again via `visitorsTo`, excluding the murderer + the house from the visitor set,
+  but the resident itself is a victim). New death cause `massacre`, also POWERFUL
+  (pierces basic defense; stopped by jail/immunity). Visits the house (Lookout sees
+  it). Night-immune; sheriff = suspicious; investigator class R4 (with Doctor/SK/
+  Medium). UNIQUE. No new private result.
+- NOT skipped: it is mechanically distinct from the Werewolf (chosen-house slaughter
+  vs. visitors-to-self rampage on full moons only) and from the Ambusher (which kills
+  only the LOWEST-seat visitor and not the resident; the MM kills ALL of them + the
+  resident, every night). Recorded as safely distinct.
+
+### Guardian Angel (Neutral Benign, faction NEUTRAL_BENIGN) — `shield`
+- Init target (mirrors the Executioner's assignment, init.ts): one random NON-EVIL,
+  non-self charge that is not another Guardian Angel. "Non-evil" excludes MAFIA and
+  NEUTRAL_KILLING (you cannot be tied to protect a killer); Town and other benigns
+  are valid charges (recorded rule). If no valid charge exists, the GA becomes a
+  SURVIVOR immediately at init (uses re-rolled to a Survivor's vests).
+- Each night the GA may shield ONLY its assigned charge from one attack — exactly
+  like a doctor heal (reuses the `doctorShield` map / step 3; lowest-seat protector
+  wins ties; a revealed Mayor can't be healed). The engine enforces the charge link
+  (`self.gaTarget === i.target`); an illegal target is a no-op. New `shield` trace.
+  Visits the charge (visits:true). Sheriff = not suspicious; investigator class R1
+  (with Citizen/Survivor/Executioner/Amnesiac). Not unique. No new private result
+  (the shield surfaces as the charge's existing `was_healed`/`was_attacked`).
+- If the charge DIES, the GA's purpose is spent: it CONVERTS to a Survivor (the
+  simpler classic rule, recorded) in step 8 — role→SURVIVOR, faction stays
+  NEUTRAL_BENIGN, `gaTarget` cleared, uses → Survivor vests, new `promotion`/
+  `guardian_to_survivor` trace. It then rides the SURVIVOR win if alive at the end.
+- PERSONAL WIN (the one wincheck.ts change — minimal + additive):
+  * New `WinningParty` value `'GUARDIAN_ANGEL'` (packages/shared/src/types/outcome.ts
+    `WINNING_PARTIES`, before `'DRAW'`).
+  * New `state.gaWinners: SeatId[]` field (state.ts + init `gaWinners: []`),
+    mirroring `jesterWinners`/`exeWinners`.
+  * Rider logic in `buildGameOver`: populate `state.gaWinners` from the FINAL state
+    — any seat still `role === 'GUARDIAN_ANGEL'` whose `gaTarget` charge is ALIVE
+    wins; if non-empty, `winners.add('GUARDIAN_ANGEL')`. (A GA whose charge died is
+    already a Survivor by then, so it never appears here; it rides SURVIVOR
+    instead.) `seatWon` gains `if (state.gaWinners.includes(seat.seat)) return true;`.
+    Computed at game over rather than at a lynch (unlike jester/exe) because the win
+    depends on the live end-state, but kept as a state field to mirror the pattern
+    and surface in replays.
+  * Client exhaustive switch updated: `WINNER_LABEL['GUARDIAN_ANGEL']` in
+    strings-extra.ts. The win-condition golden tests (win.test.ts) and a new
+    `buildGameOver` GA golden in roles-batch-d.test.ts pass.
+
+### Juggernaut (Neutral Killing, faction NEUTRAL_KILLING) — `juggernaut`
+- SHIPPED (stayed green). Per-seat kill counter `SeatState.killCount` (state.ts;
+  init 0). Escalation, all deterministic:
+  * Gate: locked to FULL-MOON nights until its first kill is on the board; once
+    `killCount > 0` it may strike on ANY night.
+  * Power: once `killCount >= JUGGERNAUT_POWER_THRESHOLD` (=2) its attack becomes
+    POWERFUL (pierces basic defense via `KillIntent.powerful: true`) AND mauls every
+    other visitor to the victim's house (rampage via `visitorsTo`). Below the
+    threshold it is a BASIC attack (`juggernaut` is in BASIC_ATTACK_SOURCES) that a
+    doctor/bodyguard/vest can stop — the powerful branch runs first in the kill pass,
+    so a powered-up kill pierces before interception is considered.
+  * Counter increment in step 8: `killCount += (# seats that died THIS night with
+    the juggernaut cause)`. Deterministic; the unique Juggernaut owns all such
+    deaths. New death cause `juggernaut`; new `juggernaut` trace (with `powerful`).
+- Night-immune; sheriff = suspicious; investigator class R6; UNIQUE. No new private
+  result.
+
+### Engine state / abilities / traces / causes (batch D)
+- SeatState: `gaTarget: SeatId | null`, `killCount: number`. GameState:
+  `gaWinners: SeatId[]`. (harness.ts makeGame + leak/property paths updated; the
+  harness also now sets the previously-missing `stumped: false`.)
+- NightAbility: `rampage`, `massacre`, `shield`, `juggernaut` (+ roleinfo.ts
+  roleToNightAbility / ability cards Rampage / Massacre / "Watch over" / Crush; all
+  four added to `actorVisits` true-group).
+- ResolutionTrace: `rampage`, `massacre`, `shield`, `juggernaut`, and a
+  `promotion`/`guardian_to_survivor` variant.
+- DeathCause: `werewolf`, `massacre`, `juggernaut` (shared death.ts + deathLine
+  strings + client DEATH_CAUSE_LABEL + anim.ts effectForCause → 'knife' for all
+  three + TRACE_STEP_LABEL entries). `KILL_SOURCE_ORDER` extended (werewolf/massacre/
+  juggernaut between serial_killer and arsonist). `BASIC_ATTACK_SOURCES` gains
+  `juggernaut`; `isPowerfulAttack` returns true for werewolf/massacre/arsonist and a
+  flagged juggernaut. `isNightImmune` + the resolve.ts sheriff-suspicious list gain
+  WEREWOLF/MASS_MURDERER/JUGGERNAUT.
+
+### Leak / strings / enum
+- leak.ts KNOWN_ROLES (bots) + the engine deep-scan KNOWN_ROLES inherit the four new
+  ids. NO new role-carrying private_result was introduced (GA reuses the doctor
+  shield → existing `was_healed`/`was_attacked`; the killers surface via the legal
+  death_announce), so NO new leak whitelist was needed in either auditor.
+- Shared strings.ts: deathLine cases for werewolf/massacre/juggernaut. Role display
+  via the standard ROLES registry (name/tagline/description/winHint). Client
+  strings-extra.ts: DEATH_CAUSE_LABEL, WINNER_LABEL['GUARDIAN_ANGEL'],
+  TRACE_STEP_LABEL.
+
+### Setups
+- New curated 15p showcase `full-moon` (curated.ts + setups/index.ts SETUPS, +
+  leakcheck.ts SETUP_MAP) fields all four batch-D roles as fixed neutral slots
+  (Werewolf, Mass Murderer, Juggernaut, Guardian Angel) against a protective-heavy
+  Town and a 3-Mafia core (one RANDOM_MAFIA). The batch-D roles are neutral, so they
+  are NOT added to the RANDOM_TOWN/RANDOM_MAFIA category pools (neutrals are never in
+  those pools, consistent with prior batches). The classic-9p gate is unchanged.
+
+### Gate (batch D)
+- `pnpm -r build` green (incl. client; the exhaustive WinningParty/DeathCause
+  switches compile). `pnpm -r test`: 481 tests pass (shared 176, engine 125 [+18
+  batch-D goldens incl. Werewolf full-moon timing, MM massacre, GA shield + personal
+  win + Survivor conversion, Juggernaut gate/escalation/pierce], client 91, server
+  56, bots 33). `npx eslint .` clean. Classic-9p leak gate: 0 leaks / 200 games.
+  Targeted `full-moon` 15p sweep: 0 leaks / 80 games, 80/80 completed (determinism +
+  termination hold). The slow 15p smoke sweep is the orchestrator's job.
+
+### Skipped
+- Nothing skipped. All four roles (including the Juggernaut, which the spec marked
+  optional) shipped green.

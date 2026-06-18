@@ -4,6 +4,7 @@ import {
   CROSS_EXAMINATION,
   GUNSMOKE,
   SMOKE_AND_MIRRORS,
+  FULL_MOON,
   SETUPS,
   getSetup,
   factionCountsAt,
@@ -58,7 +59,7 @@ function maxFixedRoleCount(slots: readonly SetupSlot[], roleId: string): number 
 }
 
 describe('curated 15-player setups (§6.10)', () => {
-  for (const setup of [CROSS_EXAMINATION, GUNSMOKE, SMOKE_AND_MIRRORS]) {
+  for (const setup of [CROSS_EXAMINATION, GUNSMOKE, SMOKE_AND_MIRRORS, FULL_MOON]) {
     it(`${setup.id}: has exactly 15 slots`, () => {
       expect(slotCountAt(setup, 15)).toBe(15);
     });
@@ -104,8 +105,8 @@ describe('Classic Nocturne unique-role constraint (§6.10)', () => {
 });
 
 describe('setup registry', () => {
-  it('ships the curated setups (3 MVP + batch-A showcase)', () => {
-    expect(SETUPS).toHaveLength(4);
+  it('ships the curated setups (3 MVP + batch-A/D showcases)', () => {
+    expect(SETUPS).toHaveLength(5);
   });
 
   it('getSetup resolves by id', () => {
@@ -113,6 +114,7 @@ describe('setup registry', () => {
     expect(getSetup('cross-examination')).toBe(CROSS_EXAMINATION);
     expect(getSetup('gunsmoke')).toBe(GUNSMOKE);
     expect(getSetup('smoke-and-mirrors')).toBe(SMOKE_AND_MIRRORS);
+    expect(getSetup('full-moon')).toBe(FULL_MOON);
     expect(getSetup('nope')).toBeUndefined();
   });
 

@@ -162,3 +162,52 @@ export const SMOKE_AND_MIRRORS: GameSetup = {
     '15': SMOKE_AND_MIRRORS_15,
   },
 };
+
+/**
+ * "Full Moon" — a 15-player showcase of the batch-D iconic neutrals. Three lone
+ * killers stalk the same town — a Werewolf that only bites under a full moon, a
+ * Mass Murderer who empties whole houses, and a Juggernaut that grows with every
+ * body — while a Guardian Angel fights to keep one chosen soul breathing through
+ * the slaughter. The Town leans on its protectives and the Mafia keeps its head
+ * down and counts on the neutrals to thin the herd.
+ *
+ * Town (8): Jailor, Sheriff, Doctor, Bodyguard, Lookout, Vigilante, Escort,
+ *           Citizen.
+ * Mafia (3): Godfather, Mafioso, + one RANDOM_MAFIA.
+ * Neutral (4): Werewolf, Mass Murderer, Juggernaut, Guardian Angel.
+ */
+const FULL_MOON_15: SetupSlot[] = [
+  // Town
+  F('JAILOR'),
+  F('SHERIFF'),
+  F('DOCTOR'),
+  F('BODYGUARD'),
+  F('LOOKOUT'),
+  F('VIGILANTE'),
+  F('ESCORT'),
+  F('CITIZEN'),
+  // Mafia
+  F('GODFATHER'),
+  F('MAFIOSO'),
+  RANDOM_MAFIA,
+  // Neutral
+  F('WEREWOLF'),
+  F('MASS_MURDERER'),
+  F('JUGGERNAUT'),
+  F('GUARDIAN_ANGEL'),
+];
+
+export const FULL_MOON: GameSetup = {
+  id: 'full-moon',
+  name: 'Full Moon',
+  description:
+    'A 15-player bloodbath built around the lone killers. A Werewolf, a Mass Murderer, and a ' +
+    'Juggernaut all hunt the same streets while a Guardian Angel guards one charge against the ' +
+    'carnage. The Town clings to its protectives; the Mafia keeps its head down.',
+  minPlayers: 15,
+  maxPlayers: 15,
+  townPool: ['CITIZEN', 'DOCTOR', 'SHERIFF', 'LOOKOUT', 'VIGILANTE', 'BODYGUARD'],
+  slotsByPlayerCount: {
+    '15': FULL_MOON_15,
+  },
+};

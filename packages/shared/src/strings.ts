@@ -105,6 +105,12 @@ export function deathLine(cause: DeathCause, seatLabel: string, roleName: string
       return `${seatLabel} came calling on the wrong doorstep and met a righteous blade. They were the ${roleName}.`;
     case 'ambush':
       return `${seatLabel} walked into a stakeout and never walked back out. They were the ${roleName}.`;
+    case 'werewolf':
+      return `${seatLabel} was found torn apart, the work of no ordinary killer. They were the ${roleName}.`;
+    case 'massacre':
+      return `${seatLabel} was one of several found slaughtered in the same blood-soaked house. They were the ${roleName}.`;
+    case 'juggernaut':
+      return `${seatLabel} was beaten down by something that only grows stronger. They were the ${roleName}.`;
     default: {
       // Exhaustiveness guard.
       const _never: never = cause;

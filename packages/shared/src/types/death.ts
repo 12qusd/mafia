@@ -24,6 +24,16 @@ import { z } from 'zod';
  *                    interceptable by a Bodyguard).
  * - ambush         — an Ambusher killing a visitor to the house it staked out
  *                    (batch C). A Mafia-aligned basic attack.
+ * - werewolf       — a Werewolf's full-moon rampage (batch D). A powerful attack:
+ *                    pierces basic defense (heal/guard/vest) but is stopped by jail
+ *                    and night-immunity. Kills the chosen victim AND every seat that
+ *                    visited the Werewolf that night.
+ * - massacre       — a Mass Murderer's slaughter at a chosen house (batch D). A
+ *                    powerful attack like the werewolf rampage; kills the resident
+ *                    and every OTHER visitor to that house.
+ * - juggernaut     — a Juggernaut kill (batch D). A neutral-killing attack that is
+ *                    basic at first and becomes powerful (piercing, with a rampage
+ *                    on visitors) once the Juggernaut has enough kills.
  */
 export const DEATH_CAUSES = [
   'mafia',
@@ -39,6 +49,9 @@ export const DEATH_CAUSES = [
   'arsonist',
   'crusader',
   'ambush',
+  'werewolf',
+  'massacre',
+  'juggernaut',
 ] as const;
 
 export const DeathCauseSchema = z.enum(DEATH_CAUSES);

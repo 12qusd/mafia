@@ -1,9 +1,9 @@
 import type { GameSetup } from '../types/setup.js';
 import { CLASSIC_NOCTURNE } from './classic.js';
-import { CROSS_EXAMINATION, GUNSMOKE, SMOKE_AND_MIRRORS } from './curated.js';
+import { CROSS_EXAMINATION, GUNSMOKE, SMOKE_AND_MIRRORS, FULL_MOON } from './curated.js';
 
 export { CLASSIC_NOCTURNE } from './classic.js';
-export { CROSS_EXAMINATION, GUNSMOKE, SMOKE_AND_MIRRORS } from './curated.js';
+export { CROSS_EXAMINATION, GUNSMOKE, SMOKE_AND_MIRRORS, FULL_MOON } from './curated.js';
 export { slotFaction, factionCounts, factionCountsAt, slotCountAt } from './compose.js';
 export { validateSetup, type ValidationResult } from './validate.js';
 export { chaosSetup } from './chaos.js';
@@ -15,6 +15,7 @@ export const SETUPS: readonly GameSetup[] = [
   CROSS_EXAMINATION,
   GUNSMOKE,
   SMOKE_AND_MIRRORS,
+  FULL_MOON,
 ];
 
 /** Setups keyed by id. */

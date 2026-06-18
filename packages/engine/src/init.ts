@@ -164,6 +164,8 @@ export function init(setup: GameSetup, seed: string, opts: InitOptions = {}): Ga
       mayorRevealed: false,
       silencedForNight: -1,
       exeTarget: null,
+      gaTarget: null,
+      killCount: 0,
       apparentRole: null,
       doused: false,
       leaving: false,
@@ -187,6 +189,36 @@ export function init(setup: GameSetup, seed: string, opts: InitOptions = {}): Ga
         // No valid town target ⇒ becomes a Jester immediately.
         s.role = 'JESTER';
         s.faction = 'NEUTRAL_BENIGN';
+      }
+    }
+  }
+
+  // Guardian Angel target assignment (batch D): one random NON-EVIL charge, never
+  // the GA itself nor another Guardian Angel. "Non-evil" excludes MAFIA and
+  // NEUTRAL_KILLING (you cannot be tied to protect a killer); Town and other
+  // benigns are valid charges. If no valid charge exists, the GA has no one to
+  // watch over and becomes a Survivor immediately.
+  for (const s of seats) {
+    if (s.role === 'GUARDIAN_ANGEL') {
+      const candidates = seats
+        .filter(
+          (c) =>
+            c.seat !== s.seat &&
+            c.role !== 'GUARDIAN_ANGEL' &&
+            c.faction !== 'MAFIA' &&
+            c.faction !== 'NEUTRAL_KILLING',
+        )
+        .map((c) => c.seat);
+      if (candidates.length > 0) {
+        const r = pick(prng, candidates);
+        prng = r.state;
+        s.gaTarget = r.value;
+      } else {
+        s.role = 'SURVIVOR';
+        s.faction = 'NEUTRAL_BENIGN';
+        const u = initialUses('SURVIVOR');
+        s.usesRemaining = u.uses;
+        s.selfUsesRemaining = u.self;
       }
     }
   }
@@ -216,6 +248,7 @@ export function init(setup: GameSetup, seed: string, opts: InitOptions = {}): Ga
     quietNights: 0,
     jesterWinners: [],
     exeWinners: [],
+    gaWinners: [],
     traces: [],
     gameOver: null,
   };

@@ -50,6 +50,14 @@ export function roleToNightAbility(role: RoleId): NightAbility | null {
       return 'divine';
     case 'HYPNOTIST':
       return 'hypnotize';
+    case 'WEREWOLF':
+      return 'rampage';
+    case 'MASS_MURDERER':
+      return 'massacre';
+    case 'GUARDIAN_ANGEL':
+      return 'shield';
+    case 'JUGGERNAUT':
+      return 'juggernaut';
     case 'SURVIVOR':
       return 'vest';
     case 'ESCORT':
@@ -116,6 +124,18 @@ export function abilityInfoFor(seat: SeatState): AbilityInfo[] {
     case 'ARSONIST':
       out.push({ id: 'douse', name: 'Douse', timing: 'night', usesRemaining: null });
       out.push({ id: 'ignite', name: 'Ignite', timing: 'night', usesRemaining: null });
+      break;
+    case 'WEREWOLF':
+      out.push({ id: 'rampage', name: 'Rampage', timing: 'night', usesRemaining: null });
+      break;
+    case 'MASS_MURDERER':
+      out.push({ id: 'massacre', name: 'Massacre', timing: 'night', usesRemaining: null });
+      break;
+    case 'GUARDIAN_ANGEL':
+      out.push({ id: 'shield', name: 'Watch over', timing: 'night', usesRemaining: null });
+      break;
+    case 'JUGGERNAUT':
+      out.push({ id: 'juggernaut', name: 'Crush', timing: 'night', usesRemaining: null });
       break;
     case 'DOCTOR':
       out.push({ id: 'protect', name: 'Heal', timing: 'night', usesRemaining: null });

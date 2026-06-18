@@ -227,6 +227,11 @@ export function effectForCause(cause: DeathCause): CauseEffect {
     case 'crusader':
       // A righteous blade — the knife flourish reads as a struck-down caller.
       return 'knife';
+    case 'werewolf':
+    case 'massacre':
+    case 'juggernaut':
+      // Brutal, close-quarters killings — the knife flourish reads as savagery.
+      return 'knife';
     case 'lynch':
     case 'jailor_execute':
       return 'noose';

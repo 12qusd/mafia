@@ -35,6 +35,9 @@ const KILL_SOURCE_ORDER: DeathCause[] = [
   'mafia',
   'ambush',
   'serial_killer',
+  'werewolf',
+  'massacre',
+  'juggernaut',
   'arsonist',
   'jester_grief',
 ];
@@ -50,12 +53,32 @@ const BASIC_ATTACK_SOURCES: ReadonlySet<DeathCause> = new Set<DeathCause>([
   'veteran',
   'crusader',
   'ambush',
+  // A Juggernaut attack is BASIC until the Juggernaut powers up (batch D); when it
+  // powers up the kill carries `powerful: true` and pierces before this set is
+  // consulted (the powerful branch runs first in the kill pass).
+  'juggernaut',
 ]);
+
+/**
+ * POWERFUL attacks pierce basic defense (doctor heal / bodyguard / vest) but are
+ * still stopped by jail and night-immunity. Werewolf, Mass Murderer, and Arsonist
+ * are always powerful; a Juggernaut is powerful only once it carries the flag.
+ */
+function isPowerfulAttack(k: KillIntent): boolean {
+  return k.source === 'werewolf' || k.source === 'massacre' || k.source === 'arsonist' || !!k.powerful;
+}
 
 interface KillIntent {
   source: DeathCause;
   attacker: SeatId | null;
   target: SeatId;
+  /**
+   * Whether this is a POWERFUL attack that pierces basic defense (doctor heal /
+   * bodyguard / vest) but is still stopped by jail and night-immunity. Always true
+   * for werewolf / massacre / arsonist; variable for the Juggernaut (basic until it
+   * powers up). Basic attacks (mafia, vigilante, crusader, …) leave this falsey.
+   */
+  powerful?: boolean;
 }
 
 export interface ResolveResult {
@@ -88,6 +111,20 @@ export function resolveNight(state: GameState): ResolveResult {
 
   const intentBySeat = new Map<SeatId, NightIntent>();
   for (const i of intents) intentBySeat.set(i.seat, i);
+
+  // Werewolf (batch D): on a NON-full-moon night the beast sleeps. Drop any
+  // `rampage` intent so the Werewolf neither visits (a Lookout sees nothing) nor
+  // kills tonight — it simply stayed home. The rampage trace is still recorded in
+  // the kill step below (fullMoon=false, no victims). On full-moon nights the
+  // intent is kept and resolves normally (and can be jailed/roleblocked).
+  if (!isFullMoon(state)) {
+    for (const i of [...intentBySeat.values()].sort((a, b) => a.seat - b.seat)) {
+      if (i.ability === 'rampage' && seatOf(state, i.seat).role === 'WEREWOLF') {
+        intentBySeat.delete(i.seat);
+        traces.push({ step: 'rampage', werewolf: i.seat, target: i.target, fullMoon: false, victims: [] });
+      }
+    }
+  }
 
   // Veteran (batch A): seats that go on alert this night (have alerts remaining).
   // While alerting a Veteran is night- AND roleblock-immune and kills every seat
@@ -213,6 +250,22 @@ export function resolveNight(state: GameState): ResolveResult {
       if (!seatOf(state, i.target).mayorRevealed && !doctorShield.has(i.target)) {
         doctorShield.set(i.target, i.seat);
         traces.push({ step: 'protect', doctor: i.seat, target: i.target, kind: 'doctor' });
+      }
+    } else if (i.ability === 'shield' && i.target !== null && i.target !== i.seat) {
+      // Guardian Angel (batch D): wards the charge from one attack, exactly like a
+      // doctor heal. Only the GA's ASSIGNED charge is a legal target (the server
+      // enforces this; the engine also checks). Lowest-seat protector wins if both
+      // a doctor and a GA shield the same seat. A revealed Mayor cannot be healed.
+      const self = seatOf(state, i.seat);
+      if (
+        self.role === 'GUARDIAN_ANGEL' &&
+        self.gaTarget === i.target &&
+        !seatOf(state, i.target).mayorRevealed &&
+        !doctorShield.has(i.target)
+      ) {
+        doctorShield.set(i.target, i.seat);
+        traces.push({ step: 'protect', doctor: i.seat, target: i.target, kind: 'doctor' });
+        traces.push({ step: 'shield', angel: i.seat, charge: i.target });
       }
     }
   }
@@ -384,6 +437,86 @@ export function resolveNight(state: GameState): ResolveResult {
     traces.push({ step: 'ambush', ambusher: i.seat, target: i.target, struck: visitor });
   }
 
+  // Werewolf rampage (batch D): on a FULL-MOON night (deterministically the
+  // even-numbered nights) the Werewolf tears out and kills its chosen target AND
+  // every seat that VISITED the Werewolf that night (a rampage keyed off visitors
+  // to ITSELF). On non-full-moon nights the beast sleeps: the Werewolf stays home
+  // and kills no one (the simpler classic rule — recorded). A powerful attack
+  // (pierces basic defense; stopped only by jail / night-immunity). Resolved in
+  // deterministic Werewolf-seat order. A jailed Werewolf had its intent removed.
+  const fullMoon = isFullMoon(state);
+  if (fullMoon) {
+    for (const i of [...intentBySeat.values()].sort((a, b) => a.seat - b.seat)) {
+      if (i.ability !== 'rampage' || seatOf(state, i.seat).role !== 'WEREWOLF') continue;
+      const victims: SeatId[] = [];
+      // Chosen target (a self-target means "stay home and only maul visitors").
+      if (i.target !== null && i.target !== i.seat && seatOf(state, i.target).alive) {
+        victims.push(i.target);
+      }
+      // Everyone who visited the Werewolf this night (post-block intents).
+      for (const v of visitorsTo(state, intentBySeat, i.seat, [i.seat])) {
+        if (!victims.includes(v)) victims.push(v);
+      }
+      victims.sort((a, b) => a - b);
+      for (const v of victims) {
+        kills.push({ source: 'werewolf', attacker: i.seat, target: v, powerful: true });
+      }
+      traces.push({ step: 'rampage', werewolf: i.seat, target: i.target, fullMoon, victims: victims.slice() });
+    }
+  }
+
+  // Mass Murderer massacre (batch D): visits a chosen house and kills the resident
+  // AND every OTHER visitor to that house (a slaughter at a LOCATION — distinct
+  // from the Werewolf, which keys off visitors to ITSELF). A powerful attack.
+  // Resolved in deterministic Murderer-seat order. A jailed MM had its intent
+  // removed. The murderer never kills itself even if it self-targets.
+  for (const i of [...intentBySeat.values()].sort((a, b) => a.seat - b.seat)) {
+    if (i.ability !== 'massacre' || seatOf(state, i.seat).role !== 'MASS_MURDERER') continue;
+    if (i.target === null || i.target === i.seat) {
+      traces.push({ step: 'massacre', murderer: i.seat, house: i.seat, victims: [] });
+      continue;
+    }
+    const house = i.target;
+    const victims: SeatId[] = [];
+    if (seatOf(state, house).alive) victims.push(house);
+    for (const v of visitorsTo(state, intentBySeat, house, [i.seat, house])) {
+      if (!victims.includes(v)) victims.push(v);
+    }
+    victims.sort((a, b) => a - b);
+    for (const v of victims) {
+      kills.push({ source: 'massacre', attacker: i.seat, target: v, powerful: true });
+    }
+    traces.push({ step: 'massacre', murderer: i.seat, house, victims: victims.slice() });
+  }
+
+  // Juggernaut (batch D): an escalating lone killer. It may strike only on a
+  // full-moon night UNTIL it has landed its first kill; thereafter it may strike
+  // on any night. Once it reaches the power threshold, its attack becomes POWERFUL
+  // (pierces basic defense) and mauls everyone who visited the victim's house too.
+  // The kill counter (`killCount`) is incremented in step 8 from this night's
+  // deaths. Resolved in deterministic Juggernaut-seat order.
+  for (const i of [...intentBySeat.values()].sort((a, b) => a.seat - b.seat)) {
+    if (i.ability !== 'juggernaut' || seatOf(state, i.seat).role !== 'JUGGERNAUT') continue;
+    if (i.target === null || i.target === i.seat) continue;
+    const self = seatOf(state, i.seat);
+    // Gate: locked to full-moon nights until the first kill is on the board.
+    if (self.killCount === 0 && !fullMoon) continue;
+    const powerful = self.killCount >= JUGGERNAUT_POWER_THRESHOLD;
+    const victims: SeatId[] = [];
+    if (seatOf(state, i.target).alive) victims.push(i.target);
+    if (powerful) {
+      // A powered-up Juggernaut also mauls every other visitor to the victim's house.
+      for (const v of visitorsTo(state, intentBySeat, i.target, [i.seat, i.target])) {
+        if (!victims.includes(v)) victims.push(v);
+      }
+    }
+    victims.sort((a, b) => a - b);
+    for (const v of victims) {
+      kills.push({ source: 'juggernaut', attacker: i.seat, target: v, powerful });
+    }
+    traces.push({ step: 'juggernaut', juggernaut: i.seat, target: i.target, powerful, victims: victims.slice() });
+  }
+
   // Arsonist ignite (batch B): an arsonist who strikes the match burns EVERY
   // currently-doused living seat at once. A powerful attack — it pierces basic
   // defense (heal / bodyguard / vest) but is still stopped by jail and
@@ -476,11 +609,12 @@ export function resolveNight(state: GameState): ResolveResult {
       continue;
     }
 
-    // (c.25) Arsonist ignite (batch B): a POWERFUL attack that pierces basic
-    // defense — past this point (not jailed, not night-immune) it cannot be
-    // stopped by a doctor's heal, a bodyguard, or a vest. The doused seat burns.
-    if (k.source === 'arsonist') {
-      if (!willDie.has(k.target)) willDie.set(k.target, 'arsonist');
+    // (c.25) POWERFUL attacks (batch B Arsonist ignite; batch D Werewolf rampage,
+    // Mass Murderer massacre, and a powered-up Juggernaut): these pierce basic
+    // defense — past this point (not jailed, not night-immune) they cannot be
+    // stopped by a doctor's heal, a bodyguard, or a vest. The victim dies.
+    if (isPowerfulAttack(k)) {
+      if (!willDie.has(k.target)) willDie.set(k.target, k.source);
       traces.push({ step: 'kill', source: k.source, attacker: k.attacker, target: k.target, outcome: 'died' });
       continue;
     }
@@ -757,6 +891,33 @@ export function resolveNight(state: GameState): ResolveResult {
     );
   }
 
+  // Juggernaut (batch D): credit kills landed THIS night to the killer's counter,
+  // which powers up future nights (escalation). A seat counts iff it actually died
+  // with the `juggernaut` cause (a higher-priority cause stealing the kill does not
+  // count). Deterministic; a single (unique) Juggernaut owns all such deaths.
+  for (const s of state.seats) {
+    if (s.role !== 'JUGGERNAUT' || !s.alive) continue;
+    const landed = [...willDie.entries()].filter(([, cause]) => cause === 'juggernaut').length;
+    if (landed > 0) s.killCount += landed;
+  }
+
+  // Guardian Angel (batch D): if the GA's assigned charge died THIS night, the GA's
+  // purpose is spent — it becomes a Survivor (the simpler classic rule; recorded).
+  // The charge link is cleared. Mirrors the executioner→jester conversion.
+  for (const s of state.seats) {
+    if (s.role !== 'GUARDIAN_ANGEL' || !s.alive || s.gaTarget === null) continue;
+    const charge = seatOf(state, s.gaTarget);
+    if (!charge.alive && deaths.some((d) => d.seat === s.gaTarget)) {
+      s.role = 'SURVIVOR';
+      s.faction = 'NEUTRAL_BENIGN';
+      s.gaTarget = null;
+      const u = initialUses('SURVIVOR');
+      s.usesRemaining = u.uses;
+      s.selfUsesRemaining = u.self;
+      traces.push({ step: 'promotion', kind: 'guardian_to_survivor', seat: s.seat });
+    }
+  }
+
   // Refresh mafia roster (drop dead members; a new Amnesiac→mafia is added).
   state.mafiaSeats = state.seats.filter((s) => s.faction === 'MAFIA').map((s) => s.seat);
 
@@ -782,7 +943,10 @@ function isNightImmune(seat: SeatState): boolean {
     seat.role === 'GODFATHER' ||
     seat.role === 'SERIAL_KILLER' ||
     seat.role === 'EXECUTIONER' ||
-    seat.role === 'ARSONIST'
+    seat.role === 'ARSONIST' ||
+    seat.role === 'WEREWOLF' ||
+    seat.role === 'MASS_MURDERER' ||
+    seat.role === 'JUGGERNAUT'
   );
 }
 
@@ -855,6 +1019,43 @@ function lowestVisitorTo(
   return best;
 }
 
+/**
+ * ALL actors that VISIT `target` this night (per `actorVisits`, excluding
+ * self-targets), among the post-block intents, skipping any seat in `exclude`.
+ * Returned sorted ascending. Used by the batch-D rampage/massacre killers, which
+ * maul every visitor (not just the lowest like the Crusader/Ambusher).
+ */
+function visitorsTo(
+  state: GameState,
+  intents: Map<SeatId, NightIntent>,
+  target: SeatId,
+  exclude: readonly SeatId[],
+): SeatId[] {
+  const excluded = new Set<SeatId>(exclude);
+  const out: SeatId[] = [];
+  for (const i of intents.values()) {
+    if (i.target !== target) continue;
+    if (i.seat === i.target) continue; // a self-target is not a visit
+    if (excluded.has(i.seat)) continue;
+    if (!actorVisits(seatOf(state, i.seat), i)) continue;
+    if (!seatOf(state, i.seat).alive) continue;
+    out.push(i.seat);
+  }
+  return out.sort((a, b) => a - b);
+}
+
+/**
+ * Whether tonight is a FULL MOON (batch D Werewolf / Juggernaut gate). Defined
+ * deterministically as the EVEN-numbered nights (night 2, 4, …). Night 1 is not a
+ * full moon, so the Werewolf and a fresh Juggernaut cannot kill on the first night.
+ */
+function isFullMoon(state: GameState): boolean {
+  return state.nightNumber % 2 === 0;
+}
+
+/** Kills a Juggernaut needs before its attacks turn POWERFUL (batch D). */
+const JUGGERNAUT_POWER_THRESHOLD = 2;
+
 function actorVisits(_actor: SeatState, intent: NightIntent): boolean {
   // GF control never visits; mafia kill performer (kill_mafia) DOES visit.
   switch (intent.ability) {
@@ -890,6 +1091,10 @@ function actorVisits(_actor: SeatState, intent: NightIntent): boolean {
     case 'crusade':
     case 'ambush':
     case 'hypnotize':
+    case 'rampage':
+    case 'massacre':
+    case 'shield':
+    case 'juggernaut':
     case 'kill_vigilante':
     case 'kill_mafia':
     case 'kill_serial':
@@ -968,6 +1173,9 @@ function sheriffRead(target: SeatState, framed: ReadonlySet<SeatId>): SheriffRes
     'DISGUISER',
     'SERIAL_KILLER',
     'ARSONIST',
+    'WEREWOLF',
+    'MASS_MURDERER',
+    'JUGGERNAUT',
   ];
   return suspiciousRoles.includes(apparentRoleOf(target)) ? 'suspicious' : 'not_suspicious';
 }

@@ -65,6 +65,19 @@ export interface SeatState {
   /** Executioner's assigned target seat (or null once converted / N/A). */
   exeTarget: SeatId | null;
   /**
+   * Guardian Angel (batch D): the assigned charge this GA must keep alive. Set at
+   * init (a non-evil, non-self seat). Stays fixed; if the charge dies the GA is
+   * converted to a Survivor and this is cleared (null). null = not a GA / spent.
+   */
+  gaTarget: SeatId | null;
+  /**
+   * Juggernaut (batch D): the number of kills this seat has landed. Drives the
+   * escalation — after the first kill the Juggernaut may strike on any night, and
+   * once it reaches the power threshold its attacks pierce basic defense and maul
+   * visitors. 0 for every non-Juggernaut seat.
+   */
+  killCount: number;
+  /**
    * Disguiser (batch B): the role appearance this seat currently shows to
    * investigations and its own death reveal. `null` = show the true role. The
    * overlay does NOT change the true `role`/`faction`/win; it is sticky until the
@@ -135,6 +148,11 @@ export type NightAbility =
   | 'ambush' // Ambusher: stake out a house + strike its lowest-seat visitor
   | 'divine' // Psychic: receive a vision (self, no target)
   | 'hypnotize' // Hypnotist: plant a false night feedback in a target
+  // --- Role-expansion batch D (iconic neutrals) ---
+  | 'rampage' // Werewolf: on a full-moon night, maul a target + everyone who visited the Werewolf
+  | 'massacre' // Mass Murderer: kill a chosen house's resident + all other visitors there
+  | 'shield' // Guardian Angel: ward the assigned charge from one attack
+  | 'juggernaut' // Juggernaut: escalating lone-killer attack (visitor rampage once powerful)
   | 'kill_vigilante'
   | 'kill_mafia'
   | 'kill_serial'
@@ -190,6 +208,12 @@ export type ResolutionTrace =
   | { step: 'ambush'; ambusher: SeatId; target: SeatId; struck: SeatId | null }
   | { step: 'divine'; psychic: SeatId; parity: 'evil' | 'good'; seats: SeatId[] }
   | { step: 'hypnotize'; hypnotist: SeatId; target: SeatId; fake: string }
+  // --- Role-expansion batch D ---
+  | { step: 'rampage'; werewolf: SeatId; target: SeatId | null; fullMoon: boolean; victims: SeatId[] }
+  | { step: 'massacre'; murderer: SeatId; house: SeatId; victims: SeatId[] }
+  | { step: 'shield'; angel: SeatId; charge: SeatId }
+  | { step: 'juggernaut'; juggernaut: SeatId; target: SeatId; powerful: boolean; victims: SeatId[] }
+  | { step: 'promotion'; kind: 'guardian_to_survivor'; seat: SeatId }
   | {
       step: 'kill';
       source: DeathCause;
@@ -295,6 +319,13 @@ export interface GameState {
   /** Personal win flags accrued during play (riders awarded at game over). */
   jesterWinners: SeatId[];
   exeWinners: SeatId[];
+  /**
+   * Guardian Angel (batch D) personal-win seats. Unlike the jester/exe winners
+   * (recorded at a lynch), the GA win is computed at game over from the live state
+   * (charge still alive), so this list is populated there. Kept as a state field
+   * to mirror the jester/exe pattern and surface in replays.
+   */
+  gaWinners: SeatId[];
 
   /** Accumulated resolution traces (full match audit trail). */
   traces: ResolutionTrace[];

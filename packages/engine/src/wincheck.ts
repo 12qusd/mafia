@@ -127,6 +127,19 @@ export function buildGameOver(
   if (state.jesterWinners.length > 0) winners.add('JESTER');
   if (state.exeWinners.length > 0) winners.add('EXECUTIONER');
 
+  // Guardian Angel (batch D) personal win: a still-GA seat whose assigned charge
+  // is ALIVE at game end wins, regardless of which faction took the match. (A GA
+  // whose charge died was already converted to a Survivor during play, so it is
+  // not a GUARDIAN_ANGEL here and rides the SURVIVOR rule above instead.) Computed
+  // from the final state and recorded into gaWinners (mirrors jester/exe winners).
+  state.gaWinners = [];
+  for (const s of state.seats) {
+    if (s.role === 'GUARDIAN_ANGEL' && s.gaTarget !== null && state.seats[s.gaTarget]?.alive) {
+      state.gaWinners.push(s.seat);
+    }
+  }
+  if (state.gaWinners.length > 0) winners.add('GUARDIAN_ANGEL');
+
   const winnerList = [...winners];
 
   // Per-seat outcome.
@@ -151,6 +164,7 @@ function seatWon(seat: SeatState, state: GameState, winners: WinningParty[]): bo
   // Personal-win riders.
   if (state.jesterWinners.includes(seat.seat)) return true;
   if (state.exeWinners.includes(seat.seat)) return true;
+  if (state.gaWinners.includes(seat.seat)) return true;
   // Survivor and a never-remembered Amnesiac ride any win if alive at the end.
   if (seat.role === 'SURVIVOR' || seat.role === 'AMNESIAC') return seat.alive;
 

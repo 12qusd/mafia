@@ -14,6 +14,9 @@ export const WINNING_PARTIES = [
   'JESTER',
   'EXECUTIONER',
   'SURVIVOR',
+  // Guardian Angel (batch D) personal win: their assigned charge survived to the
+  // end. A rider alongside the faction outcome, like JESTER / EXECUTIONER.
+  'GUARDIAN_ANGEL',
   'DRAW',
 ] as const;
 
