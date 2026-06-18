@@ -1,7 +1,14 @@
 import { describe, it, expect } from 'vitest';
 import { init } from '../src/index.js';
 import { hashState } from '../src/index.js';
-import { CLASSIC_NOCTURNE, CROSS_EXAMINATION, GUNSMOKE, ROLES, UNIQUE_ROLES } from '@nocturne/shared';
+import {
+  CLASSIC_NOCTURNE,
+  CROSS_EXAMINATION,
+  GUNSMOKE,
+  ROLES,
+  UNIQUE_ROLES,
+  RANDOM_MAFIA_POOL,
+} from '@nocturne/shared';
 
 describe('§6.10 init / role assignment', () => {
   it('assigns exactly the setup composition (Classic 7p)', () => {
@@ -32,7 +39,7 @@ describe('§6.10 init / role assignment', () => {
     }
   });
 
-  it('RANDOM_MAFIA draws only Consort | Framer', () => {
+  it('RANDOM_MAFIA draws only from the mafia-support pool', () => {
     // Classic 12p has a RANDOM_MAFIA slot.
     for (const seed of ['a', 'b', 'c', 'd', 'e']) {
       const state = init(CLASSIC_NOCTURNE, seed, { playerCount: 12 });
@@ -40,7 +47,7 @@ describe('§6.10 init / role assignment', () => {
         (s) => s.faction === 'MAFIA' && s.role !== 'GODFATHER' && s.role !== 'MAFIOSO',
       );
       for (const m of mafiaSupport) {
-        expect(['CONSORT', 'FRAMER']).toContain(m.role);
+        expect([...RANDOM_MAFIA_POOL]).toContain(m.role);
       }
     }
   });

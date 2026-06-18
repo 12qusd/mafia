@@ -220,6 +220,8 @@ export function effectForCause(cause: DeathCause): CauseEffect {
     case 'serial_killer':
       return 'knife';
     case 'vigilante':
+    case 'bodyguard':
+    case 'veteran':
       return 'shot';
     case 'lynch':
     case 'jailor_execute':

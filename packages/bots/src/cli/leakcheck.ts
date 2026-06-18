@@ -23,6 +23,8 @@ const SETUP_MAP: Record<string, string> = {
   cross_examination: 'cross-examination',
   'cross-examination': 'cross-examination',
   gunsmoke: 'gunsmoke',
+  smoke_and_mirrors: 'smoke-and-mirrors',
+  'smoke-and-mirrors': 'smoke-and-mirrors',
 };
 
 function main(): void {

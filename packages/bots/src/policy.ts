@@ -153,7 +153,7 @@ export class BotPolicy {
     }
 
     const target = this.pickNightTarget(ability);
-    if (target === null && ability !== 'vest') return;
+    if (target === null && ability !== 'vest' && ability !== 'alert') return;
     this.bot.send({ v: 1, type: 'night_action', ability, target } as ClientMessage);
   }
 
@@ -189,8 +189,8 @@ export class BotPolicy {
   private pickNightTarget(ability: string): SeatId | null {
     const self = this.bot.view.seat;
     let candidates = [...this.bot.view.alive];
-    // Most abilities target others; doctor/survivor may self-target.
-    if (ability === 'vest') return self; // survivor vests self
+    // Most abilities target others; doctor/survivor/veteran may self-target.
+    if (ability === 'vest' || ability === 'alert') return self; // self-only toggle
     if (ability !== 'protect') {
       candidates = candidates.filter((s) => s !== self);
     }

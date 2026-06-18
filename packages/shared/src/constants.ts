@@ -71,6 +71,12 @@ export const JAILOR_EXECUTIONS = 2 as const;
 export const SURVIVOR_VESTS = 4 as const;
 export const DOCTOR_SELF_HEALS = 1 as const;
 
+// --- Role-expansion batch A metered uses ---
+/** Janitor cleanings available across the match (§ batch A). */
+export const JANITOR_CLEANS = 3 as const;
+/** Veteran alerts available across the match (§ batch A). */
+export const VETERAN_ALERTS = 3 as const;
+
 // ---------------------------------------------------------------------------
 // Rate limits (BUILD_SPEC §6.4, §11.5).
 // ---------------------------------------------------------------------------

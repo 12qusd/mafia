@@ -706,3 +706,135 @@ every protocol change.
   MemoryStore (NO_DB) keeps custom setups in a process Map so the resolution path
   is testable without Postgres. The `POST /api/setups/custom` route is
   registered-users-only (guests 403), so building setups needs an account. (goals 10, 11)
+
+## Role expansion batch A (Consigliere, Forger, Janitor, Bodyguard, Blackmailer, Veteran)
+
+Six roles ported from the SC2Mafia lineage with ORIGINAL noir copy (no coined
+source names, no copied text). Each was shipped end-to-end (shared role def →
+`role.ts` id → `roles/index.ts` registry + investigator class → `roleinfo.ts`
+ability map → `resolve.ts`/`apply.ts` handling → trace variant → `leak.ts`
+KNOWN_ROLES → strings → a setup → engine golden test), keeping the FULL gate
+green (`pnpm -r build`/`test`, eslint, leakcheck 0/200) after EACH role.
+
+- **[batch A] New curated 15p setup `smoke-and-mirrors` ("Smoke and Mirrors")**
+  showcases the expanded roster and is the dedicated leak-sweep target for the
+  new roles (added to `SETUPS`, `daily.ts` rotation, and the leakcheck
+  `SETUP_MAP`). Grown role-by-role as the batch shipped. The default leakcheck
+  gate stays `classic-nocturne` 9p; the new roles are additionally swept at 15p.
+
+- **[batch A · Consigliere] Mafia exact-investigate.** New `NightAbility`
+  `investigate_consigliere`; new `private_result` kind `consigliere_result`
+  carrying `{ target, role }` — the FIRST private result to deliver another
+  seat's true role string. It is addressed via `toSeat([consigliere])` only, so
+  the §5 addressing IS the entitlement. Both leak auditors (engine
+  `test/leak.test.ts` `auditEffect`, bots `leak.ts` `mentionsRoleForOtherSeat`)
+  were taught to treat `consigliere_result` as a LEGITIMATE per-seat role carrier
+  (exactly like `your_role` for self / `death_announce` for the dying seat); the
+  whitelist is scoped to that one structural frame so any accidental broadcast of
+  a role in any OTHER frame type is still caught. The Consigliere reads the TRUE
+  role even through a Framer (framing only fogs sheriff/investigator). Sheriff
+  reads it suspicious (mafia support, like Consort/Framer); investigator class
+  R3 (mixes Investigator/Jester/Consigliere). Added to `RANDOM_MAFIA_POOL` so a
+  classic 12p RANDOM_MAFIA slot can draw it.
+
+- **[batch A · Forger] Mafia counterfeit will.** New `NightAbility` `forge`
+  (visits like a frame); new trace `{ step:'forge', forger, target, applied }`.
+  REUSES the Forger's existing per-seat `deathNote` field as the prepared
+  counterfeit-will text (no new event/protocol/seat-state surface) — the client
+  surfaces the death-note editor to the Forger via `canKeepDeathNote`. `resolve.ts`
+  records `forgedWillByTarget` in the deception step; if the marked seat dies that
+  night, the death record carries `forgedWill`, and `apply.ts`'s DAWN
+  `death_announce` shows the forged will instead of the victim's real one (even
+  if the victim left no will). `applied` reflects whether the mark actually died.
+  No private result for the Forger (the forgery is read publicly over the body).
+  Sheriff reads it not-suspicious (detection-immune, distinct from the Framer);
+  investigator class R8 (Framer/Lookout/Forger). Added to `RANDOM_MAFIA_POOL`.
+
+- **[batch A · Janitor] Mafia body-cleaner (3 uses).** New `NightAbility` `clean`
+  (visits); new trace `{ step:'clean', janitor, target, applied }`; new
+  `private_result` kind `janitor_result` `{ target, role, lastWill? }`. New
+  metered-use constant `JANITOR_CLEANS=3` (wired in `init.ts` + harness). A clean
+  "applies" ONLY when the MAFIA faction kill lands on the marked seat; then the
+  public `death_announce` is emitted with `cleaned:true` and NO `role`/`lastWill`,
+  the seat is left `revealed=false` (its alignment stays secret until game over),
+  and the janitor privately learns the scrubbed role + will. A use is consumed
+  ONLY when a clean lands. To support this, `death_announce.role` became OPTIONAL
+  and gained a `cleaned?:boolean` flag. Both leak auditors were updated: a
+  `cleaned` death_announce does NOT mark the seat revealed (so a later leak of its
+  true role is still caught), and `janitor_result` is whitelisted as a legitimate
+  per-seat role carrier. The client `DeathFeed` renders cleaned bodies with a
+  "scene wiped clean" line (no faction/will); `PrivateLog` renders the janitor's
+  private result. Sheriff not-suspicious; investigator class R5
+  (Escort/Consort/Janitor). NOT added to `RANDOM_MAFIA_POOL` (metered/special —
+  fixed-slot only); exercised via the `smoke-and-mirrors` showcase setup.
+
+- **[batch A · Bodyguard] Town protective trade (UNLIMITED — simpler classic
+  rule).** New `NightAbility` `guard` (visits the ward); new trace
+  `{ step:'guard', bodyguard, ward, attacker, killedAttacker }`; new `DeathCause`
+  `bodyguard`. Chose the UNLIMITED classic rule (no metered uses) over a one-shot
+  vest. Resolution: a guarding bodyguard intercepts a BASIC attack
+  (`mafia`/`vigilante`/`serial_killer`) on its ward — inserted between the
+  night-immune check and the doctor-shield check, so it takes priority over the
+  Doctor but never fires on an immune ward. On interception the ward survives
+  (treated as healed), the bodyguard dies in their place (death cause = the
+  incoming attack), and a counterattack is queued. Counterattacks resolve in a
+  fixed second pass: a basic attack that kills the assailant UNLESS they are
+  night-immune (Godfather / Serial Killer survive but the trade still costs the
+  bodyguard and saves the ward). Decisions recorded: the bodyguard ALWAYS dies on
+  a trade (no doctor can save them); the counterattack is point-blank (NOT stopped
+  by the assailant's doctor); multiple bodyguards on one ward each intercept one
+  attack, lowest-seat first; `bodyguard` slots into `KILL_SOURCE_ORDER` just after
+  `jailor_execute`. Sheriff not-suspicious; investigator class R7
+  (Godfather/Mayor/Bodyguard). Town role — not in any random pool; in the
+  `smoke-and-mirrors` setup.
+
+- **[batch A · Blackmailer] Mafia day-chat silence.** New `NightAbility`
+  `blackmail` (visits); new trace `{ step:'blackmail', blackmailer, target }`; new
+  `private_result` kind `blackmailed` (static text). New per-seat state
+  `silencedForNight: number` (init -1), set to the current `nightNumber` when
+  blackmailed. Enforced in `apply.ts` `handleChat` on the `day` channel: a message
+  is dropped while `s.silencedForNight === state.nightNumber`. Because
+  `nightNumber` only increments when the NEXT NIGHT begins, the silence naturally
+  covers exactly the day phases following the blackmail night and expires after.
+  The target gets a private `blackmailed` notice (addressed to them only). Sheriff
+  reads it suspicious (added to the engine's `sheriffRead` list + the spec test);
+  investigator class R2 (Sheriff/Jailor/Blackmailer). Added to `RANDOM_MAFIA_POOL`;
+  exercised by the `smoke-and-mirrors` RANDOM_MAFIA slot and Classic 12p+.
+
+- **[batch A · Veteran] Town alert (killing, 3 alerts).** New `NightAbility`
+  `alert` (self-only toggle, null target — `handleNightAction` and both bot
+  policies treat `alert` like `vest`); new trace `{ step:'alert', veteran,
+  visitors }`; new `DeathCause` `veteran`; new constant `VETERAN_ALERTS=3` (wired
+  in `init.ts` + harness). On an alert night the Veteran is night-immune AND
+  roleblock-immune (added to the step-2 `immune` set and the kill-loop immune
+  check) and kills EVERY seat that VISITS them — visitors computed from
+  post-block/post-redirect intents via the existing `actorVisits` (so a blocked
+  visitor or a non-visiting actor does not count). The counters are basic attacks
+  (added as `veteran`-source kills) — a night-immune visitor (Godfather / Serial
+  Killer) survives but the alert still fired. A jailed Veteran cannot alert (its
+  intent + alert flag are dropped at the jail step, so no use is burned). The
+  alert use is consumed in `applyUseDecrements` only when the Veteran actually
+  alerted. `veteran` slots into `KILL_SOURCE_ORDER` after `bodyguard` and is a
+  `BASIC_ATTACK_SOURCE` (so a Bodyguard guarding a visitor could intercept it).
+  Sheriff not-suspicious; investigator class R6 (Vigilante/Mafioso/Veteran). Town
+  role — in the `smoke-and-mirrors` setup. Determinism + termination + leak sweeps
+  all stayed green (the trickiest role; visit-set ordering is fully sorted).
+
+### Batch A — cross-cutting changes & gate
+
+- `death_announce.role` became OPTIONAL with a `cleaned?:boolean` flag (Janitor).
+- New private-result kinds: `consigliere_result`, `janitor_result` (role
+  carriers, whitelisted in both leak auditors), `blackmailed` (static text).
+- New death causes: `bodyguard`, `veteran` (both exhaustive switches updated:
+  `strings.ts deathLine`, client `anim.ts effectForCause`, `DEATH_CAUSE_LABEL`).
+- New seat state: `silencedForNight` (Blackmailer). New constants `JANITOR_CLEANS`,
+  `VETERAN_ALERTS`.
+- Every new RoleId added to: `role.ts ROLE_IDS`, `roles/index.ts`
+  (ROLES + export + investigator class), `bots/leak.ts KNOWN_ROLES`, the engine
+  test harness `FACTION_OF` (+ `USES` for metered roles). Role display names come
+  from shared `ROLES[id].name` (client reads via `getRole`), so no separate client
+  role-name map needed; `strings-extra.ts` got the new trace/death-cause labels.
+- New curated setup `smoke-and-mirrors` is the batch-A leak-sweep target (added to
+  the leakcheck `SETUP_MAP`). Final gate: `pnpm -r build` green, `pnpm -r test`
+  426 tests green, `npx eslint .` clean, leakcheck 0 leaks/200 (classic 9p) and
+  0/200 (classic 12p) and 0/60 (smoke-and-mirrors 15p); engine sims 100% complete.

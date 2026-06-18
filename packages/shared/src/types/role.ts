@@ -1,10 +1,12 @@
 import { z } from 'zod';
 
 /**
- * The 17 MVP role identifiers (BUILD_SPEC §6.5).
+ * Role identifiers (BUILD_SPEC §6.5, extended in role-expansion batch A).
  *
  * Generic, dictionary-word / real-mafia-terminology names only — no coined
- * names from the source games (§2.1.3).
+ * names from the source games (§2.1.3). The first 17 are the MVP set; the
+ * remainder are the batch-A expansion (Consigliere, Forger, Janitor, Bodyguard,
+ * Blackmailer, Veteran) ported from the SC2Mafia lineage with original copy.
  */
 export const ROLE_IDS = [
   'CITIZEN',
@@ -24,6 +26,13 @@ export const ROLE_IDS = [
   'JESTER',
   'EXECUTIONER',
   'SURVIVOR',
+  // --- Role-expansion batch A ---
+  'CONSIGLIERE',
+  'FORGER',
+  'JANITOR',
+  'BODYGUARD',
+  'BLACKMAILER',
+  'VETERAN',
 ] as const;
 
 export const RoleIdSchema = z.enum(ROLE_IDS);

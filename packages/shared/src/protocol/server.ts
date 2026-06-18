@@ -106,13 +106,20 @@ export const VerdictResultSchema = envelope('verdict_result', {
   ),
 });
 
-// death_announce {seat, role, lastWill?, deathNote?, cause}
+// death_announce {seat, role?, lastWill?, deathNote?, cause, cleaned?}
+//
+// `cleaned` (Janitor, batch A): the body was sanitized — the public reveal omits
+// the dead seat's `role` and `lastWill` entirely. When `cleaned` is true, `role`
+// is ABSENT and the seat is NOT legally revealed (its alignment stays secret, so
+// the leak auditors must not treat a cleaned announce as a reveal). Otherwise
+// this IS the legal role reveal and `role` is present.
 export const DeathAnnounceSchema = envelope('death_announce', {
   seat: SeatIdSchema,
-  role: RoleIdSchema,
+  role: RoleIdSchema.optional(),
   lastWill: z.string().optional(),
   deathNote: z.string().optional(),
   cause: DeathCauseSchema,
+  cleaned: z.boolean().optional(),
 });
 
 // private_result {kind, ...}

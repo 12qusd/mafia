@@ -236,6 +236,10 @@ function handleChat(
       // Living seats write; everyone reads. Only during day phases.
       if (!s.alive) return;
       if (!isDayChatPhase(state.phase)) return;
+      // Blackmailer (batch A): a seat silenced this cycle cannot speak in day chat.
+      // The silence covers the day phases that follow the night it was applied
+      // (nightNumber unchanged until the next NIGHT), so the message is dropped.
+      if (s.silencedForNight === state.nightNumber) return;
       effects.push(toPublic({ type: 'chat_message', channel: 'day', from: seat, text, ts }));
       return;
     }
@@ -446,7 +450,9 @@ function handleNightAction(
 
   // Remove any prior intent for this seat (last submission wins).
   state.nightIntents = state.nightIntents.filter((i) => i.seat !== seat);
-  if (target === null && ability !== 'vest') {
+  // `vest` and `alert` are self-only toggles with no external target; any other
+  // ability with a null target is a cancellation.
+  if (target === null && ability !== 'vest' && ability !== 'alert') {
     return; // cancel
   }
   state.nightIntents.push({ seat, ability, target });
@@ -590,12 +596,30 @@ function runNightResolution(state: GameState, now: GameTick, effects: Effect[]):
   for (const d of res.deaths) {
     const s = seatOf(state, d.seat);
     const killer = killerOf(state, d.seat, res);
+    // Janitor (batch A): a cleaned body reveals NOTHING — no role, no last will.
+    // The public announce carries `cleaned: true` and omits `role`; the seat is
+    // not legally revealed (its alignment stays secret until game over).
+    if (d.cleaned) {
+      effects.push(
+        toPublic({
+          type: 'death_announce',
+          seat: d.seat,
+          cause: d.cause,
+          cleaned: true,
+        }),
+      );
+      continue;
+    }
+    // Forger (batch A): a counterfeit will replaces the victim's real one in the
+    // public reveal. The forged text is shown even if the victim had no real will.
+    const forged = d.forgedWill !== undefined;
+    const willToShow = forged ? d.forgedWill! : s.lastWill;
     effects.push(
       toPublic({
         type: 'death_announce',
         seat: d.seat,
         role: s.role,
-        ...(state.config.lastWillsEnabled && s.lastWill ? { lastWill: s.lastWill } : {}),
+        ...(state.config.lastWillsEnabled && willToShow ? { lastWill: willToShow } : {}),
         ...(killer && killer.deathNote ? { deathNote: killer.deathNote } : {}),
         cause: d.cause,
       }),

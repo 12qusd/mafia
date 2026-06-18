@@ -24,6 +24,8 @@ import {
   JAILOR_EXECUTIONS,
   SURVIVOR_VESTS,
   DOCTOR_SELF_HEALS,
+  JANITOR_CLEANS,
+  VETERAN_ALERTS,
 } from '@nocturne/shared';
 import type { GameState, SeatState } from './state.js';
 import { seedPrng, shuffle, pick, type PrngState } from './prng.js';
@@ -118,6 +120,10 @@ function initialUses(role: RoleId): { uses: number; self: number } {
       return { uses: SURVIVOR_VESTS, self: SURVIVOR_VESTS };
     case 'DOCTOR':
       return { uses: Number.MAX_SAFE_INTEGER, self: DOCTOR_SELF_HEALS };
+    case 'JANITOR':
+      return { uses: JANITOR_CLEANS, self: 0 };
+    case 'VETERAN':
+      return { uses: VETERAN_ALERTS, self: 0 };
     default:
       return { uses: 0, self: 0 };
   }
@@ -153,6 +159,7 @@ export function init(setup: GameSetup, seed: string, opts: InitOptions = {}): Ga
       usesRemaining: uses.uses,
       selfUsesRemaining: uses.self,
       mayorRevealed: false,
+      silencedForNight: -1,
       exeTarget: null,
       leaving: false,
       stumped: false,

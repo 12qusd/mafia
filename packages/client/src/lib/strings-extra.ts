@@ -152,6 +152,7 @@ export const GAME = {
   cause: 'Cause',
   lastWillFound: 'Last will',
   noLastWill: 'No last will was found.',
+  cleanedBody: 'The body was cleaned',
   deathNoteFound: 'A note left behind',
   gameOver: 'The dust settles',
   winners: 'The winners',
@@ -394,7 +395,12 @@ export const TRACE_STEP_LABEL: Record<string, string> = {
   sk_redirect: '2 · SK redirect',
   protect: '3 · Protect',
   frame: '4 · Frame',
+  forge: '4 · Forge',
+  clean: '4 · Clean',
+  blackmail: '4 · Blackmail',
   kill: '5 · Kill',
+  guard: '5 · Bodyguard',
+  alert: '5 · Veteran alert',
   investigate: '6 · Investigate',
   death: '7 · Death',
   promotion: '8 · Promotion',
@@ -411,6 +417,8 @@ export const DEATH_CAUSE_LABEL: Record<DeathCause, string> = {
   lynch: 'Lynch',
   leave: 'Left',
   admin: 'Admin',
+  bodyguard: 'Bodyguard',
+  veteran: 'Veteran',
 };
 
 /** Faction display names (machine key → noir label). */

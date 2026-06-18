@@ -56,6 +56,12 @@ export interface SeatState {
   // --- Per-role persistent flags -------------------------------------------
   /** Mayor has revealed (vote weight → 3, unhealable). */
   mayorRevealed: boolean;
+  /**
+   * Blackmailer (batch A): the nightNumber during which this seat was blackmailed.
+   * While `silencedForNight === state.nightNumber` (the day phases immediately
+   * following that night), the seat's day-chat messages are dropped. -1 = never.
+   */
+  silencedForNight: number;
   /** Executioner's assigned target seat (or null once converted / N/A). */
   exeTarget: SeatId | null;
   /** Whether this seat has explicitly left the game (queued suicide). */
@@ -94,10 +100,16 @@ export interface NightIntent {
 export type NightAbility =
   | 'investigate_sheriff'
   | 'investigate_investigator'
+  | 'investigate_consigliere'
   | 'watch'
   | 'protect'
   | 'vest'
   | 'roleblock'
+  | 'forge'
+  | 'clean'
+  | 'guard'
+  | 'blackmail'
+  | 'alert'
   | 'kill_vigilante'
   | 'kill_mafia'
   | 'kill_serial'
@@ -140,6 +152,11 @@ export type ResolutionTrace =
   | { step: 'sk_redirect'; sk: SeatId; blocker: SeatId; originalTarget: SeatId | null }
   | { step: 'protect'; doctor: SeatId; target: SeatId; kind: 'doctor' | 'vest' | 'jail' }
   | { step: 'frame'; framer: SeatId; target: SeatId }
+  | { step: 'forge'; forger: SeatId; target: SeatId; applied: boolean }
+  | { step: 'clean'; janitor: SeatId; target: SeatId; applied: boolean }
+  | { step: 'guard'; bodyguard: SeatId; ward: SeatId; attacker: SeatId; killedAttacker: boolean }
+  | { step: 'blackmail'; blackmailer: SeatId; target: SeatId }
+  | { step: 'alert'; veteran: SeatId; visitors: SeatId[] }
   | {
       step: 'kill';
       source: DeathCause;
@@ -149,6 +166,7 @@ export type ResolutionTrace =
     }
   | { step: 'investigate'; kind: 'sheriff'; investigator: SeatId; target: SeatId; result: SheriffResult }
   | { step: 'investigate'; kind: 'investigator'; investigator: SeatId; target: SeatId; result: InvestigatorClass }
+  | { step: 'investigate'; kind: 'consigliere'; investigator: SeatId; target: SeatId; result: RoleId }
   | { step: 'investigate'; kind: 'lookout'; investigator: SeatId; target: SeatId; visitors: SeatId[] }
   | { step: 'death'; seat: SeatId; role: RoleId; cause: DeathCause }
   | { step: 'promotion'; kind: 'mafia_succession'; seat: SeatId; newRole: RoleId }

@@ -43,6 +43,10 @@ function renderPayload(p: PrivateResultPayload, label: (seat: number) => string)
         label(p.target),
         rolesForClass(p.resultClass),
       );
+    case 'consigliere_result':
+      return strings.consigliereResultLine(label(p.target), getRole(p.role).name);
+    case 'janitor_result':
+      return strings.janitorResultLine(label(p.target), getRole(p.role).name);
     case 'lookout_result':
       return strings.lookoutResultLine(label(p.target), p.visitors.map(label));
     case 'roleblocked':
@@ -52,6 +56,7 @@ function renderPayload(p: PrivateResultPayload, label: (seat: number) => string)
     case 'was_attacked':
     case 'was_healed':
     case 'jailed':
+    case 'blackmailed':
       return strings.PRIVATE_RESULT_TEXT[p.kind];
     default:
       return '';

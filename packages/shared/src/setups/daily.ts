@@ -8,11 +8,16 @@
 
 import type { GameSetup } from '../types/setup.js';
 import { CLASSIC_NOCTURNE } from './classic.js';
-import { CROSS_EXAMINATION, GUNSMOKE } from './curated.js';
+import { CROSS_EXAMINATION, GUNSMOKE, SMOKE_AND_MIRRORS } from './curated.js';
 import { seedPrng } from './prng.js';
 
 /** The shipped setups, in stable rotation order (mirrors SETUPS in index). */
-const SHIPPED: readonly GameSetup[] = [CLASSIC_NOCTURNE, CROSS_EXAMINATION, GUNSMOKE];
+const SHIPPED: readonly GameSetup[] = [
+  CLASSIC_NOCTURNE,
+  CROSS_EXAMINATION,
+  GUNSMOKE,
+  SMOKE_AND_MIRRORS,
+];
 
 /** Hash a `YYYY-MM-DD` string and rotate it into the shipped setup list. */
 export function dailySetupId(dateISO: string): string {

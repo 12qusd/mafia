@@ -19,9 +19,14 @@ export function DeathFeed({ seatNameFor }: { seatNameFor: (seat: number) => stri
   const item = feed[0];
   if (!item) return null;
 
-  const def = getRole(item.role);
   const name = sanitizeInline(seatNameFor(item.seat));
-  const line = strings.deathLine(item.cause, `${item.seat + 1} · ${name}`, def.name);
+  const seatText = `${item.seat + 1} · ${name}`;
+  // A Janitor-cleaned body (batch A) carries no role: the scene was wiped clean.
+  const cleaned = item.cleaned === true || item.role === undefined;
+  const def = item.role !== undefined ? getRole(item.role) : null;
+  const line = cleaned
+    ? strings.cleanedDeathLine(seatText)
+    : strings.deathLine(item.cause, seatText, def!.name);
 
   return (
     <div className="overlay">
@@ -32,22 +37,24 @@ export function DeathFeed({ seatNameFor }: { seatNameFor: (seat: number) => stri
         </div>
         <p>{line}</p>
         <div className="spread">
-          <FactionTag faction={def.faction} />
+          {def ? <FactionTag faction={def.faction} /> : <span className="muted">{GAME.cleanedBody}</span>}
           <span className="muted">
             {GAME.cause}: {item.cause}
           </span>
         </div>
 
-        <div className="panel panel-pad" style={{ background: 'var(--c-ink)' }}>
-          <div className="deco-head">{GAME.lastWillFound}</div>
-          {item.lastWill ? (
-            <p style={{ whiteSpace: 'pre-wrap', margin: 0 }}>{sanitizeText(item.lastWill)}</p>
-          ) : (
-            <p className="faint" style={{ margin: 0 }}>
-              {GAME.noLastWill}
-            </p>
-          )}
-        </div>
+        {!cleaned && (
+          <div className="panel panel-pad" style={{ background: 'var(--c-ink)' }}>
+            <div className="deco-head">{GAME.lastWillFound}</div>
+            {item.lastWill ? (
+              <p style={{ whiteSpace: 'pre-wrap', margin: 0 }}>{sanitizeText(item.lastWill)}</p>
+            ) : (
+              <p className="faint" style={{ margin: 0 }}>
+                {GAME.noLastWill}
+              </p>
+            )}
+          </div>
+        )}
 
         {item.deathNote && (
           <div className="panel panel-pad" style={{ background: 'var(--c-ink)' }}>

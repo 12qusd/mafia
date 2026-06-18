@@ -14,8 +14,14 @@ describe('strings coverage (§13.2)', () => {
 
   it('has an entry for every private-result kind', () => {
     for (const kind of PRIVATE_RESULT_KINDS) {
-      // Three kinds are resolved by dedicated functions and intentionally blank here.
-      const dynamic = ['sheriff_result', 'investigator_result', 'lookout_result'];
+      // These kinds are resolved by dedicated functions and intentionally blank here.
+      const dynamic = [
+        'sheriff_result',
+        'investigator_result',
+        'consigliere_result',
+        'janitor_result',
+        'lookout_result',
+      ];
       if (dynamic.includes(kind)) {
         expect(PRIVATE_RESULT_TEXT[kind]).toBe('');
       } else {

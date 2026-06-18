@@ -56,7 +56,8 @@ export function runRandomGame(playerCount: number, seedStr: string): SimResult {
           const ability = roleToNightAbility(seat.role);
           if (!ability) continue;
           if (ability === 'kill_jailor') continue; // jailor exec handled rarely
-          if (ability === 'vest') {
+          if (ability === 'vest' || ability === 'alert') {
+            // Self-only toggles (Survivor vest / Veteran alert): act with no target.
             const r = nextInt(rng, 2);
             rng = r.state;
             if (r.value === 0) apply1({ type: 'night_action', seat: seat.seat, ability, target: null });

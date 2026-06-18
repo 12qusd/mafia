@@ -101,7 +101,10 @@ function auditObserver(
         // The dying seat's role is legally revealed here. But it must not be
         // delivered BEFORE death — by construction this IS the death reveal, so
         // mark it revealed from this frame onward (this frame is the reveal).
-        revealed.add(msg.seat);
+        // EXCEPTION (Janitor, batch A): a `cleaned` body carries NO role and does
+        // NOT reveal the seat — its alignment stays secret, so we leave it
+        // unrevealed (a later leak of its true role is then correctly caught).
+        if (!msg.cleaned) revealed.add(msg.seat);
         break;
       case 'day_ability_ack':
         if (msg.ability === 'reveal' && msg.target !== undefined) revealed.add(msg.target);
@@ -184,6 +187,16 @@ function mentionsRoleForOtherSeat(msg: ServerMessage, role: string): boolean {
   if (msg.type === 'your_role') return false; // own-role frame (typed-checked)
   if (msg.type === 'death_announce') return msg.role !== role ? false : false; // reveal frame
   if (msg.type === 'game_over') return false;
+  // Consigliere exact-role result (batch A): a LEGITIMATE per-seat carrier of
+  // another seat's role. The engine addresses it ONLY to the consigliere via
+  // `toSeat`, so by the time the auditor walks an observer's capture and sees
+  // one, that observer IS the entitled consigliere — exactly like your_role for
+  // self. (Any accidental broadcast of a role in a NON-consigliere frame type is
+  // still caught: this whitelist is scoped to this one structural frame.)
+  if (msg.type === 'private_result' && msg.kind === 'consigliere_result') return false;
+  // Janitor cleaned-body result (batch A): same rationale — addressed to the
+  // janitor alone, so it legitimately carries the scrubbed victim's role.
+  if (msg.type === 'private_result' && msg.kind === 'janitor_result') return false;
   return collectRoleStrings(msg).has(role);
 }
 
@@ -206,4 +219,11 @@ const KNOWN_ROLES = new Set<string>([
   'JESTER',
   'EXECUTIONER',
   'SURVIVOR',
+  // --- Role-expansion batch A ---
+  'CONSIGLIERE',
+  'FORGER',
+  'JANITOR',
+  'BODYGUARD',
+  'BLACKMAILER',
+  'VETERAN',
 ]);

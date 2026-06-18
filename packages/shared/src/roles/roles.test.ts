@@ -10,9 +10,9 @@ import {
 import { ROLE_IDS, type RoleId } from '../types/role.js';
 
 describe('role registry integrity (§6.5)', () => {
-  it('defines all 17 MVP roles', () => {
-    expect(ALL_ROLES).toHaveLength(17);
-    expect(Object.keys(ROLES)).toHaveLength(17);
+  it('defines all roles (17 MVP + batch-A expansion)', () => {
+    expect(ALL_ROLES).toHaveLength(ROLE_IDS.length);
+    expect(Object.keys(ROLES)).toHaveLength(ROLE_IDS.length);
   });
 
   it('every RoleId enum value has a definition with a matching id', () => {
@@ -51,13 +51,13 @@ describe('investigator result classes (§6.6)', () => {
   // The exact table from §6.6.
   const SPEC_TABLE: Record<string, RoleId[]> = {
     R1: ['CITIZEN', 'SURVIVOR', 'EXECUTIONER'],
-    R2: ['SHERIFF', 'JAILOR'],
-    R3: ['INVESTIGATOR', 'JESTER'],
+    R2: ['SHERIFF', 'JAILOR', 'BLACKMAILER'],
+    R3: ['INVESTIGATOR', 'JESTER', 'CONSIGLIERE'],
     R4: ['DOCTOR', 'SERIAL_KILLER'],
-    R5: ['ESCORT', 'CONSORT'],
-    R6: ['VIGILANTE', 'MAFIOSO'],
-    R7: ['GODFATHER', 'MAYOR'],
-    R8: ['FRAMER', 'LOOKOUT'],
+    R5: ['ESCORT', 'CONSORT', 'JANITOR'],
+    R6: ['VIGILANTE', 'MAFIOSO', 'VETERAN'],
+    R7: ['GODFATHER', 'MAYOR', 'BODYGUARD'],
+    R8: ['FRAMER', 'LOOKOUT', 'FORGER'],
   };
 
   it('the class table matches §6.6 exactly', () => {
@@ -92,8 +92,16 @@ describe('investigator result classes (§6.6)', () => {
 });
 
 describe('sheriff alignment table (§6.6)', () => {
-  // suspicious = {Mafioso, Consort, Framer, Serial Killer} (framed handled by engine).
-  const SUSPICIOUS: RoleId[] = ['MAFIOSO', 'CONSORT', 'FRAMER', 'SERIAL_KILLER'];
+  // suspicious = {Mafioso, Consort, Framer, Consigliere, Blackmailer, Serial Killer}
+  // (framed targets handled by the engine).
+  const SUSPICIOUS: RoleId[] = [
+    'MAFIOSO',
+    'CONSORT',
+    'FRAMER',
+    'CONSIGLIERE',
+    'BLACKMAILER',
+    'SERIAL_KILLER',
+  ];
 
   it('exactly the spec set reads suspicious un-framed', () => {
     for (const role of ALL_ROLES) {
@@ -119,6 +127,8 @@ describe('ability metadata (§6.5)', () => {
     expect(ROLES.JAILOR.uses?.total).toBe(2);
     expect(ROLES.SURVIVOR.uses?.total).toBe(4);
     expect(ROLES.DOCTOR.uses?.selfTotal).toBe(1);
+    expect(ROLES.JANITOR.uses?.total).toBe(3);
+    expect(ROLES.VETERAN.uses?.total).toBe(3);
   });
 
   it('night-immune roles are flagged (§6.5)', () => {
@@ -133,10 +143,21 @@ describe('ability metadata (§6.5)', () => {
     expect(rbImmune).toEqual(['GODFATHER']);
   });
 
-  it('Mafia faction has exactly the four mafia roles', () => {
+  it('Mafia faction has exactly the mafia roles (core + batch-A support)', () => {
     const mafia = ALL_ROLES.filter((r) => r.faction === 'MAFIA')
       .map((r) => r.id)
       .sort();
-    expect(mafia).toEqual(['CONSORT', 'FRAMER', 'GODFATHER', 'MAFIOSO'].sort());
+    expect(mafia).toEqual(
+      [
+        'BLACKMAILER',
+        'CONSIGLIERE',
+        'CONSORT',
+        'FORGER',
+        'FRAMER',
+        'GODFATHER',
+        'JANITOR',
+        'MAFIOSO',
+      ].sort(),
+    );
   });
 });

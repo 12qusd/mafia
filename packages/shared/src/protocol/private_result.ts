@@ -1,6 +1,6 @@
 import { z } from 'zod';
 import { SeatIdSchema } from './common.js';
-import { SheriffResultSchema, InvestigatorClassSchema } from '../types/role.js';
+import { SheriffResultSchema, InvestigatorClassSchema, RoleIdSchema } from '../types/role.js';
 
 /**
  * `private_result` payload variants (BUILD_SPEC §9.2, §6.7, §6.8). Discriminated
@@ -20,6 +20,31 @@ export const InvestigatorResultPayload = z.object({
   resultClass: InvestigatorClassSchema,
 });
 
+/**
+ * Consigliere exact-role result (batch A). Carries the target seat's TRUE role.
+ * This is the first private_result to deliver an actual role string; the engine
+ * addresses it ONLY to the consigliere seat, so the leak auditors whitelist it
+ * as a legitimate per-seat role carrier (alongside your_role / death_announce).
+ */
+export const ConsigliereResultPayload = z.object({
+  kind: z.literal('consigliere_result'),
+  target: SeatIdSchema,
+  role: RoleIdSchema,
+});
+
+/**
+ * Janitor cleaned-body result (batch A). The Janitor privately learns the role
+ * and last will of the victim they sanitized — the very facts hidden from the
+ * public reveal. Addressed ONLY to the janitor; whitelisted by the leak auditors
+ * as a legitimate per-seat role carrier, like `consigliere_result`.
+ */
+export const JanitorResultPayload = z.object({
+  kind: z.literal('janitor_result'),
+  target: SeatIdSchema,
+  role: RoleIdSchema,
+  lastWill: z.string().optional(),
+});
+
 export const LookoutResultPayload = z.object({
   kind: z.literal('lookout_result'),
   target: SeatIdSchema,
@@ -33,11 +58,15 @@ export const AttackedSurvivedPayload = z.object({ kind: z.literal('attacked_surv
 export const WasAttackedPayload = z.object({ kind: z.literal('was_attacked') });
 export const WasHealedPayload = z.object({ kind: z.literal('was_healed') });
 export const JailedPayload = z.object({ kind: z.literal('jailed') });
+/** Blackmailer (batch A): you cannot speak in tomorrow's day chat. */
+export const BlackmailedPayload = z.object({ kind: z.literal('blackmailed') });
 
 /** Discriminated union of all private-result payloads (without envelope). */
 export const PrivateResultPayloadSchema = z.discriminatedUnion('kind', [
   SheriffResultPayload,
   InvestigatorResultPayload,
+  ConsigliereResultPayload,
+  JanitorResultPayload,
   LookoutResultPayload,
   RoleblockedPayload,
   BlockFailedPayload,
@@ -46,5 +75,6 @@ export const PrivateResultPayloadSchema = z.discriminatedUnion('kind', [
   WasAttackedPayload,
   WasHealedPayload,
   JailedPayload,
+  BlackmailedPayload,
 ]);
 export type PrivateResultPayload = z.infer<typeof PrivateResultPayloadSchema>;

@@ -24,11 +24,21 @@ import { toSeat, seatOf } from './helpers.js';
 /** Kill source order (fixed report order, §6.8.5). */
 const KILL_SOURCE_ORDER: DeathCause[] = [
   'jailor_execute',
+  'bodyguard',
+  'veteran',
   'vigilante',
   'mafia',
   'serial_killer',
   'jester_grief',
 ];
+
+/** Attack sources a Bodyguard intercepts (basic attacks, batch A). */
+const BASIC_ATTACK_SOURCES: ReadonlySet<DeathCause> = new Set<DeathCause>([
+  'mafia',
+  'vigilante',
+  'serial_killer',
+  'veteran',
+]);
 
 interface KillIntent {
   source: DeathCause;
@@ -38,8 +48,14 @@ interface KillIntent {
 
 export interface ResolveResult {
   effects: Effect[];
-  /** Seats that died this night, in fixed report order (for dawn pacing/announce). */
-  deaths: { seat: SeatId; cause: DeathCause }[];
+  /**
+   * Seats that died this night, in fixed report order (for dawn pacing/announce).
+   * `forgedWill` (Forger, batch A): if present, the public death reveal shows this
+   * counterfeit will instead of the victim's real last will.
+   * `cleaned` (Janitor, batch A): if true, the public reveal omits the dead seat's
+   * role and last will entirely (the body was sanitized).
+   */
+  deaths: { seat: SeatId; cause: DeathCause; forgedWill?: string; cleaned?: boolean }[];
   traces: ResolutionTrace[];
 }
 
@@ -61,6 +77,16 @@ export function resolveNight(state: GameState): ResolveResult {
   const intentBySeat = new Map<SeatId, NightIntent>();
   for (const i of intents) intentBySeat.set(i.seat, i);
 
+  // Veteran (batch A): seats that go on alert this night (have alerts remaining).
+  // While alerting a Veteran is night- AND roleblock-immune and kills every seat
+  // that visits them. A jailed Veteran cannot alert (resolved below after jail).
+  const alerting = new Set<SeatId>();
+  for (const i of intentBySeat.values()) {
+    if (i.ability === 'alert' && seatOf(state, i.seat).role === 'VETERAN' && seatOf(state, i.seat).usesRemaining > 0) {
+      alerting.add(i.seat);
+    }
+  }
+
   // -------------------------------------------------------------------------
   // Step 1: JAIL
   // -------------------------------------------------------------------------
@@ -71,8 +97,9 @@ export function resolveNight(state: GameState): ResolveResult {
     if (seatOf(state, prisoner).alive) {
       jailed.add(prisoner);
       traces.push({ step: 'jail', jailor: jailorSeat, prisoner });
-      // Prisoner's own intent is removed.
+      // Prisoner's own intent is removed (a jailed Veteran cannot alert).
       intentBySeat.delete(prisoner);
+      alerting.delete(prisoner);
       // Notify prisoner.
       effects.push(toSeat(prisoner, { type: 'private_result', kind: 'jailed' }));
     }
@@ -87,12 +114,14 @@ export function resolveNight(state: GameState): ResolveResult {
       blockIntents.push({ blocker: i.seat, target: i.target });
     }
   }
-  // Immune to roleblock: roleblockImmune roles (Godfather) + the SK (hazard).
+  // Immune to roleblock: roleblockImmune roles (Godfather) + the SK (hazard) +
+  // an alerting Veteran (batch A — barred door).
   const immune = new Set<SeatId>();
   for (const s of state.seats) {
     if (!s.alive) continue;
     if (isRoleblockImmune(s)) immune.add(s.seat);
     if (s.role === 'SERIAL_KILLER') immune.add(s.seat);
+    if (alerting.has(s.seat)) immune.add(s.seat);
   }
   // Jailed blockers are dropped inside resolveBlocks.
   const blockRes = resolveBlocks(blockIntents, jailed, immune);
@@ -149,6 +178,9 @@ export function resolveNight(state: GameState): ResolveResult {
   // -------------------------------------------------------------------------
   const doctorShield = new Map<SeatId, SeatId>(); // protected seat → doctor
   const vested = new Set<SeatId>(); // seats with an active vest (night-immune this night)
+  // Bodyguards (batch A): ward → queue of guarding bodyguards (lowest-seat first).
+  // Each bodyguard intercepts at most one basic attack on its ward this night.
+  const guardsByWard = new Map<SeatId, SeatId[]>();
   for (const i of intentBySeat.values()) {
     if (i.ability === 'protect' && i.target !== null) {
       // A revealed Mayor can no longer be healed by the Doctor (§6.5 #9).
@@ -158,8 +190,14 @@ export function resolveNight(state: GameState): ResolveResult {
     } else if (i.ability === 'vest') {
       vested.add(i.seat);
       traces.push({ step: 'protect', doctor: i.seat, target: i.seat, kind: 'vest' });
+    } else if (i.ability === 'guard' && i.target !== null && i.target !== i.seat) {
+      const q = guardsByWard.get(i.target) ?? [];
+      q.push(i.seat);
+      guardsByWard.set(i.target, q);
     }
   }
+  // Keep each ward's bodyguard queue deterministic (lowest seat intercepts first).
+  for (const q of guardsByWard.values()) q.sort((a, b) => a - b);
   // Jail protection: prisoner is shielded.
   for (const p of jailed) {
     traces.push({ step: 'protect', doctor: jailorSeat ?? p, target: p, kind: 'jail' });
@@ -169,10 +207,35 @@ export function resolveNight(state: GameState): ResolveResult {
   // Step 4: DECEPTION (framer marks)
   // -------------------------------------------------------------------------
   const framed = new Set<SeatId>();
+  // Forger marks: target seat → the forger's prepared counterfeit will. If the
+  // marked seat dies tonight, the public death reveal shows this text instead of
+  // the victim's real last will. Lowest-seat forger wins if two mark the same.
+  const forgedWillByTarget = new Map<SeatId, { forger: SeatId; will: string }>();
+  // Janitor marks: target seat → janitor. If the MAFIA kill lands on that seat,
+  // the body is cleaned (role + will hidden publicly) and the janitor privately
+  // learns them. Lowest-seat janitor wins if two mark the same (with uses left).
+  const cleanByTarget = new Map<SeatId, SeatId>();
   for (const i of intentBySeat.values()) {
     if (i.ability === 'frame' && i.target !== null) {
       framed.add(i.target);
       traces.push({ step: 'frame', framer: i.seat, target: i.target });
+    } else if (i.ability === 'forge' && i.target !== null) {
+      if (!forgedWillByTarget.has(i.target)) {
+        // The forger prepares the counterfeit will in their death-note field.
+        forgedWillByTarget.set(i.target, { forger: i.seat, will: seatOf(state, i.seat).deathNote });
+      }
+    } else if (i.ability === 'clean' && i.target !== null) {
+      // Only a janitor with cleanings remaining can mark.
+      if (!cleanByTarget.has(i.target) && seatOf(state, i.seat).usesRemaining > 0) {
+        cleanByTarget.set(i.target, i.seat);
+      }
+    } else if (i.ability === 'blackmail' && i.target !== null) {
+      // Blackmailer (batch A): silence the target's day chat for the day phases
+      // immediately following this night. Anchored on the current nightNumber.
+      const t = seatOf(state, i.target);
+      t.silencedForNight = state.nightNumber;
+      traces.push({ step: 'blackmail', blackmailer: i.seat, target: i.target });
+      effects.push(toSeat(i.target, { type: 'private_result', kind: 'blackmailed' }));
     }
   }
 
@@ -208,6 +271,34 @@ export function resolveNight(state: GameState): ResolveResult {
     }
   }
 
+  // Veteran alert (batch A): an alerting Veteran kills every seat that VISITS them
+  // this night (post-block, post-redirect intents). A visit by the mafia kill
+  // performer, a doctor, a sheriff, etc. all count; self-targets and
+  // non-visiting actions (control, jail, vest, alert) do not. The counter is a
+  // basic attack — a night-immune visitor (Godfather / Serial Killer) survives.
+  const veteranVisitors = new Map<SeatId, SeatId[]>(); // veteran → visitor list
+  if (alerting.size > 0) {
+    for (const i of intentBySeat.values()) {
+      if (i.target === null) continue;
+      if (!alerting.has(i.target)) continue;
+      if (i.seat === i.target) continue; // a self-target is not a visit
+      if (!actorVisits(seatOf(state, i.seat), i)) continue;
+      const list = veteranVisitors.get(i.target) ?? [];
+      list.push(i.seat);
+      veteranVisitors.set(i.target, list);
+    }
+    for (const [vet, visitors] of veteranVisitors) {
+      visitors.sort((a, b) => a - b);
+      for (const v of visitors) {
+        kills.push({ source: 'veteran', attacker: vet, target: v });
+      }
+    }
+    // Record one alert trace per alerting Veteran (with its visitor list), sorted.
+    for (const vet of [...alerting].sort((a, b) => a - b)) {
+      traces.push({ step: 'alert', veteran: vet, visitors: (veteranVisitors.get(vet) ?? []).slice() });
+    }
+  }
+
   // Jester grief (scheduled from a previous day): one PRNG-chosen guilty voter.
   if (state.pendingJesterGrief) {
     const candidates = state.pendingJesterGrief.guiltyVoters.filter(
@@ -227,6 +318,14 @@ export function resolveNight(state: GameState): ResolveResult {
   const willDie = new Map<SeatId, DeathCause>(); // target → first lethal cause (report order)
   const attackedSurvivors = new Set<SeatId>(); // told "was_attacked"
   const healedTargets = new Set<SeatId>(); // told "was_healed"
+
+  // Bodyguard interception bookkeeping (batch A). A mutable per-ward queue of
+  // still-available bodyguards; counterattacks are collected and resolved after
+  // the main kill pass (so they themselves respect the attacker's immunity).
+  const availableGuards = new Map<SeatId, SeatId[]>();
+  for (const [ward, q] of guardsByWard) availableGuards.set(ward, q.slice());
+  const bgCounters: { bodyguard: SeatId; attacker: SeatId; ward: SeatId }[] = [];
+  const bgSaved = new Set<SeatId>(); // wards saved by a bodyguard this night
 
   // Process in fixed source order; within a source, by target seat for determinism.
   const ordered = kills
@@ -258,14 +357,33 @@ export function resolveNight(state: GameState): ResolveResult {
       continue;
     }
 
-    // (c) night-immune (role flag, active vest) → fail; target told they were attacked.
-    if (isNightImmune(target) || vested.has(k.target)) {
+    // (c) night-immune (role flag, active vest, alerting Veteran) → fail; target
+    // told they were attacked.
+    if (isNightImmune(target) || vested.has(k.target) || alerting.has(k.target)) {
       traces.push({ step: 'kill', source: k.source, attacker: k.attacker, target: k.target, outcome: 'immune' });
       attackedSurvivors.add(k.target);
       if (k.attacker !== null) {
         effects.push(toSeat(k.attacker, { type: 'private_result', kind: 'attacked_survived' }));
       }
       continue;
+    }
+
+    // (c.5) bodyguard interception (batch A): a basic attack on a warded seat is
+    // taken by a guarding bodyguard. The ward survives; the bodyguard dies in
+    // their place and counterattacks the assailant. One bodyguard per attack.
+    if (BASIC_ATTACK_SOURCES.has(k.source) && k.attacker !== null) {
+      const q = availableGuards.get(k.target);
+      if (q && q.length > 0) {
+        const bodyguard = q.shift()!;
+        bgSaved.add(k.target);
+        healedTargets.add(k.target); // the ward learns they were attacked but saved
+        // The bodyguard dies in the ward's place (cause = the attack that came in).
+        if (!willDie.has(bodyguard)) willDie.set(bodyguard, k.source);
+        // Queue the counterattack on the assailant (resolved after this pass).
+        bgCounters.push({ bodyguard, attacker: k.attacker, ward: k.target });
+        traces.push({ step: 'kill', source: k.source, attacker: k.attacker, target: k.target, outcome: 'healed' });
+        continue;
+      }
     }
 
     // (d) doctor shield absorbs exactly one successful kill.
@@ -280,6 +398,26 @@ export function resolveNight(state: GameState): ResolveResult {
     // Otherwise: dies.
     if (!willDie.has(k.target)) willDie.set(k.target, k.source);
     traces.push({ step: 'kill', source: k.source, attacker: k.attacker, target: k.target, outcome: 'died' });
+  }
+
+  // Bodyguard counterattacks (batch A): resolved after the main pass, in a fixed
+  // order (by attacker, then bodyguard). A counter is a BASIC attack — it kills
+  // the assailant unless they are night-immune (Godfather / Serial Killer), in
+  // which case the trade still costs the bodyguard but the assailant walks. The
+  // counter is not stopped by the assailant's doctor (it is point-blank).
+  for (const c of bgCounters.slice().sort((a, b) => a.attacker - b.attacker || a.bodyguard - b.bodyguard)) {
+    const assailant = seatOf(state, c.attacker);
+    const immune = isNightImmune(assailant) || vested.has(c.attacker);
+    if (!immune) {
+      if (!willDie.has(c.attacker)) willDie.set(c.attacker, 'bodyguard');
+    }
+    traces.push({
+      step: 'guard',
+      bodyguard: c.bodyguard,
+      ward: c.ward,
+      attacker: c.attacker,
+      killedAttacker: !immune,
+    });
   }
 
   // Deliver "attacked but survived" / "healed" notices (one per seat).
@@ -321,6 +459,12 @@ export function resolveNight(state: GameState): ResolveResult {
       const result = investigatorRead(seatOf(state, i.target), framed);
       traces.push({ step: 'investigate', kind: 'investigator', investigator: i.seat, target: i.target, result });
       effects.push(toSeat(i.seat, { type: 'private_result', kind: 'investigator_result', target: i.target, resultClass: result }));
+    } else if (i.ability === 'investigate_consigliere') {
+      // The Consigliere learns the target's TRUE current role exactly; framing
+      // (which only fogs sheriff/investigator reads) does not deceive them.
+      const result = seatOf(state, i.target).role;
+      traces.push({ step: 'investigate', kind: 'consigliere', investigator: i.seat, target: i.target, result });
+      effects.push(toSeat(i.seat, { type: 'private_result', kind: 'consigliere_result', target: i.target, role: result }));
     } else if (i.ability === 'watch') {
       const visitors = (visitorsByTarget.get(i.target) ?? [])
         .filter((v) => v !== i.seat) // lookout doesn't see itself
@@ -334,19 +478,60 @@ export function resolveNight(state: GameState): ResolveResult {
   // Step 7 (partial): record deaths in fixed report order. Mutate seat state.
   // The caller composes death_announce effects for DAWN (or game_over).
   // -------------------------------------------------------------------------
-  const deaths: { seat: SeatId; cause: DeathCause }[] = [];
+  const deaths: { seat: SeatId; cause: DeathCause; forgedWill?: string }[] = [];
   // Order deaths by kill-source rank, then seat.
   const dyingSeats = [...willDie.entries()].sort(
     (a, b) => sourceRank(a[1]) - sourceRank(b[1]) || a[0] - b[0],
   );
+  const dyingSet = new Set(dyingSeats.map(([seat]) => seat));
+  const cleanedTargets = new Set<SeatId>(); // marked seats actually cleaned tonight
   for (const [seat, cause] of dyingSeats) {
     const s = seatOf(state, seat);
     s.alive = false;
     s.revealed = true;
     s.deathCause = cause;
     s.deathDay = state.dayNumber;
-    deaths.push({ seat, cause });
+    const forge = forgedWillByTarget.get(seat);
+    // Janitor cleaning: only the MAFIA faction kill is sanitizable. A cleaned body
+    // hides BOTH role and will publicly; a forged will on a cleaned body is moot.
+    const janitor = cleanByTarget.get(seat);
+    const cleaned = janitor !== undefined && cause === 'mafia';
+    if (cleaned) {
+      cleanedTargets.add(seat);
+      // The cleaned victim is NOT legally revealed to the public — keep the seat's
+      // role secret. (The seat is still dead; `revealed` here is the internal flag,
+      // but the PUBLIC death_announce omits the role, so no one learns it.)
+      s.revealed = false;
+      // The janitor privately learns the scrubbed victim's role and will.
+      effects.push(
+        toSeat(janitor, {
+          type: 'private_result',
+          kind: 'janitor_result',
+          target: seat,
+          role: s.role,
+          ...(s.lastWill ? { lastWill: s.lastWill } : {}),
+        }),
+      );
+    }
+    deaths.push({
+      seat,
+      cause,
+      ...(cleaned ? { cleaned: true } : forge ? { forgedWill: forge.will } : {}),
+    });
     traces.push({ step: 'death', seat, role: s.role, cause });
+  }
+  // Forger traces: a forge "applied" iff its marked target actually died tonight.
+  for (const [target, forge] of [...forgedWillByTarget.entries()].sort((a, b) => a[0] - b[0])) {
+    traces.push({ step: 'forge', forger: forge.forger, target, applied: dyingSet.has(target) });
+  }
+  // Janitor traces + use decrement: a clean "applied" iff the body was cleaned.
+  for (const [target, janitor] of [...cleanByTarget.entries()].sort((a, b) => a[0] - b[0])) {
+    const applied = cleanedTargets.has(target);
+    if (applied) {
+      const j = seatOf(state, janitor);
+      j.usesRemaining = Math.max(0, j.usesRemaining - 1);
+    }
+    traces.push({ step: 'clean', janitor, target, applied });
   }
 
   // -------------------------------------------------------------------------
@@ -428,12 +613,19 @@ function actorVisits(_actor: SeatState, intent: NightIntent): boolean {
       return false; // jailing is not a street visit
     case 'vest':
       return false; // self
+    case 'alert':
+      return false; // the Veteran sits at home; alerting is not a visit
     case 'investigate_sheriff':
     case 'investigate_investigator':
+    case 'investigate_consigliere':
     case 'watch':
     case 'protect':
     case 'roleblock':
     case 'frame':
+    case 'forge':
+    case 'clean':
+    case 'guard':
+    case 'blackmail':
     case 'kill_vigilante':
     case 'kill_mafia':
     case 'kill_serial':
@@ -445,8 +637,15 @@ function actorVisits(_actor: SeatState, intent: NightIntent): boolean {
 
 function sheriffRead(target: SeatState, framed: ReadonlySet<SeatId>): SheriffResult {
   if (framed.has(target.seat)) return 'suspicious';
-  // suspicious = Mafioso, Consort, Framer, Serial Killer
-  const suspiciousRoles: RoleId[] = ['MAFIOSO', 'CONSORT', 'FRAMER', 'SERIAL_KILLER'];
+  // suspicious = Mafioso, Consort, Framer, Consigliere, Blackmailer, Serial Killer
+  const suspiciousRoles: RoleId[] = [
+    'MAFIOSO',
+    'CONSORT',
+    'FRAMER',
+    'CONSIGLIERE',
+    'BLACKMAILER',
+    'SERIAL_KILLER',
+  ];
   return suspiciousRoles.includes(target.role) ? 'suspicious' : 'not_suspicious';
 }
 
@@ -468,6 +667,10 @@ function applyUseDecrements(
   for (const i of intents.values()) {
     const s = seatOf(state, i.seat);
     if (i.ability === 'kill_vigilante' && i.target !== null) {
+      s.usesRemaining = Math.max(0, s.usesRemaining - 1);
+    } else if (i.ability === 'alert' && s.role === 'VETERAN' && s.usesRemaining > 0) {
+      // A Veteran consumes one alert per alerting night (jailed Veterans had their
+      // intent removed before this point, so they do not burn an alert).
       s.usesRemaining = Math.max(0, s.usesRemaining - 1);
     } else if (i.ability === 'vest') {
       s.usesRemaining = Math.max(0, s.usesRemaining - 1);

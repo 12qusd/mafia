@@ -14,6 +14,8 @@ import { z } from 'zod';
  * - jester_grief   — a guilty-voter taken the night after a Jester lynch.
  * - lynch          — day-time execution after trial.
  * - leave          — explicit "leave game" suicide at night resolution (§8).
+ * - bodyguard      — a Bodyguard's counterattack on a ward's assailant (batch A).
+ * - veteran        — a Veteran on alert killing a seat that visited them (batch A).
  */
 export const DEATH_CAUSES = [
   'mafia',
@@ -24,6 +26,8 @@ export const DEATH_CAUSES = [
   'lynch',
   'leave',
   'admin',
+  'bodyguard',
+  'veteran',
 ] as const;
 
 export const DeathCauseSchema = z.enum(DEATH_CAUSES);

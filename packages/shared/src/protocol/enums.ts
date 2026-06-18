@@ -32,6 +32,8 @@ export type TrialOutcome = z.infer<typeof TrialOutcomeSchema>;
  *
  * - sheriff_result      — "suspicious" / "not suspicious".
  * - investigator_result — an investigator result class (R1..R8).
+ * - consigliere_result  — a target's EXACT role (Mafia Consigliere; batch A).
+ * - janitor_result      — a cleaned victim's role + will (Mafia Janitor; batch A).
  * - lookout_result      — the list of seats that visited the watched seat.
  * - roleblocked         — "you were distracted" (your action was cancelled).
  * - block_failed        — "your target could not be distracted" (RB-immune).
@@ -41,10 +43,13 @@ export type TrialOutcome = z.infer<typeof TrialOutcomeSchema>;
  * - was_attacked        — you were attacked but survived (immune/vest).
  * - was_healed          — "you were attacked but nursed back to health".
  * - jailed              — you were hauled to a cell this night.
+ * - blackmailed         — you are silenced in tomorrow's day chat (batch A).
  */
 export const PRIVATE_RESULT_KINDS = [
   'sheriff_result',
   'investigator_result',
+  'consigliere_result',
+  'janitor_result',
   'lookout_result',
   'roleblocked',
   'block_failed',
@@ -53,6 +58,7 @@ export const PRIVATE_RESULT_KINDS = [
   'was_attacked',
   'was_healed',
   'jailed',
+  'blackmailed',
 ] as const;
 export const PrivateResultKindSchema = z.enum(PRIVATE_RESULT_KINDS);
 export type PrivateResultKind = z.infer<typeof PrivateResultKindSchema>;

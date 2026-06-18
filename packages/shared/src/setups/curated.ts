@@ -96,3 +96,53 @@ export const GUNSMOKE: GameSetup = {
     '15': GUNSMOKE_15,
   },
 };
+
+/**
+ * "Smoke and Mirrors" — a 15-player table showcasing the expanded (batch-A)
+ * role roster. Every new trade gets a seat: a Mafia leaning on a Consigliere,
+ * Forger, Janitor, and Blackmailer to bury the truth, against a Town that fields
+ * a Bodyguard and a Veteran to make the family pay for every visit.
+ *
+ * Town (8): Jailor, Sheriff, Doctor, Lookout, Mayor, Bodyguard, Veteran, Vigilante.
+ * Mafia (4): Godfather, Mafioso, Janitor, + one RANDOM_MAFIA (Consigliere /
+ *            Forger / Blackmailer / Consort / Framer).
+ * Neutral (3): Serial Killer, Jester, Executioner.
+ *
+ * Showcases the full batch-A roster: the Janitor is fixed (it is not in the
+ * random pool) and the other batch-A Mafia support rotates through the
+ * RANDOM_MAFIA slot; the Town fields the Bodyguard and Veteran.
+ */
+const SMOKE_AND_MIRRORS_15: SetupSlot[] = [
+  // Town
+  F('JAILOR'),
+  F('SHERIFF'),
+  F('DOCTOR'),
+  F('LOOKOUT'),
+  F('MAYOR'),
+  F('BODYGUARD'),
+  F('VETERAN'),
+  F('VIGILANTE'),
+  // Mafia
+  F('GODFATHER'),
+  F('MAFIOSO'),
+  F('JANITOR'),
+  RANDOM_MAFIA,
+  // Neutral
+  F('SERIAL_KILLER'),
+  F('JESTER'),
+  F('EXECUTIONER'),
+];
+
+export const SMOKE_AND_MIRRORS: GameSetup = {
+  id: 'smoke-and-mirrors',
+  name: 'Smoke and Mirrors',
+  description:
+    'A 15-player showcase of the expanded roster. The Mafia buries the truth with new tricks ' +
+    'while the Town learns to make every late-night visit count.',
+  minPlayers: 15,
+  maxPlayers: 15,
+  townPool: ['CITIZEN', 'DOCTOR', 'SHERIFF', 'LOOKOUT', 'VIGILANTE'],
+  slotsByPlayerCount: {
+    '15': SMOKE_AND_MIRRORS_15,
+  },
+};

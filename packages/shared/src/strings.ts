@@ -95,6 +95,10 @@ export function deathLine(cause: DeathCause, seatLabel: string, roleName: string
       return `${seatLabel} walked out into the dark and never came back. They were the ${roleName}.`;
     case 'admin':
       return `${seatLabel} was struck from the game by the hand of the house. They were the ${roleName}.`;
+    case 'bodyguard':
+      return `${seatLabel} was cut down by a hired guard while reaching for someone else. They were the ${roleName}.`;
+    case 'veteran':
+      return `${seatLabel} knocked on the wrong door and met a barrel of buckshot. They were the ${roleName}.`;
     default: {
       // Exhaustiveness guard.
       const _never: never = cause;
@@ -104,12 +108,22 @@ export function deathLine(cause: DeathCause, seatLabel: string, roleName: string
 }
 
 /**
+ * Death line for a body the Janitor sanitized (batch A): the cause is shown but
+ * the role and last will are gone — the town learns nothing from the corpse.
+ */
+export function cleanedDeathLine(seatLabel: string): string {
+  return `${seatLabel} was found in the morning, but the scene had been wiped clean — no papers, no clue what they were.`;
+}
+
+/**
  * Private night-result strings (BUILD_SPEC §6.7, §6.8, §13.2) — reworded fresh
  * in noir voice. The `target`/extra labels are supplied by the caller.
  */
 export const PRIVATE_RESULT_TEXT: Record<PrivateResultKind, string> = {
   sheriff_result: '', // resolved via sheriffResultLine (needs the verdict)
   investigator_result: '', // resolved via investigatorResultLine (needs the class)
+  consigliere_result: '', // resolved via consigliereResultLine (needs the role)
+  janitor_result: '', // resolved via janitorResultLine (needs the cleaned role)
   lookout_result: '', // resolved via lookoutResultLine (needs the visitors)
   roleblocked: 'Someone kept you tied up all evening. Your work never got done.',
   block_failed: 'You tried, but your mark would not be drawn away from their business.',
@@ -118,6 +132,8 @@ export const PRIVATE_RESULT_TEXT: Record<PrivateResultKind, string> = {
   was_attacked: 'A blade came for you in the dark — and somehow it did not land.',
   was_healed: 'You were attacked tonight, but a steady hand patched you up before dawn.',
   jailed: 'Rough hands hauled you to a cell. You spent the night behind bars, idle.',
+  blackmailed:
+    'A note slid under your door names a secret you cannot afford aired. Keep your mouth shut tomorrow, or it goes public.',
 };
 
 /** Sheriff result line (BUILD_SPEC §6.6). */
@@ -131,6 +147,16 @@ export function sheriffResultLine(targetLabel: string, result: SheriffResult): s
 export function investigatorResultLine(targetLabel: string, possibleRoleNames: string[]): string {
   const list = possibleRoleNames.join(', ');
   return `Your digging on ${targetLabel} narrows them to one of: ${list}.`;
+}
+
+/** Consigliere exact-role result line (batch A). The caller supplies the role name. */
+export function consigliereResultLine(targetLabel: string, roleName: string): string {
+  return `Your inquiries into ${targetLabel} leave no doubt — they are the ${roleName}.`;
+}
+
+/** Janitor cleaned-body result line (batch A). The caller supplies the role name. */
+export function janitorResultLine(targetLabel: string, roleName: string): string {
+  return `You scrubbed the scene around ${targetLabel} clean. For the record, they were the ${roleName}.`;
 }
 
 /** Lookout result line (BUILD_SPEC §6.5). */

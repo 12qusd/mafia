@@ -256,9 +256,16 @@ function DayAbilities({
 }
 
 function canKeepDeathNote(role: string): boolean {
-  // The SK and the mafia faction killer maintain a death note (§6.4). We surface
-  // the editor to plausible holders; the server is authoritative on acceptance.
-  return role === 'SERIAL_KILLER' || role === 'MAFIOSO' || role === 'GODFATHER';
+  // The SK and the mafia faction killer maintain a death note (§6.4). The Forger
+  // (batch A) uses the same death-note field to prepare the counterfeit will it
+  // plants. We surface the editor to plausible holders; the server is
+  // authoritative on acceptance.
+  return (
+    role === 'SERIAL_KILLER' ||
+    role === 'MAFIOSO' ||
+    role === 'GODFATHER' ||
+    role === 'FORGER'
+  );
 }
 
 /** Debounced autosave editor for last will / death note. */

@@ -28,10 +28,14 @@ export function roleToNightAbility(role: RoleId): NightAbility | null {
       return 'investigate_sheriff';
     case 'INVESTIGATOR':
       return 'investigate_investigator';
+    case 'CONSIGLIERE':
+      return 'investigate_consigliere';
     case 'LOOKOUT':
       return 'watch';
     case 'DOCTOR':
       return 'protect';
+    case 'BODYGUARD':
+      return 'guard';
     case 'SURVIVOR':
       return 'vest';
     case 'ESCORT':
@@ -39,12 +43,20 @@ export function roleToNightAbility(role: RoleId): NightAbility | null {
       return 'roleblock';
     case 'VIGILANTE':
       return 'kill_vigilante';
+    case 'VETERAN':
+      return 'alert';
     case 'MAFIOSO':
       return 'kill_mafia';
     case 'SERIAL_KILLER':
       return 'kill_serial';
     case 'FRAMER':
       return 'frame';
+    case 'FORGER':
+      return 'forge';
+    case 'JANITOR':
+      return 'clean';
+    case 'BLACKMAILER':
+      return 'blackmail';
     case 'GODFATHER':
       return 'mafia_control';
     // JAILOR's execution uses 'kill_jailor', but only after a jailing — handled
@@ -64,6 +76,9 @@ export function abilityInfoFor(seat: SeatState): AbilityInfo[] {
     case 'VIGILANTE':
       out.push({ id: 'kill_vigilante', name: 'Shoot', timing: 'night', usesRemaining: seat.usesRemaining });
       break;
+    case 'VETERAN':
+      out.push({ id: 'alert', name: 'Alert', timing: 'night', usesRemaining: seat.usesRemaining });
+      break;
     case 'JAILOR':
       out.push({ id: 'jail', name: 'Jail', timing: 'day', usesRemaining: null });
       out.push({ id: 'kill_jailor', name: 'Execute', timing: 'night', usesRemaining: seat.usesRemaining });
@@ -71,8 +86,14 @@ export function abilityInfoFor(seat: SeatState): AbilityInfo[] {
     case 'SURVIVOR':
       out.push({ id: 'vest', name: 'Vest', timing: 'night', usesRemaining: seat.usesRemaining });
       break;
+    case 'JANITOR':
+      out.push({ id: 'clean', name: 'Clean', timing: 'night', usesRemaining: seat.usesRemaining });
+      break;
     case 'DOCTOR':
       out.push({ id: 'protect', name: 'Heal', timing: 'night', usesRemaining: null });
+      break;
+    case 'BODYGUARD':
+      out.push({ id: 'guard', name: 'Guard', timing: 'night', usesRemaining: null });
       break;
     case 'MAYOR':
       out.push({ id: 'reveal', name: 'Reveal', timing: 'day', usesRemaining: seat.mayorRevealed ? 0 : 1 });
