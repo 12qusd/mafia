@@ -21,6 +21,9 @@ describe('strings coverage (§13.2)', () => {
         'consigliere_result',
         'janitor_result',
         'lookout_result',
+        'tracker_result',
+        'spy_result',
+        'remember_result',
       ];
       if (dynamic.includes(kind)) {
         expect(PRIVATE_RESULT_TEXT[kind]).toBe('');

@@ -47,8 +47,14 @@ function renderPayload(p: PrivateResultPayload, label: (seat: number) => string)
       return strings.consigliereResultLine(label(p.target), getRole(p.role).name);
     case 'janitor_result':
       return strings.janitorResultLine(label(p.target), getRole(p.role).name);
+    case 'remember_result':
+      return strings.rememberResultLine(label(p.target), getRole(p.role).name);
     case 'lookout_result':
       return strings.lookoutResultLine(label(p.target), p.visitors.map(label));
+    case 'tracker_result':
+      return strings.trackerResultLine(label(p.target), p.visited.map(label));
+    case 'spy_result':
+      return strings.spyResultLine(p.seats.map(label));
     case 'roleblocked':
     case 'block_failed':
     case 'target_unreachable':

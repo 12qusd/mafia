@@ -33,10 +33,11 @@ describe('role registry integrity (§6.5)', () => {
 });
 
 describe('unique roles (§6.5, §6.10)', () => {
-  it('exactly Jailor, Mayor, Godfather, Serial Killer are unique', () => {
-    // Jailor, Mayor, Godfather per §6.10; Serial Killer is one-per-setup in MVP (§6.9).
+  it('exactly Jailor, Mayor, Godfather, Serial Killer, Arsonist are unique', () => {
+    // Jailor, Mayor, Godfather per §6.10; Serial Killer is one-per-setup in MVP
+    // (§6.9); Arsonist (batch B) is one-per-setup like the SK.
     expect([...UNIQUE_ROLES].sort()).toEqual(
-      ['GODFATHER', 'JAILOR', 'MAYOR', 'SERIAL_KILLER'].sort(),
+      ['ARSONIST', 'GODFATHER', 'JAILOR', 'MAYOR', 'SERIAL_KILLER'].sort(),
     );
   });
 
@@ -50,14 +51,14 @@ describe('unique roles (§6.5, §6.10)', () => {
 describe('investigator result classes (§6.6)', () => {
   // The exact table from §6.6.
   const SPEC_TABLE: Record<string, RoleId[]> = {
-    R1: ['CITIZEN', 'SURVIVOR', 'EXECUTIONER'],
-    R2: ['SHERIFF', 'JAILOR', 'BLACKMAILER'],
-    R3: ['INVESTIGATOR', 'JESTER', 'CONSIGLIERE'],
-    R4: ['DOCTOR', 'SERIAL_KILLER'],
+    R1: ['CITIZEN', 'SURVIVOR', 'EXECUTIONER', 'AMNESIAC'],
+    R2: ['SHERIFF', 'JAILOR', 'BLACKMAILER', 'TRACKER'],
+    R3: ['INVESTIGATOR', 'JESTER', 'CONSIGLIERE', 'SPY'],
+    R4: ['DOCTOR', 'SERIAL_KILLER', 'MEDIUM'],
     R5: ['ESCORT', 'CONSORT', 'JANITOR'],
     R6: ['VIGILANTE', 'MAFIOSO', 'VETERAN'],
-    R7: ['GODFATHER', 'MAYOR', 'BODYGUARD'],
-    R8: ['FRAMER', 'LOOKOUT', 'FORGER'],
+    R7: ['GODFATHER', 'MAYOR', 'BODYGUARD', 'ARSONIST'],
+    R8: ['FRAMER', 'LOOKOUT', 'FORGER', 'DISGUISER'],
   };
 
   it('the class table matches §6.6 exactly', () => {
@@ -92,15 +93,17 @@ describe('investigator result classes (§6.6)', () => {
 });
 
 describe('sheriff alignment table (§6.6)', () => {
-  // suspicious = {Mafioso, Consort, Framer, Consigliere, Blackmailer, Serial Killer}
-  // (framed targets handled by the engine).
+  // suspicious = {Mafioso, Consort, Framer, Consigliere, Blackmailer, Disguiser,
+  // Serial Killer, Arsonist} (framed targets handled by the engine).
   const SUSPICIOUS: RoleId[] = [
     'MAFIOSO',
     'CONSORT',
     'FRAMER',
     'CONSIGLIERE',
     'BLACKMAILER',
+    'DISGUISER',
     'SERIAL_KILLER',
+    'ARSONIST',
   ];
 
   it('exactly the spec set reads suspicious un-framed', () => {
@@ -129,13 +132,14 @@ describe('ability metadata (§6.5)', () => {
     expect(ROLES.DOCTOR.uses?.selfTotal).toBe(1);
     expect(ROLES.JANITOR.uses?.total).toBe(3);
     expect(ROLES.VETERAN.uses?.total).toBe(3);
+    expect(ROLES.MEDIUM.uses?.total).toBe(1);
   });
 
   it('night-immune roles are flagged (§6.5)', () => {
     const immune = ALL_ROLES.filter((r) => r.nightImmune)
       .map((r) => r.id)
       .sort();
-    expect(immune).toEqual(['EXECUTIONER', 'GODFATHER', 'SERIAL_KILLER'].sort());
+    expect(immune).toEqual(['ARSONIST', 'EXECUTIONER', 'GODFATHER', 'SERIAL_KILLER'].sort());
   });
 
   it('roleblock-immune is only the Godfather (§6.5; SK handled by hazard rule)', () => {
@@ -152,6 +156,7 @@ describe('ability metadata (§6.5)', () => {
         'BLACKMAILER',
         'CONSIGLIERE',
         'CONSORT',
+        'DISGUISER',
         'FORGER',
         'FRAMER',
         'GODFATHER',

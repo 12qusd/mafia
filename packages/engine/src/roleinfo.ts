@@ -32,6 +32,12 @@ export function roleToNightAbility(role: RoleId): NightAbility | null {
       return 'investigate_consigliere';
     case 'LOOKOUT':
       return 'watch';
+    case 'TRACKER':
+      return 'investigate_track';
+    case 'SPY':
+      return 'spy';
+    case 'AMNESIAC':
+      return 'remember';
     case 'DOCTOR':
       return 'protect';
     case 'BODYGUARD':
@@ -57,6 +63,12 @@ export function roleToNightAbility(role: RoleId): NightAbility | null {
       return 'clean';
     case 'BLACKMAILER':
       return 'blackmail';
+    case 'DISGUISER':
+      return 'disguise';
+    case 'ARSONIST':
+      // Default night key is the douse (the kill is the separate `ignite` toggle,
+      // surfaced as its own ability-info entry below).
+      return 'douse';
     case 'GODFATHER':
       return 'mafia_control';
     // JAILOR's execution uses 'kill_jailor', but only after a jailing — handled
@@ -88,6 +100,14 @@ export function abilityInfoFor(seat: SeatState): AbilityInfo[] {
       break;
     case 'JANITOR':
       out.push({ id: 'clean', name: 'Clean', timing: 'night', usesRemaining: seat.usesRemaining });
+      break;
+    case 'MEDIUM':
+      // The séance is opened during the day (like jailing) and resolves at night.
+      out.push({ id: 'seance', name: 'Séance', timing: 'day', usesRemaining: seat.usesRemaining });
+      break;
+    case 'ARSONIST':
+      out.push({ id: 'douse', name: 'Douse', timing: 'night', usesRemaining: null });
+      out.push({ id: 'ignite', name: 'Ignite', timing: 'night', usesRemaining: null });
       break;
     case 'DOCTOR':
       out.push({ id: 'protect', name: 'Heal', timing: 'night', usesRemaining: null });

@@ -98,38 +98,41 @@ export const GUNSMOKE: GameSetup = {
 };
 
 /**
- * "Smoke and Mirrors" — a 15-player table showcasing the expanded (batch-A)
- * role roster. Every new trade gets a seat: a Mafia leaning on a Consigliere,
- * Forger, Janitor, and Blackmailer to bury the truth, against a Town that fields
- * a Bodyguard and a Veteran to make the family pay for every visit.
+ * "Smoke and Mirrors" — a 15-player table showcasing the expanded (batch-A and
+ * batch-B) role roster. Every new trade gets a seat: a Mafia leaning on a
+ * Janitor and a Disguiser to bury the truth, against a Town that fields a
+ * Bodyguard, a Veteran, a Tracker, a Spy, and a Medium — plus a wandering
+ * Amnesiac and a patient Arsonist among the neutrals.
  *
- * Town (8): Jailor, Sheriff, Doctor, Lookout, Mayor, Bodyguard, Veteran, Vigilante.
- * Mafia (4): Godfather, Mafioso, Janitor, + one RANDOM_MAFIA (Consigliere /
- *            Forger / Blackmailer / Consort / Framer).
- * Neutral (3): Serial Killer, Jester, Executioner.
+ * Town (8): Jailor, Sheriff, Bodyguard, Veteran, Tracker, Spy, Medium, Doctor.
+ * Mafia (3): Godfather, Janitor, + one RANDOM_MAFIA (Consigliere / Forger /
+ *            Blackmailer / Disguiser / Consort / Framer).
+ * Neutral (4): Serial Killer, Arsonist, Amnesiac, Executioner.
  *
- * Showcases the full batch-A roster: the Janitor is fixed (it is not in the
- * random pool) and the other batch-A Mafia support rotates through the
- * RANDOM_MAFIA slot; the Town fields the Bodyguard and Veteran.
+ * Showcases the full expanded roster: the Janitor is fixed (it is not in the
+ * random pool) and the other Mafia support rotates through the RANDOM_MAFIA slot
+ * (which now includes the Disguiser); the Town fields the batch-B information
+ * roles (Tracker, Spy, Medium) and the batch-A protectives; the neutrals add the
+ * batch-B Amnesiac and Arsonist alongside the Serial Killer.
  */
 const SMOKE_AND_MIRRORS_15: SetupSlot[] = [
   // Town
   F('JAILOR'),
   F('SHERIFF'),
-  F('DOCTOR'),
-  F('LOOKOUT'),
-  F('MAYOR'),
   F('BODYGUARD'),
   F('VETERAN'),
-  F('VIGILANTE'),
+  F('TRACKER'),
+  F('SPY'),
+  F('MEDIUM'),
+  F('DOCTOR'),
   // Mafia
   F('GODFATHER'),
-  F('MAFIOSO'),
   F('JANITOR'),
   RANDOM_MAFIA,
   // Neutral
   F('SERIAL_KILLER'),
-  F('JESTER'),
+  F('ARSONIST'),
+  F('AMNESIAC'),
   F('EXECUTIONER'),
 ];
 
@@ -138,10 +141,11 @@ export const SMOKE_AND_MIRRORS: GameSetup = {
   name: 'Smoke and Mirrors',
   description:
     'A 15-player showcase of the expanded roster. The Mafia buries the truth with new tricks ' +
-    'while the Town learns to make every late-night visit count.',
+    'while the Town learns to make every late-night visit count — and a drifter and a firebug ' +
+    'play their own games in the margins.',
   minPlayers: 15,
   maxPlayers: 15,
-  townPool: ['CITIZEN', 'DOCTOR', 'SHERIFF', 'LOOKOUT', 'VIGILANTE'],
+  townPool: ['CITIZEN', 'DOCTOR', 'SHERIFF', 'LOOKOUT', 'TRACKER', 'SPY', 'MEDIUM'],
   slotsByPlayerCount: {
     '15': SMOKE_AND_MIRRORS_15,
   },

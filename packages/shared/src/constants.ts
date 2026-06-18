@@ -77,6 +77,10 @@ export const JANITOR_CLEANS = 3 as const;
 /** Veteran alerts available across the match (§ batch A). */
 export const VETERAN_ALERTS = 3 as const;
 
+// --- Role-expansion batch B metered uses ---
+/** Medium séances available across the match (§ batch B). */
+export const MEDIUM_SEANCES = 1 as const;
+
 // ---------------------------------------------------------------------------
 // Rate limits (BUILD_SPEC §6.4, §11.5).
 // ---------------------------------------------------------------------------

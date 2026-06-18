@@ -398,9 +398,12 @@ export const TRACE_STEP_LABEL: Record<string, string> = {
   forge: '4 · Forge',
   clean: '4 · Clean',
   blackmail: '4 · Blackmail',
+  disguise: '4 · Disguise',
+  douse: '4 · Douse',
   kill: '5 · Kill',
   guard: '5 · Bodyguard',
   alert: '5 · Veteran alert',
+  ignite: '5 · Arsonist ignite',
   investigate: '6 · Investigate',
   death: '7 · Death',
   promotion: '8 · Promotion',
@@ -419,6 +422,7 @@ export const DEATH_CAUSE_LABEL: Record<DeathCause, string> = {
   admin: 'Admin',
   bodyguard: 'Bodyguard',
   veteran: 'Veteran',
+  arsonist: 'Arsonist',
 };
 
 /** Faction display names (machine key → noir label). */

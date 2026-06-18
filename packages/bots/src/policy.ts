@@ -32,6 +32,9 @@ const NOIR_LINES = [
   'Three deaths in and nobody has clean hands.',
 ];
 
+/** Night abilities that target the self / no one (no external target needed). */
+const SELF_ONLY_ABILITIES = new Set<string>(['vest', 'alert', 'spy', 'ignite']);
+
 export interface PolicyOptions {
   /** Deterministic per-bot seed string. */
   seed: string;
@@ -153,7 +156,7 @@ export class BotPolicy {
     }
 
     const target = this.pickNightTarget(ability);
-    if (target === null && ability !== 'vest' && ability !== 'alert') return;
+    if (target === null && !SELF_ONLY_ABILITIES.has(ability)) return;
     this.bot.send({ v: 1, type: 'night_action', ability, target } as ClientMessage);
   }
 
@@ -189,8 +192,9 @@ export class BotPolicy {
   private pickNightTarget(ability: string): SeatId | null {
     const self = this.bot.view.seat;
     let candidates = [...this.bot.view.alive];
-    // Most abilities target others; doctor/survivor/veteran may self-target.
-    if (ability === 'vest' || ability === 'alert') return self; // self-only toggle
+    // Most abilities target others; doctor/survivor/veteran may self-target;
+    // spy/ignite are self-only toggles (no external target).
+    if (SELF_ONLY_ABILITIES.has(ability)) return self;
     if (ability !== 'protect') {
       candidates = candidates.filter((s) => s !== self);
     }

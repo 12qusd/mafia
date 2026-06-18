@@ -47,12 +47,14 @@ function auditEffect(cap: Capture): string[] {
   // death_announce IS the legal reveal of the announced (now-dead) seat; the
   // engine marks that seat revealed in the same resolution. Allowed by §5.
   if (effect.msg.type === 'death_announce') return violations;
-  // consigliere_result / janitor_result (batch A) legitimately carry a target's
-  // exact role to the acting seat alone; the engine addresses each via
-  // toSeat([actor]). The §5 addressing IS the entitlement, mirroring your_role.
+  // consigliere_result / janitor_result (batch A) + remember_result (batch B)
+  // legitimately carry a role to the acting seat alone; the engine addresses each
+  // via toSeat([actor]). The §5 addressing IS the entitlement, mirroring your_role.
+  // (tracker_result / spy_result carry only seat ids — never roles — so they are
+  // not role carriers and need no whitelist here.)
   if (
     effect.msg.type === 'private_result' &&
-    ['consigliere_result', 'janitor_result'].includes(
+    ['consigliere_result', 'janitor_result', 'remember_result'].includes(
       (effect.msg as { kind?: string }).kind ?? '',
     )
   ) {

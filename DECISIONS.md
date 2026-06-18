@@ -838,3 +838,133 @@ green (`pnpm -r build`/`test`, eslint, leakcheck 0/200) after EACH role.
   the leakcheck `SETUP_MAP`). Final gate: `pnpm -r build` green, `pnpm -r test`
   426 tests green, `npx eslint .` clean, leakcheck 0 leaks/200 (classic 9p) and
   0/200 (classic 12p) and 0/60 (smoke-and-mirrors 15p); engine sims 100% complete.
+
+---
+
+## Role expansion batch B (Tracker, Spy, Amnesiac, Medium, Disguiser, Arsonist)
+
+A second roster expansion mirroring batch A's end-to-end wiring. Determinism +
+the §5 information-leak invariant held throughout; every new RoleId is in the
+leak auditor's `KNOWN_ROLES` and every new role-carrying private_result kind is
+whitelisted in BOTH leak auditors (engine `test/leak.test.ts` allowlist and
+`bots/leak.ts mentionsRoleForOtherSeat`). Original noir copy for all role text.
+No win-condition / faction logic changed: new roles reuse existing factions
+(`TOWN`, `MAFIA`, `NEUTRAL_BENIGN`, `NEUTRAL_KILLING`).
+
+### Tracker (Town, info) — `investigate_track` / trace `kind:'track'`
+- Watches one player and learns who THAT player VISITED (inverse of Lookout).
+  Reuses the same `actorVisits`-derived visit set resolve.ts computes for the
+  Lookout, but indexed by ACTOR (visitor→target) rather than target→visitors.
+- Result delivered privately as `tracker_result {target, visited: SeatId[]}` —
+  a LIST OF SEATS (not roles), so it is leak-trivial (no role string). The
+  tracked seat's mafia-kill visit is attributed to the kill performer exactly
+  like the Lookout's view (consistency). A tracker watching a non-visiting seat
+  (control/jail/vest/alert/no action) gets an empty list.
+- Investigator class R2 (with Sheriff/Jailor/Blackmailer); sheriff = not_susp.
+
+### Spy (Town, info) — `spy` (self, no target) / trace `kind:'spy'`
+- Learns the SET OF SEATS the MAFIA visited that night. SCOPE DECISION: to stay
+  leak-simple we deliver ONLY the seats targeted/visited by mafia actors (the
+  classic "the mafia visited these seats" bug), NOT mafia identities and NOT
+  mafia chat. "Mafia visited" = the set of targets of living MAFIA-faction
+  actors whose ability `actorVisits` (so the kill performer's victim, a
+  framer's mark, a consigliere's mark, a janitor's mark, a blackmailer's
+  target; Godfather control does NOT visit, mirroring the Lookout view). A
+  self-target is not a visit. Result `spy_result {seats: SeatId[]}` carries
+  only seat ids — no roles — so it is leak-trivial.
+- Self-only ability (no target), like `vest`/`alert`: `handleNightAction`
+  treats a null target as a valid Spy submission (added to the allowlist).
+- Investigator class R3; sheriff = not_susp.
+
+### Amnesiac (Neutral Benign, faction NEUTRAL_BENIGN) — `remember` / promotion `kind:'amnesiac_remember'`
+- At night may target a DEAD player and "remember" their role; on resolution the
+  Amnesiac BECOMES that role (role + faction change), mirroring the existing
+  Executioner→Jester promotion in resolve.ts (a new `promotion` trace variant
+  `amnesiac_remember {seat, newRole}`, applied inside resolveNight's promotions
+  block). Until they convert they are a benign that wins by surviving — handled
+  by the Survivor-style benign rider in wincheck.ts `buildGameOver` (the
+  Amnesiac is added to the "alive benign wins" rider alongside Survivor).
+- EXCLUSION LIST (spec-silent, recorded): cannot remember a UNIQUE role that is
+  still held by a LIVING seat (Jailor/Mayor/Godfather/Serial Killer), and cannot
+  become AMNESIAC/JESTER/EXECUTIONER (the benign "win by a trick" roles) — those
+  would be degenerate. May remember any other dead seat's role (incl. non-unique
+  mafia/town/SK). On becoming a MAFIA role the faction flips to MAFIA and the
+  mafia roster is refreshed; on becoming SERIAL_KILLER → NEUTRAL_KILLING. The
+  remembered role's metered uses are granted via the same `initialUses` table.
+- A private `remember_result {target, role}` notice (role carrier, whitelisted)
+  confirms what they became, addressed only to the amnesiac. Investigator class
+  R1 (with Citizen/Survivor/Executioner — the "harmless-looking" class);
+  sheriff = not_susp.
+
+### Medium (Town, support) — séance: `dead` chat entitlement extended
+- VARIANT CHOSEN: the simpler, leak-green classic variant. The Medium, while
+  ALIVE, may once per game open a ONE-NIGHT séance: during that NIGHT the Medium
+  is granted the DEAD chat entitlement (read+write) so they converse with the
+  dead, WITHOUT revealing the Medium's role to the dead (the dead see the
+  Medium's SEAT only, exactly as dead seats already see each other's seats — no
+  role string is ever sent). The two-way séance reuses the existing `dead` chat
+  plumbing in `handleChat`: a seat is dead-chat-entitled iff `!alive` OR
+  (alive Medium with an active séance this night). This adds NO new message
+  type and NO role string to any frame, so the leak auditor is unaffected.
+  RATIONALE for not doing a brand-new masked channel: the spec explicitly
+  permits the simpler variant if a new entitlement risks the auditor; the dead
+  channel already masks nothing but seats (never roles), so extending its
+  membership by one living seat for one night cannot leak a role.
+- A `seance` day-or-night ability toggles the séance for the COMING night
+  (selected during the day like the Jailor, stored in `GameState.seanceMedium`
+  + the medium's `usesRemaining` is decremented when the séance night resolves).
+  SECURITY: living NON-medium seats never gain dead-chat; the séance only ever
+  ADDS the one medium seat to the dead audience for that night, and the medium's
+  own messages are addressed to `dead` (the dead) — never to the living.
+  Investigator class R4 (with Doctor/SK); sheriff = not_susp.
+
+### Disguiser (Mafia, deception) — `disguise` / trace `kind:'disguise'`
+- At night targets a DEAD player; takes on that player's ROLE APPEARANCE. Stored
+  as `SeatState.apparentRole: RoleId | null` (an overlay; the TRUE `role`/
+  `faction`/win are unchanged). SURFACES that use apparentRole (recorded): (1)
+  Sheriff read — uses apparentRole's sheriffResult; (2) Investigator read — uses
+  apparentRole's investigator class; (3) Consigliere read — returns apparentRole;
+  (4) the Disguiser's own DEATH REVEAL (public death_announce + the death trace's
+  role) shows apparentRole. Framing still overrides investigations (framed wins).
+  Lookout/Tracker/Spy are UNAFFECTED (they report seats, not roles). The overlay
+  persists until the Disguiser re-disguises or dies (set once, sticky) — recorded.
+- No new private_result (the Disguiser learns nothing). Investigator class R8
+  (with Framer/Lookout/Forger). Sheriff = suspicious (a mafia deceiver), but note
+  the apparentRole overlay means a Sheriff checking a disguised Disguiser sees the
+  DISGUISE's alignment, not "suspicious".
+
+### Arsonist (Neutral Killing, faction NEUTRAL_KILLING) — `douse` / `ignite`
+- Reuses the existing SK/last-killer win path (NEUTRAL_KILLING) — NO new win
+  logic; wincheck.ts treats NEUTRAL_KILLING uniformly (the existing `t.sk`
+  bucket is "all NEUTRAL_KILLING seats", so an Arsonist already counts toward
+  the serial_killer win family). DECISION: rename nothing; the existing
+  `serial_killer_last` / 1v1 SK rules now also cover a lone Arsonist.
+- Two abilities on ONE night ability key family: `douse` (mark a target —
+  `SeatState.doused=true`, no kill) and `ignite` (self-target, like vest/alert/
+  spy: kills ALL currently-doused living seats at once). Ignite is a POWERFUL
+  attack: it pierces basic defense (doctor heal + bodyguard + vest do NOT save a
+  doused victim; only jail and night-immunity stop it) — modeled as a new
+  DeathCause `arsonist` added to `BASIC_ATTACK_SOURCES`? NO: arson is NOT basic
+  (bodyguard does not intercept it); it is added to the kill pipeline as a
+  piercing source like jailor_execute but RESPECTING night-immunity and jail.
+  Implemented via a dedicated branch (doused victims die unless jailed/immune).
+- The Arsonist is NIGHT-IMMUNE (like the SK) and roleblock-interaction: a doused
+  flag persists until ignite or the arsonist dies (recorded simplification — no
+  cleaning/un-dousing). On ignite the arsonist's own douse marks are cleared.
+  Igniting consumes nothing metered (unlimited, like the SK kill). Douse visits
+  the target (Lookout/Tracker see it); ignite does not visit anyone.
+  Investigator class R4? It would overload R4 (Doctor/SK). DECISION: Arsonist →
+  R4 alongside SK/Doctor is thematically the "killer" class but the spec's class
+  table is implementer-chosen here; to keep each class balanced we place
+  Arsonist in R7 (with Godfather/Mayor/Bodyguard). Sheriff = suspicious.
+  No new private_result (ignite/douse produce a standard `was_attacked` only via
+  the normal kill pipeline for survivors; doused seats are NOT notified — a
+  doused player does not know, by classic design — recorded).
+
+### Setups
+- All six new roles are added to the `smoke-and-mirrors` showcase setup so they
+  are drawable, plus the random pools: Tracker/Spy/Medium join the curated
+  `townPool`s and Disguiser joins `RANDOM_MAFIA_POOL`. Amnesiac/Arsonist are
+  neutrals placed as fixed slots in the showcase (neutrals are never in the
+  RANDOM_TOWN/RANDOM_MAFIA category pools). The batch-B leak sweep target stays
+  `smoke-and-mirrors` at >=120 games / 15 players.

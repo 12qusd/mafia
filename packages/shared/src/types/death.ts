@@ -16,6 +16,9 @@ import { z } from 'zod';
  * - leave          — explicit "leave game" suicide at night resolution (§8).
  * - bodyguard      — a Bodyguard's counterattack on a ward's assailant (batch A).
  * - veteran        — a Veteran on alert killing a seat that visited them (batch A).
+ * - arsonist       — an Arsonist ignition burning a doused seat (batch B). A
+ *                    powerful attack: pierces basic defense (heal/guard/vest) but
+ *                    is stopped by jail and night-immunity.
  */
 export const DEATH_CAUSES = [
   'mafia',
@@ -28,6 +31,7 @@ export const DEATH_CAUSES = [
   'admin',
   'bodyguard',
   'veteran',
+  'arsonist',
 ] as const;
 
 export const DeathCauseSchema = z.enum(DEATH_CAUSES);

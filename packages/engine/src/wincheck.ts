@@ -117,9 +117,11 @@ export function buildGameOver(
 ): GameOverState {
   const winners = new Set<WinningParty>(base.winners);
 
-  // Riders: Survivor wins if alive at game end.
+  // Riders: Survivor wins if alive at game end. An Amnesiac (batch B) who never
+  // remembered is a benign that also wins by surviving — it rides the SURVIVOR
+  // win flag (no new WinningParty / faction logic).
   for (const s of state.seats) {
-    if (s.alive && s.role === 'SURVIVOR') winners.add('SURVIVOR');
+    if (s.alive && (s.role === 'SURVIVOR' || s.role === 'AMNESIAC')) winners.add('SURVIVOR');
   }
   // Jester / Executioner personal wins were recorded at lynch time.
   if (state.jesterWinners.length > 0) winners.add('JESTER');
@@ -149,7 +151,8 @@ function seatWon(seat: SeatState, state: GameState, winners: WinningParty[]): bo
   // Personal-win riders.
   if (state.jesterWinners.includes(seat.seat)) return true;
   if (state.exeWinners.includes(seat.seat)) return true;
-  if (seat.role === 'SURVIVOR') return seat.alive; // survivor rides any win if alive
+  // Survivor and a never-remembered Amnesiac ride any win if alive at the end.
+  if (seat.role === 'SURVIVOR' || seat.role === 'AMNESIAC') return seat.alive;
 
   switch (seat.faction) {
     case 'TOWN':

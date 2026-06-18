@@ -56,6 +56,13 @@ const FACTION_OF: Record<RoleId, GameState['seats'][number]['faction']> = {
   BODYGUARD: 'TOWN',
   BLACKMAILER: 'MAFIA',
   VETERAN: 'TOWN',
+  // --- Role-expansion batch B ---
+  TRACKER: 'TOWN',
+  SPY: 'TOWN',
+  AMNESIAC: 'NEUTRAL_BENIGN',
+  MEDIUM: 'TOWN',
+  DISGUISER: 'MAFIA',
+  ARSONIST: 'NEUTRAL_KILLING',
 };
 
 const USES: Partial<Record<RoleId, { uses: number; self: number }>> = {
@@ -65,6 +72,7 @@ const USES: Partial<Record<RoleId, { uses: number; self: number }>> = {
   DOCTOR: { uses: Number.MAX_SAFE_INTEGER, self: 1 },
   JANITOR: { uses: 3, self: 0 },
   VETERAN: { uses: 3, self: 0 },
+  MEDIUM: { uses: 1, self: 0 },
 };
 
 /**
@@ -95,6 +103,8 @@ export function makeGame(roles: RoleId[], seed = 'seed'): GameState {
       mayorRevealed: false,
       silencedForNight: -1,
       exeTarget: null,
+      apparentRole: null,
+      doused: false,
       leaving: false,
       deathCause: null,
       deathDay: null,

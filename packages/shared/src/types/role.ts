@@ -33,6 +33,13 @@ export const ROLE_IDS = [
   'BODYGUARD',
   'BLACKMAILER',
   'VETERAN',
+  // --- Role-expansion batch B ---
+  'TRACKER',
+  'SPY',
+  'AMNESIAC',
+  'MEDIUM',
+  'DISGUISER',
+  'ARSONIST',
 ] as const;
 
 export const RoleIdSchema = z.enum(ROLE_IDS);

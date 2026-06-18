@@ -9,17 +9,21 @@
 import {
   type SeatId,
   type RoleId,
+  type Faction,
   type DeathCause,
   type InvestigatorClass,
   type SheriffResult,
   INVESTIGATOR_CLASS_TABLE,
   FRAMED_INVESTIGATOR_CLASS,
+  ROLES,
+  UNIQUE_ROLES,
 } from '@nocturne/shared';
 import type { Effect } from '@nocturne/shared';
 import type { GameState, SeatState, NightIntent, ResolutionTrace } from './state.js';
 import { pick } from './prng.js';
 import { resolveBlocks, type BlockIntent } from './roleblock.js';
 import { toSeat, seatOf } from './helpers.js';
+import { initialUses } from './init.js';
 
 /** Kill source order (fixed report order, §6.8.5). */
 const KILL_SOURCE_ORDER: DeathCause[] = [
@@ -29,6 +33,7 @@ const KILL_SOURCE_ORDER: DeathCause[] = [
   'vigilante',
   'mafia',
   'serial_killer',
+  'arsonist',
   'jester_grief',
 ];
 
@@ -236,6 +241,26 @@ export function resolveNight(state: GameState): ResolveResult {
       t.silencedForNight = state.nightNumber;
       traces.push({ step: 'blackmail', blackmailer: i.seat, target: i.target });
       effects.push(toSeat(i.target, { type: 'private_result', kind: 'blackmailed' }));
+    } else if (i.ability === 'disguise' && i.target !== null) {
+      // Disguiser (batch B): take on a DEAD target's role appearance. The overlay
+      // is applied to the disguiser's own seat and is sticky until re-disguise/
+      // death. Only a dead target yields a meaningful disguise; a living target is
+      // ignored (no appearance to borrow).
+      const t = seatOf(state, i.target);
+      if (!t.alive) {
+        const self = seatOf(state, i.seat);
+        self.apparentRole = t.role;
+        traces.push({ step: 'disguise', disguiser: i.seat, target: i.target, apparentRole: t.role });
+      }
+    } else if (i.ability === 'douse' && i.target !== null && i.target !== i.seat) {
+      // Arsonist (batch B): mark the target as doused (no kill). Persists until an
+      // ignite burns it or the dousing arsonist dies. The doused player is NOT
+      // notified (classic design). Idempotent.
+      const t = seatOf(state, i.target);
+      if (t.alive) {
+        t.doused = true;
+        traces.push({ step: 'douse', arsonist: i.seat, target: i.target });
+      }
     }
   }
 
@@ -297,6 +322,29 @@ export function resolveNight(state: GameState): ResolveResult {
     for (const vet of [...alerting].sort((a, b) => a - b)) {
       traces.push({ step: 'alert', veteran: vet, visitors: (veteranVisitors.get(vet) ?? []).slice() });
     }
+  }
+
+  // Arsonist ignite (batch B): an arsonist who strikes the match burns EVERY
+  // currently-doused living seat at once. A powerful attack — it pierces basic
+  // defense (heal / bodyguard / vest) but is still stopped by jail and
+  // night-immunity (handled in the kill pass). The lowest-seat igniting arsonist
+  // is recorded as the attacker; all doused marks are cleared afterward.
+  const ignitingArsonists = [...intentBySeat.values()]
+    .filter((i) => i.ability === 'ignite' && seatOf(state, i.seat).role === 'ARSONIST')
+    .map((i) => i.seat)
+    .sort((a, b) => a - b);
+  if (ignitingArsonists.length > 0) {
+    const igniter = ignitingArsonists[0]!;
+    const dousedVictims = state.seats
+      .filter((s) => s.alive && s.doused)
+      .map((s) => s.seat)
+      .sort((a, b) => a - b);
+    for (const v of dousedVictims) {
+      kills.push({ source: 'arsonist', attacker: igniter, target: v });
+    }
+    traces.push({ step: 'ignite', arsonist: igniter, victims: dousedVictims.slice() });
+    // The blaze consumes all the kerosene: clear every doused mark.
+    for (const s of state.seats) s.doused = false;
   }
 
   // Jester grief (scheduled from a previous day): one PRNG-chosen guilty voter.
@@ -365,6 +413,15 @@ export function resolveNight(state: GameState): ResolveResult {
       if (k.attacker !== null) {
         effects.push(toSeat(k.attacker, { type: 'private_result', kind: 'attacked_survived' }));
       }
+      continue;
+    }
+
+    // (c.25) Arsonist ignite (batch B): a POWERFUL attack that pierces basic
+    // defense — past this point (not jailed, not night-immune) it cannot be
+    // stopped by a doctor's heal, a bodyguard, or a vest. The doused seat burns.
+    if (k.source === 'arsonist') {
+      if (!willDie.has(k.target)) willDie.set(k.target, 'arsonist');
+      traces.push({ step: 'kill', source: k.source, attacker: k.attacker, target: k.target, outcome: 'died' });
       continue;
     }
 
@@ -438,6 +495,10 @@ export function resolveNight(state: GameState): ResolveResult {
   // Compute visitors per target (intents that survived steps 1–2 and targeted X).
   // Mafia kill visit attributed to its performer (the kill_mafia actor), not GF.
   const visitorsByTarget = new Map<SeatId, SeatId[]>();
+  // Tracker (batch B): the inverse index — who each ACTOR visited (visitor →
+  // targets). Reuses the same `actorVisits` visit set as the Lookout, indexed by
+  // actor instead of by target.
+  const visitedByActor = new Map<SeatId, SeatId[]>();
   for (const i of intentBySeat.values()) {
     if (i.target === null) continue;
     const actor = seatOf(state, i.seat);
@@ -447,7 +508,24 @@ export function resolveNight(state: GameState): ResolveResult {
     const list = visitorsByTarget.get(i.target) ?? [];
     list.push(i.seat);
     visitorsByTarget.set(i.target, list);
+    const vlist = visitedByActor.get(i.seat) ?? [];
+    vlist.push(i.target);
+    visitedByActor.set(i.seat, vlist);
   }
+
+  // Spy (batch B): the set of seats the MAFIA visited this night. Reuses the same
+  // visit set; a seat counts iff a living MAFIA-faction actor visited it (Godfather
+  // control does NOT visit, mirroring the Lookout/Tracker view). Carries seats
+  // only, never mafia identities or roles, so it is leak-trivial.
+  const mafiaVisited = new Set<SeatId>();
+  for (const i of intentBySeat.values()) {
+    if (i.target === null || i.target === i.seat) continue;
+    const actor = seatOf(state, i.seat);
+    if (actor.faction !== 'MAFIA') continue;
+    if (!actorVisits(actor, i)) continue;
+    mafiaVisited.add(i.target);
+  }
+  const mafiaVisitedSorted = [...mafiaVisited].sort((a, b) => a - b);
 
   for (const i of intentBySeat.values()) {
     if (i.target === null) continue;
@@ -460,9 +538,10 @@ export function resolveNight(state: GameState): ResolveResult {
       traces.push({ step: 'investigate', kind: 'investigator', investigator: i.seat, target: i.target, result });
       effects.push(toSeat(i.seat, { type: 'private_result', kind: 'investigator_result', target: i.target, resultClass: result }));
     } else if (i.ability === 'investigate_consigliere') {
-      // The Consigliere learns the target's TRUE current role exactly; framing
-      // (which only fogs sheriff/investigator reads) does not deceive them.
-      const result = seatOf(state, i.target).role;
+      // The Consigliere learns the target's current APPARENT role exactly; framing
+      // (which only fogs sheriff/investigator reads) does not change it, but a
+      // Disguiser's overlay does (the consigliere reads the disguise, batch B).
+      const result = apparentRoleOf(seatOf(state, i.target));
       traces.push({ step: 'investigate', kind: 'consigliere', investigator: i.seat, target: i.target, result });
       effects.push(toSeat(i.seat, { type: 'private_result', kind: 'consigliere_result', target: i.target, role: result }));
     } else if (i.ability === 'watch') {
@@ -471,7 +550,22 @@ export function resolveNight(state: GameState): ResolveResult {
         .sort((a, b) => a - b);
       traces.push({ step: 'investigate', kind: 'lookout', investigator: i.seat, target: i.target, visitors });
       effects.push(toSeat(i.seat, { type: 'private_result', kind: 'lookout_result', target: i.target, visitors }));
+    } else if (i.ability === 'investigate_track') {
+      // Tracker (batch B): learn who the watched target VISITED tonight (the
+      // inverse of the Lookout). Carries seats only — never roles.
+      const visited = (visitedByActor.get(i.target) ?? [])
+        .filter((v) => v !== i.seat) // a tracker watching itself is excluded above anyway
+        .sort((a, b) => a - b);
+      traces.push({ step: 'investigate', kind: 'tracker', investigator: i.seat, target: i.target, visited });
+      effects.push(toSeat(i.seat, { type: 'private_result', kind: 'tracker_result', target: i.target, visited }));
     }
+  }
+
+  // Spy (batch B): each spying Spy learns the seats the mafia visited tonight.
+  for (const i of intentBySeat.values()) {
+    if (i.ability !== 'spy') continue;
+    traces.push({ step: 'investigate', kind: 'spy', investigator: i.seat, seats: mafiaVisitedSorted.slice() });
+    effects.push(toSeat(i.seat, { type: 'private_result', kind: 'spy_result', seats: mafiaVisitedSorted.slice() }));
   }
 
   // -------------------------------------------------------------------------
@@ -518,7 +612,9 @@ export function resolveNight(state: GameState): ResolveResult {
       cause,
       ...(cleaned ? { cleaned: true } : forge ? { forgedWill: forge.will } : {}),
     });
-    traces.push({ step: 'death', seat, role: s.role, cause });
+    // Disguiser (batch B): the death reveal shows the APPARENT role (the borrowed
+    // name), not the true one. Cleaned bodies reveal nothing regardless.
+    traces.push({ step: 'death', seat, role: apparentRoleOf(s), cause });
   }
   // Forger traces: a forge "applied" iff its marked target actually died tonight.
   for (const [target, forge] of [...forgedWillByTarget.entries()].sort((a, b) => a[0] - b[0])) {
@@ -557,7 +653,28 @@ export function resolveNight(state: GameState): ResolveResult {
     }
   }
 
-  // Refresh mafia roster (drop dead members).
+  // Amnesiac remembers (batch B): an alive Amnesiac who knelt at a (still-dead,
+  // valid) grave BECOMES that role — role + faction change, mirroring the
+  // executioner→jester conversion. Resolved in deterministic seat order.
+  for (const i of [...intentBySeat.values()].sort((a, b) => a.seat - b.seat)) {
+    if (i.ability !== 'remember' || i.target === null) continue;
+    const s = seatOf(state, i.seat);
+    if (s.role !== 'AMNESIAC' || !s.alive) continue;
+    const tgt = seatOf(state, i.target);
+    if (!canRemember(state, tgt)) continue;
+    const newRole = tgt.role;
+    s.role = newRole;
+    s.faction = ROLES[newRole].faction as Faction;
+    const u = initialUses(newRole);
+    s.usesRemaining = u.uses;
+    s.selfUsesRemaining = u.self;
+    traces.push({ step: 'promotion', kind: 'amnesiac_remember', seat: s.seat, newRole });
+    effects.push(
+      toSeat(s.seat, { type: 'private_result', kind: 'remember_result', target: i.target, role: newRole }),
+    );
+  }
+
+  // Refresh mafia roster (drop dead members; a new Amnesiac→mafia is added).
   state.mafiaSeats = state.seats.filter((s) => s.faction === 'MAFIA').map((s) => s.seat);
 
   return { effects, deaths, traces };
@@ -578,11 +695,39 @@ function findJailor(state: GameState): SeatId | null {
 }
 
 function isNightImmune(seat: SeatState): boolean {
-  return seat.role === 'GODFATHER' || seat.role === 'SERIAL_KILLER' || seat.role === 'EXECUTIONER';
+  return (
+    seat.role === 'GODFATHER' ||
+    seat.role === 'SERIAL_KILLER' ||
+    seat.role === 'EXECUTIONER' ||
+    seat.role === 'ARSONIST'
+  );
 }
 
 function isRoleblockImmune(seat: SeatState): boolean {
   return seat.role === 'GODFATHER';
+}
+
+/** Roles an Amnesiac may NOT remember (the "win by a trick" benigns, batch B). */
+const AMNESIAC_FORBIDDEN: ReadonlySet<RoleId> = new Set<RoleId>([
+  'AMNESIAC',
+  'JESTER',
+  'EXECUTIONER',
+]);
+
+/**
+ * Whether an Amnesiac may remember `tgt`'s role (batch B). The target must be a
+ * DEAD seat whose role is not on the forbidden list, and — for a UNIQUE role — no
+ * LIVING seat may currently hold that role (you cannot duplicate a one-of-a-kind
+ * office that is still occupied).
+ */
+function canRemember(state: GameState, tgt: SeatState): boolean {
+  if (tgt.alive) return false;
+  const role = tgt.role;
+  if (AMNESIAC_FORBIDDEN.has(role)) return false;
+  if (UNIQUE_ROLES.includes(role) && state.seats.some((s) => s.alive && s.role === role)) {
+    return false;
+  }
+  return true;
 }
 
 /**
@@ -615,9 +760,14 @@ function actorVisits(_actor: SeatState, intent: NightIntent): boolean {
       return false; // self
     case 'alert':
       return false; // the Veteran sits at home; alerting is not a visit
+    case 'spy':
+      return false; // the Spy stays home and listens
+    case 'ignite':
+      return false; // the Arsonist strikes the match at home
     case 'investigate_sheriff':
     case 'investigate_investigator':
     case 'investigate_consigliere':
+    case 'investigate_track':
     case 'watch':
     case 'protect':
     case 'roleblock':
@@ -626,6 +776,9 @@ function actorVisits(_actor: SeatState, intent: NightIntent): boolean {
     case 'clean':
     case 'guard':
     case 'blackmail':
+    case 'remember':
+    case 'disguise':
+    case 'douse':
     case 'kill_vigilante':
     case 'kill_mafia':
     case 'kill_serial':
@@ -635,24 +788,37 @@ function actorVisits(_actor: SeatState, intent: NightIntent): boolean {
   }
 }
 
+/**
+ * The role a target APPEARS to be for investigations / death reveal. A Disguiser
+ * (batch B) overlays a dead seat's role here; everyone else shows their true role.
+ */
+function apparentRoleOf(target: SeatState): RoleId {
+  return target.apparentRole ?? target.role;
+}
+
 function sheriffRead(target: SeatState, framed: ReadonlySet<SeatId>): SheriffResult {
   if (framed.has(target.seat)) return 'suspicious';
-  // suspicious = Mafioso, Consort, Framer, Consigliere, Blackmailer, Serial Killer
+  // suspicious = Mafioso, Consort, Framer, Consigliere, Blackmailer, Disguiser,
+  // Serial Killer, Arsonist (read against the APPARENT role, so a disguised
+  // Disguiser reads as their disguise — batch B).
   const suspiciousRoles: RoleId[] = [
     'MAFIOSO',
     'CONSORT',
     'FRAMER',
     'CONSIGLIERE',
     'BLACKMAILER',
+    'DISGUISER',
     'SERIAL_KILLER',
+    'ARSONIST',
   ];
-  return suspiciousRoles.includes(target.role) ? 'suspicious' : 'not_suspicious';
+  return suspiciousRoles.includes(apparentRoleOf(target)) ? 'suspicious' : 'not_suspicious';
 }
 
 function investigatorRead(target: SeatState, framed: ReadonlySet<SeatId>): InvestigatorClass {
   if (framed.has(target.seat)) return FRAMED_INVESTIGATOR_CLASS;
+  const role = apparentRoleOf(target);
   for (const cls of Object.keys(INVESTIGATOR_CLASS_TABLE) as InvestigatorClass[]) {
-    if (INVESTIGATOR_CLASS_TABLE[cls].includes(target.role)) return cls;
+    if (INVESTIGATOR_CLASS_TABLE[cls].includes(role)) return cls;
   }
   // Defensive default.
   return 'R1';

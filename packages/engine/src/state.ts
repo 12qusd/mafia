@@ -64,6 +64,19 @@ export interface SeatState {
   silencedForNight: number;
   /** Executioner's assigned target seat (or null once converted / N/A). */
   exeTarget: SeatId | null;
+  /**
+   * Disguiser (batch B): the role appearance this seat currently shows to
+   * investigations and its own death reveal. `null` = show the true role. The
+   * overlay does NOT change the true `role`/`faction`/win; it is sticky until the
+   * Disguiser re-disguises or dies.
+   */
+  apparentRole: RoleId | null;
+  /**
+   * Arsonist (batch B): whether this seat has been doused. A doused seat dies
+   * (piercing basic defense) when ANY living Arsonist ignites. Persists until an
+   * ignite burns it or the dousing Arsonist dies.
+   */
+  doused: boolean;
   /** Whether this seat has explicitly left the game (queued suicide). */
   leaving: boolean;
 
@@ -110,6 +123,13 @@ export type NightAbility =
   | 'guard'
   | 'blackmail'
   | 'alert'
+  // --- Role-expansion batch B ---
+  | 'investigate_track' // Tracker: learn who the target visited
+  | 'spy' // Spy: learn the seats the mafia visited (self, no target)
+  | 'remember' // Amnesiac: remember a dead seat's role and become it
+  | 'disguise' // Disguiser: take a dead seat's role appearance
+  | 'douse' // Arsonist: mark a target as doused (no kill)
+  | 'ignite' // Arsonist: kill all doused seats (self, no target)
   | 'kill_vigilante'
   | 'kill_mafia'
   | 'kill_serial'
@@ -157,6 +177,9 @@ export type ResolutionTrace =
   | { step: 'guard'; bodyguard: SeatId; ward: SeatId; attacker: SeatId; killedAttacker: boolean }
   | { step: 'blackmail'; blackmailer: SeatId; target: SeatId }
   | { step: 'alert'; veteran: SeatId; visitors: SeatId[] }
+  | { step: 'disguise'; disguiser: SeatId; target: SeatId; apparentRole: RoleId }
+  | { step: 'douse'; arsonist: SeatId; target: SeatId }
+  | { step: 'ignite'; arsonist: SeatId; victims: SeatId[] }
   | {
       step: 'kill';
       source: DeathCause;
@@ -168,9 +191,12 @@ export type ResolutionTrace =
   | { step: 'investigate'; kind: 'investigator'; investigator: SeatId; target: SeatId; result: InvestigatorClass }
   | { step: 'investigate'; kind: 'consigliere'; investigator: SeatId; target: SeatId; result: RoleId }
   | { step: 'investigate'; kind: 'lookout'; investigator: SeatId; target: SeatId; visitors: SeatId[] }
+  | { step: 'investigate'; kind: 'tracker'; investigator: SeatId; target: SeatId; visited: SeatId[] }
+  | { step: 'investigate'; kind: 'spy'; investigator: SeatId; seats: SeatId[] }
   | { step: 'death'; seat: SeatId; role: RoleId; cause: DeathCause }
   | { step: 'promotion'; kind: 'mafia_succession'; seat: SeatId; newRole: RoleId }
   | { step: 'promotion'; kind: 'executioner_to_jester'; seat: SeatId }
+  | { step: 'promotion'; kind: 'amnesiac_remember'; seat: SeatId; newRole: RoleId }
   | { step: 'win'; reason: WinCheckReason; winners: WinningParty[] };
 
 /** Why a win check fired (for the trace). */
@@ -239,6 +265,13 @@ export interface GameState {
   nightIntents: NightIntent[];
   /** Jailor's day-selected prisoner for the coming night (null = none). */
   jailTarget: SeatId | null;
+  /**
+   * Medium (batch B): the Medium seat that has opened a séance for the COMING
+   * night (selected during the day, like the Jailor's prisoner). While set, that
+   * living Medium is granted the DEAD chat entitlement for the next NIGHT. Cleared
+   * at night resolution (the séance is one night). null = no séance pending.
+   */
+  seanceMedium: SeatId | null;
 
   nomination: NominationState;
   trial: TrialState | null;

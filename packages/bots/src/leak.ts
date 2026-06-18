@@ -197,6 +197,9 @@ function mentionsRoleForOtherSeat(msg: ServerMessage, role: string): boolean {
   // Janitor cleaned-body result (batch A): same rationale — addressed to the
   // janitor alone, so it legitimately carries the scrubbed victim's role.
   if (msg.type === 'private_result' && msg.kind === 'janitor_result') return false;
+  // Amnesiac remember result (batch B): carries the amnesiac's OWN new role,
+  // addressed to the amnesiac alone — exactly like your_role for self.
+  if (msg.type === 'private_result' && msg.kind === 'remember_result') return false;
   return collectRoleStrings(msg).has(role);
 }
 
@@ -226,4 +229,11 @@ const KNOWN_ROLES = new Set<string>([
   'BODYGUARD',
   'BLACKMAILER',
   'VETERAN',
+  // --- Role-expansion batch B ---
+  'TRACKER',
+  'SPY',
+  'AMNESIAC',
+  'MEDIUM',
+  'DISGUISER',
+  'ARSONIST',
 ]);

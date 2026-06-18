@@ -26,6 +26,7 @@ import {
   DOCTOR_SELF_HEALS,
   JANITOR_CLEANS,
   VETERAN_ALERTS,
+  MEDIUM_SEANCES,
 } from '@nocturne/shared';
 import type { GameState, SeatState } from './state.js';
 import { seedPrng, shuffle, pick, type PrngState } from './prng.js';
@@ -110,7 +111,7 @@ function categoryPool(category: string, setup: GameSetup): RoleId[] {
 }
 
 /** Initial metered uses for a role. */
-function initialUses(role: RoleId): { uses: number; self: number } {
+export function initialUses(role: RoleId): { uses: number; self: number } {
   switch (role) {
     case 'VIGILANTE':
       return { uses: VIGILANTE_BULLETS, self: 0 };
@@ -124,6 +125,8 @@ function initialUses(role: RoleId): { uses: number; self: number } {
       return { uses: JANITOR_CLEANS, self: 0 };
     case 'VETERAN':
       return { uses: VETERAN_ALERTS, self: 0 };
+    case 'MEDIUM':
+      return { uses: MEDIUM_SEANCES, self: 0 };
     default:
       return { uses: 0, self: 0 };
   }
@@ -161,6 +164,8 @@ export function init(setup: GameSetup, seed: string, opts: InitOptions = {}): Ga
       mayorRevealed: false,
       silencedForNight: -1,
       exeTarget: null,
+      apparentRole: null,
+      doused: false,
       leaving: false,
       stumped: false,
       deathCause: null,
@@ -204,6 +209,7 @@ export function init(setup: GameSetup, seed: string, opts: InitOptions = {}): Ga
     mafiaSeats,
     nightIntents: [],
     jailTarget: null,
+    seanceMedium: null,
     nomination: { votes: [], trialsUsed: 0, pausedRemainingMs: null },
     trial: null,
     pendingJesterGrief: null,

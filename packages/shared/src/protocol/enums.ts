@@ -44,6 +44,9 @@ export type TrialOutcome = z.infer<typeof TrialOutcomeSchema>;
  * - was_healed          — "you were attacked but nursed back to health".
  * - jailed              — you were hauled to a cell this night.
  * - blackmailed         — you are silenced in tomorrow's day chat (batch A).
+ * - tracker_result      — the list of seats your tracked target VISITED (batch B).
+ * - spy_result          — the list of seats the MAFIA visited this night (batch B).
+ * - remember_result     — the role the Amnesiac remembered and became (batch B).
  */
 export const PRIVATE_RESULT_KINDS = [
   'sheriff_result',
@@ -59,6 +62,9 @@ export const PRIVATE_RESULT_KINDS = [
   'was_healed',
   'jailed',
   'blackmailed',
+  'tracker_result',
+  'spy_result',
+  'remember_result',
 ] as const;
 export const PrivateResultKindSchema = z.enum(PRIVATE_RESULT_KINDS);
 export type PrivateResultKind = z.infer<typeof PrivateResultKindSchema>;

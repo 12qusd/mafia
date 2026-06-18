@@ -99,6 +99,8 @@ export function deathLine(cause: DeathCause, seatLabel: string, roleName: string
       return `${seatLabel} was cut down by a hired guard while reaching for someone else. They were the ${roleName}.`;
     case 'veteran':
       return `${seatLabel} knocked on the wrong door and met a barrel of buckshot. They were the ${roleName}.`;
+    case 'arsonist':
+      return `${seatLabel} woke to a house full of fire and never made it out. They were the ${roleName}.`;
     default: {
       // Exhaustiveness guard.
       const _never: never = cause;
@@ -134,6 +136,9 @@ export const PRIVATE_RESULT_TEXT: Record<PrivateResultKind, string> = {
   jailed: 'Rough hands hauled you to a cell. You spent the night behind bars, idle.',
   blackmailed:
     'A note slid under your door names a secret you cannot afford aired. Keep your mouth shut tomorrow, or it goes public.',
+  tracker_result: '', // resolved via trackerResultLine (needs the visited seats)
+  spy_result: '', // resolved via spyResultLine (needs the mafia-visited seats)
+  remember_result: '', // resolved via rememberResultLine (needs the new role)
 };
 
 /** Sheriff result line (BUILD_SPEC §6.6). */
@@ -165,6 +170,27 @@ export function lookoutResultLine(targetLabel: string, visitorLabels: string[]):
     return `No one came to ${targetLabel}'s door all night.`;
   }
   return `You watched ${targetLabel}'s door. Callers tonight: ${visitorLabels.join(', ')}.`;
+}
+
+/** Tracker result line (batch B). The caller formats the visited-seat labels. */
+export function trackerResultLine(targetLabel: string, visitedLabels: string[]): string {
+  if (visitedLabels.length === 0) {
+    return `You shadowed ${targetLabel} all night. They never left their own doorstep.`;
+  }
+  return `You shadowed ${targetLabel}. They paid a call on: ${visitedLabels.join(', ')}.`;
+}
+
+/** Spy result line (batch B). The caller formats the mafia-visited seat labels. */
+export function spyResultLine(visitedLabels: string[]): string {
+  if (visitedLabels.length === 0) {
+    return `You kept your ear to the wall, but the family stayed in all night.`;
+  }
+  return `Word from the inside: the family called on ${visitedLabels.join(', ')} tonight.`;
+}
+
+/** Amnesiac remember result line (batch B). The caller supplies the new role name. */
+export function rememberResultLine(targetLabel: string, roleName: string): string {
+  return `You knelt at ${targetLabel}'s grave and it all came back — you are the ${roleName} now.`;
 }
 
 /** Error-code → human message (BUILD_SPEC §9). */

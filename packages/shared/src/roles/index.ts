@@ -24,6 +24,12 @@ import { JANITOR } from './janitor.js';
 import { BODYGUARD } from './bodyguard.js';
 import { BLACKMAILER } from './blackmailer.js';
 import { VETERAN } from './veteran.js';
+import { TRACKER } from './tracker.js';
+import { SPY } from './spy.js';
+import { AMNESIAC } from './amnesiac.js';
+import { MEDIUM } from './medium.js';
+import { DISGUISER } from './disguiser.js';
+import { ARSONIST } from './arsonist.js';
 
 export type { RoleDefinition } from './types.js';
 export type { NightActionKind, DayActionKind, TargetScope, AbilityUses } from './types.js';
@@ -52,6 +58,12 @@ export {
   BODYGUARD,
   BLACKMAILER,
   VETERAN,
+  TRACKER,
+  SPY,
+  AMNESIAC,
+  MEDIUM,
+  DISGUISER,
+  ARSONIST,
 };
 
 /** Registry of every role definition, keyed by id (BUILD_SPEC §6.5). */
@@ -79,6 +91,12 @@ export const ROLES: Readonly<Record<RoleId, RoleDefinition>> = {
   BODYGUARD,
   BLACKMAILER,
   VETERAN,
+  TRACKER,
+  SPY,
+  AMNESIAC,
+  MEDIUM,
+  DISGUISER,
+  ARSONIST,
 };
 
 /** Look up a role definition by id. */
@@ -95,14 +113,14 @@ export const ALL_ROLES: readonly RoleDefinition[] = Object.values(ROLES);
  * (handled by the engine, not this static table).
  */
 export const INVESTIGATOR_CLASS_TABLE: Readonly<Record<InvestigatorClass, readonly RoleId[]>> = {
-  R1: ['CITIZEN', 'SURVIVOR', 'EXECUTIONER'],
-  R2: ['SHERIFF', 'JAILOR', 'BLACKMAILER'],
-  R3: ['INVESTIGATOR', 'JESTER', 'CONSIGLIERE'],
-  R4: ['DOCTOR', 'SERIAL_KILLER'],
+  R1: ['CITIZEN', 'SURVIVOR', 'EXECUTIONER', 'AMNESIAC'],
+  R2: ['SHERIFF', 'JAILOR', 'BLACKMAILER', 'TRACKER'],
+  R3: ['INVESTIGATOR', 'JESTER', 'CONSIGLIERE', 'SPY'],
+  R4: ['DOCTOR', 'SERIAL_KILLER', 'MEDIUM'],
   R5: ['ESCORT', 'CONSORT', 'JANITOR'],
   R6: ['VIGILANTE', 'MAFIOSO', 'VETERAN'],
-  R7: ['GODFATHER', 'MAYOR', 'BODYGUARD'],
-  R8: ['FRAMER', 'LOOKOUT', 'FORGER'],
+  R7: ['GODFATHER', 'MAYOR', 'BODYGUARD', 'ARSONIST'],
+  R8: ['FRAMER', 'LOOKOUT', 'FORGER', 'DISGUISER'],
 };
 
 /**
@@ -114,11 +132,12 @@ export const FRAMED_INVESTIGATOR_CLASS: InvestigatorClass = 'R6';
 /** Unique roles: at most one per setup (BUILD_SPEC §6.10). */
 export const UNIQUE_ROLES: readonly RoleId[] = ALL_ROLES.filter((r) => r.unique).map((r) => r.id);
 
-/** Roles a `RANDOM_MAFIA` slot may draw (BUILD_SPEC §6.10; batch A adds support). */
+/** Roles a `RANDOM_MAFIA` slot may draw (BUILD_SPEC §6.10; batch A/B add support). */
 export const RANDOM_MAFIA_POOL: readonly RoleId[] = [
   'CONSORT',
   'FRAMER',
   'CONSIGLIERE',
   'FORGER',
   'BLACKMAILER',
+  'DISGUISER',
 ];

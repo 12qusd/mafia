@@ -148,7 +148,9 @@ function handleAdminKill(state: GameState, seat: SeatId, now: GameTick, effects:
   s.revealed = true;
   s.deathCause = 'admin';
   s.deathDay = state.dayNumber;
-  state.traces.push({ step: 'death', seat, role: s.role, cause: 'admin' });
+  // Disguiser (batch B): the reveal shows the borrowed (apparent) role.
+  const adminReveal = s.apparentRole ?? s.role;
+  state.traces.push({ step: 'death', seat, role: adminReveal, cause: 'admin' });
   // Detach the seat from any in-flight game machinery.
   state.mafiaSeats = state.mafiaSeats.filter((m) => m !== seat);
   state.nightIntents = state.nightIntents.filter((i) => i.seat !== seat);
@@ -161,7 +163,7 @@ function handleAdminKill(state: GameState, seat: SeatId, now: GameTick, effects:
     toPublic({
       type: 'death_announce',
       seat,
-      role: s.role,
+      role: adminReveal,
       ...(state.config.lastWillsEnabled && s.lastWill ? { lastWill: s.lastWill } : {}),
       cause: 'admin',
     }),
@@ -282,8 +284,23 @@ function handleChat(
       return;
     }
     case 'dead': {
-      // Dead seats only, any time after death.
-      if (s.alive) return;
+      // Dead seats may write any time after death. Medium séance (batch B): during
+      // a séance NIGHT the living séance Medium may also speak with the dead.
+      const seanceActive =
+        state.phase === 'NIGHT' && state.seanceMedium !== null && state.seanceMedium === seat;
+      if (!s.alive && !seanceActive) return; // a living non-medium cannot speak
+      if (s.alive && !seanceActive) return; // (redundant guard, explicit for clarity)
+      // While a séance is open, the dead audience is augmented by the living
+      // medium for that night — addressed explicitly so no living non-medium ever
+      // receives dead chat. Otherwise the standard `dead` broadcast applies.
+      if (state.phase === 'NIGHT' && state.seanceMedium !== null) {
+        const deadSeats = state.seats.filter((x) => !x.alive).map((x) => x.seat);
+        const audience = [...new Set([...deadSeats, state.seanceMedium])].sort((a, b) => a - b);
+        effects.push(
+          toSeats(audience, { type: 'chat_message', channel: 'dead', from: seat, text, ts }),
+        );
+        return;
+      }
       effects.push(toDead({ type: 'chat_message', channel: 'dead', from: seat, text, ts }));
       return;
     }
@@ -450,9 +467,15 @@ function handleNightAction(
 
   // Remove any prior intent for this seat (last submission wins).
   state.nightIntents = state.nightIntents.filter((i) => i.seat !== seat);
-  // `vest` and `alert` are self-only toggles with no external target; any other
-  // ability with a null target is a cancellation.
-  if (target === null && ability !== 'vest' && ability !== 'alert') {
+  // `vest`/`alert`/`spy`/`ignite` are self-only toggles with no external target;
+  // any other ability with a null target is a cancellation.
+  if (
+    target === null &&
+    ability !== 'vest' &&
+    ability !== 'alert' &&
+    ability !== 'spy' &&
+    ability !== 'ignite'
+  ) {
     return; // cancel
   }
   state.nightIntents.push({ seat, ability, target });
@@ -466,12 +489,24 @@ function handleNightAction(
 function handleDayAbility(
   state: GameState,
   seat: SeatId,
-  ability: 'jail' | 'reveal',
+  ability: 'jail' | 'reveal' | 'seance',
   target: SeatId | undefined,
   effects: Effect[],
 ): void {
   const s = seatOf(state, seat);
   if (!s.alive || s.stumped) return; // a stump has no day ability (goal 8)
+
+  if (ability === 'seance') {
+    // Medium (batch B): open a one-night séance for the COMING night. Selected
+    // during a day phase (not Day 0), like the Jailor's prisoner. Requires a
+    // séance remaining; the use is consumed when the séance night resolves.
+    if (s.role !== 'MEDIUM' || s.usesRemaining <= 0) return;
+    if (state.phase === 'DAY_0') return;
+    if (!isDayPhase(state.phase)) return;
+    state.seanceMedium = seat;
+    effects.push(toSeat(seat, { type: 'day_ability_ack', ability: 'seance', target: seat }));
+    return;
+  }
 
   if (ability === 'jail') {
     // Jailor selects a prisoner during day phases (not Day 0).
@@ -576,6 +611,15 @@ function runNightResolution(state: GameState, now: GameTick, effects: Effect[]):
   effects.push(...res.effects);
   state.traces.push(...res.traces);
 
+  // Medium (batch B): a séance that ran this night consumes one use and closes.
+  if (state.seanceMedium !== null) {
+    const m = state.seats[state.seanceMedium];
+    if (m && m.role === 'MEDIUM' && m.usesRemaining > 0) {
+      m.usesRemaining = Math.max(0, m.usesRemaining - 1);
+    }
+    state.seanceMedium = null;
+  }
+
   // Clear night inputs.
   state.nightIntents = [];
   state.jailTarget = null;
@@ -618,7 +662,8 @@ function runNightResolution(state: GameState, now: GameTick, effects: Effect[]):
       toPublic({
         type: 'death_announce',
         seat: d.seat,
-        role: s.role,
+        // Disguiser (batch B): the public reveal shows the borrowed (apparent) role.
+        role: s.apparentRole ?? s.role,
         ...(state.config.lastWillsEnabled && willToShow ? { lastWill: willToShow } : {}),
         ...(killer && killer.deathNote ? { deathNote: killer.deathNote } : {}),
         cause: d.cause,
@@ -716,7 +761,9 @@ function afterExecution(state: GameState, now: GameTick, effects: Effect[]): voi
   accused.revealed = true;
   accused.deathCause = 'lynch';
   accused.deathDay = state.dayNumber;
-  state.traces.push({ step: 'death', seat: accused.seat, role: accused.role, cause: 'lynch' });
+  // Disguiser (batch B): the reveal shows the borrowed (apparent) role.
+  const accusedReveal = accused.apparentRole ?? accused.role;
+  state.traces.push({ step: 'death', seat: accused.seat, role: accusedReveal, cause: 'lynch' });
 
   // Jester personal win + schedule grief.
   if (accused.role === 'JESTER') {
@@ -740,7 +787,7 @@ function afterExecution(state: GameState, now: GameTick, effects: Effect[]): voi
     toPublic({
       type: 'death_announce',
       seat: accused.seat,
-      role: accused.role,
+      role: accusedReveal,
       ...(state.config.lastWillsEnabled && accused.lastWill ? { lastWill: accused.lastWill } : {}),
       cause: 'lynch',
     }),

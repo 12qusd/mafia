@@ -61,6 +61,39 @@ export const JailedPayload = z.object({ kind: z.literal('jailed') });
 /** Blackmailer (batch A): you cannot speak in tomorrow's day chat. */
 export const BlackmailedPayload = z.object({ kind: z.literal('blackmailed') });
 
+/**
+ * Tracker result (batch B). The list of seats the watched target VISITED this
+ * night (the inverse of the Lookout's `lookout_result`). Carries only seat ids —
+ * NO role strings — so it is leak-trivial.
+ */
+export const TrackerResultPayload = z.object({
+  kind: z.literal('tracker_result'),
+  target: SeatIdSchema,
+  visited: z.array(SeatIdSchema),
+});
+
+/**
+ * Spy result (batch B). The set of seats the MAFIA visited this night. Carries
+ * only seat ids — NOT mafia identities and NOT role strings — so it is
+ * leak-trivial. Delivered to the Spy alone.
+ */
+export const SpyResultPayload = z.object({
+  kind: z.literal('spy_result'),
+  seats: z.array(SeatIdSchema),
+});
+
+/**
+ * Amnesiac remember result (batch B). Confirms the role the Amnesiac remembered
+ * and BECAME. Carries the Amnesiac's OWN (new) role string, addressed ONLY to
+ * the amnesiac — exactly like `your_role` for self — so the leak auditors
+ * whitelist it as a legitimate per-seat role carrier.
+ */
+export const RememberResultPayload = z.object({
+  kind: z.literal('remember_result'),
+  target: SeatIdSchema,
+  role: RoleIdSchema,
+});
+
 /** Discriminated union of all private-result payloads (without envelope). */
 export const PrivateResultPayloadSchema = z.discriminatedUnion('kind', [
   SheriffResultPayload,
@@ -76,5 +109,8 @@ export const PrivateResultPayloadSchema = z.discriminatedUnion('kind', [
   WasHealedPayload,
   JailedPayload,
   BlackmailedPayload,
+  TrackerResultPayload,
+  SpyResultPayload,
+  RememberResultPayload,
 ]);
 export type PrivateResultPayload = z.infer<typeof PrivateResultPayloadSchema>;

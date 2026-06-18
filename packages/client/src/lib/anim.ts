@@ -228,6 +228,9 @@ export function effectForCause(cause: DeathCause): CauseEffect {
       return 'noose';
     case 'jester_grief':
       return 'poison';
+    case 'arsonist':
+      // No dedicated flame effect; the smoke shroud reads as a burned-out scene.
+      return 'shroud';
     case 'leave':
     case 'admin':
       return 'shroud';
