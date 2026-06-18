@@ -22,6 +22,7 @@ import {
   saveSettings,
   type ClientSettings,
   type TextScale,
+  type AnimationLevel,
 } from '../lib/storage.js';
 
 interface StoreActions {
@@ -58,6 +59,7 @@ interface StoreActions {
   setColorblind(on: boolean): void;
   setTextScale(scale: TextScale): void;
   setSound(on: boolean): void;
+  setAnimations(level: AnimationLevel): void;
   toggleMute(seat: number): void;
 }
 
@@ -170,6 +172,9 @@ export const useStore = create<Store>((set, get) => ({
   },
   setSound(on) {
     set({ settings: persistSettings(get, { sound: on }) });
+  },
+  setAnimations(level) {
+    set({ settings: persistSettings(get, { animations: level }) });
   },
   toggleMute(seat) {
     const cur = get().settings.mutedSeats;

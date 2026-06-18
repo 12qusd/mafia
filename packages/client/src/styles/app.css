@@ -175,6 +175,10 @@ label {
   min-height: 100vh;
   display: flex;
   flex-direction: column;
+  /* Establish a stacking context above the fixed cinematic backdrop
+     (.anim-stage, z-index:0) so all in-flow UI renders on top of it. */
+  position: relative;
+  z-index: 1;
 }
 .topbar {
   display: flex;
@@ -312,6 +316,22 @@ label {
   height: 13px;
 }
 
+/* --- Cinematic animation layer (three.js backdrop) ---------------------- */
+/* Full-bleed canvas BEHIND the game UI. Never interactive: pointer-events are
+   disabled so chat input, vote buttons, and the player list stay fully usable
+   on top. Mounted only at the 'full' effective animation level. */
+.anim-stage {
+  position: fixed;
+  inset: 0;
+  z-index: 0;
+  pointer-events: none;
+  /* Sit visually under the deco-bg scene tint without fighting it. */
+  opacity: 0.92;
+}
+.anim-stage canvas {
+  display: block;
+}
+
 /* --- Game screen -------------------------------------------------------- */
 .game-shell {
   display: grid;
@@ -320,6 +340,9 @@ label {
   padding: 12px;
   height: calc(100vh - 0px);
   min-height: 0;
+  /* Stack above the fixed cinematic backdrop. */
+  position: relative;
+  z-index: 1;
 }
 @media (max-width: 1100px) {
   .game-shell {

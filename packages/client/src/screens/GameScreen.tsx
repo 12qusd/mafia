@@ -27,6 +27,7 @@ import { GameOver } from '../components/GameOver.js';
 import { PrivateLog } from '../components/PrivateLog.js';
 import { DirectorGate } from '../components/DirectorPanel.js';
 import { AdminPanel } from '../components/AdminPanel.js';
+import { AnimationStage } from '../components/AnimationStage.js';
 import { TestBadge } from '../components/common.js';
 import { sendChat, sendWhisper } from '../ws/actions.js';
 
@@ -82,6 +83,7 @@ export function GameScreen() {
 
   return (
     <>
+      <AnimationStage />
       {testMode && (
         <div className="row" style={{ margin: '4px 8px 0', justifyContent: 'flex-end' }}>
           <TestBadge />

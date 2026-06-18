@@ -312,6 +312,12 @@ export const SETTINGS = {
   unmute: 'Unmute',
   back: 'Back',
   sound: 'Sound cues',
+  animations: 'Cinematic animations',
+  animationsHint:
+    'A noir backdrop and choreographed death scenes behind the game. Always respects your system reduced-motion setting.',
+  animationsFull: 'Full',
+  animationsReduced: 'Reduced',
+  animationsOff: 'Off',
 } as const;
 
 /**

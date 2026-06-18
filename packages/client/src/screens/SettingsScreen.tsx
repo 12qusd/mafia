@@ -9,7 +9,7 @@ import { useStore } from '../store/store.js';
 import { DecoHead, Switch } from '../components/common.js';
 import { SETTINGS } from '../lib/strings-extra.js';
 import { sanitizeInline } from '../lib/sanitize.js';
-import type { TextScale } from '../lib/storage.js';
+import type { TextScale, AnimationLevel } from '../lib/storage.js';
 
 export function SettingsScreen() {
   const navigate = useNavigate();
@@ -18,6 +18,7 @@ export function SettingsScreen() {
   const setColorblind = useStore((s) => s.setColorblind);
   const setTextScale = useStore((s) => s.setTextScale);
   const setSound = useStore((s) => s.setSound);
+  const setAnimations = useStore((s) => s.setAnimations);
   const toggleMute = useStore((s) => s.toggleMute);
   const seats = useStore((s) => s.game?.seats ?? []);
 
@@ -55,6 +56,28 @@ export function SettingsScreen() {
         <div className="toggle">
           <div>{SETTINGS.sound}</div>
           <Switch on={settings.sound} label={SETTINGS.sound} onChange={setSound} />
+        </div>
+
+        <div className="toggle">
+          <div>
+            <div>{SETTINGS.animations}</div>
+            <div className="faint">{SETTINGS.animationsHint}</div>
+          </div>
+          <div className="row">
+            {(['full', 'reduced', 'off'] as AnimationLevel[]).map((level) => (
+              <button
+                key={level}
+                className={`btn btn-sm ${settings.animations === level ? 'btn-active' : ''}`}
+                onClick={() => setAnimations(level)}
+              >
+                {level === 'full'
+                  ? SETTINGS.animationsFull
+                  : level === 'reduced'
+                    ? SETTINGS.animationsReduced
+                    : SETTINGS.animationsOff}
+              </button>
+            ))}
+          </div>
         </div>
 
         <div className="toggle">

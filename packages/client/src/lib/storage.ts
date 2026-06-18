@@ -12,12 +12,25 @@ const GUEST_NAME_KEY = 'nocturne.guestName';
 
 export type TextScale = 'small' | 'normal' | 'large';
 
+/**
+ * Cinematic animation layer intensity (goal: three.js noir backdrop + death
+ * cinematics).
+ * - 'full'    — persistent R3F backdrop, phase transitions, full death cinematics.
+ * - 'reduced' — lighter scene (no heavy particles/transitions), instant deaths.
+ * - 'off'     — no canvas at all; only the existing CSS scene tint.
+ * `prefers-reduced-motion` is always honoured on top of this (it can only
+ * downgrade, never upgrade, the effective level).
+ */
+export type AnimationLevel = 'full' | 'reduced' | 'off';
+
 /** Client-only display settings (§13.1 Settings). */
 export interface ClientSettings {
   profanityFilter: boolean;
   colorblind: boolean;
   textScale: TextScale;
   sound: boolean;
+  /** Cinematic animation layer intensity (default 'full'). */
+  animations: AnimationLevel;
   /** Muted user/guest ids (server-enforced via report/mute is separate; this is the local list). */
   mutedSeats: number[];
 }
@@ -27,6 +40,7 @@ export const DEFAULT_SETTINGS: ClientSettings = {
   colorblind: false,
   textScale: 'normal',
   sound: true,
+  animations: 'full',
   mutedSeats: [],
 };
 
@@ -82,6 +96,8 @@ export function loadSettings(): ClientSettings {
       textScale:
         parsed.textScale === 'small' || parsed.textScale === 'large' ? parsed.textScale : 'normal',
       sound: parsed.sound !== false,
+      animations:
+        parsed.animations === 'reduced' || parsed.animations === 'off' ? parsed.animations : 'full',
       mutedSeats: Array.isArray(parsed.mutedSeats)
         ? parsed.mutedSeats.filter((n): n is number => typeof n === 'number')
         : [],
