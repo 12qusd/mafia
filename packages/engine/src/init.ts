@@ -28,6 +28,7 @@ import {
   JANITOR_CLEANS,
   VETERAN_ALERTS,
   MEDIUM_SEANCES,
+  RETRIBUTIONIST_REVIVES,
 } from '@nocturne/shared';
 import type { GameState, SeatState } from './state.js';
 import { seedPrng, shuffle, pick, type PrngState } from './prng.js';
@@ -129,6 +130,8 @@ export function initialUses(role: RoleId): { uses: number; self: number } {
       return { uses: VETERAN_ALERTS, self: 0 };
     case 'MEDIUM':
       return { uses: MEDIUM_SEANCES, self: 0 };
+    case 'RETRIBUTIONIST':
+      return { uses: RETRIBUTIONIST_REVIVES, self: 0 };
     default:
       return { uses: 0, self: 0 };
   }
@@ -170,6 +173,8 @@ export function init(setup: GameSetup, seed: string, opts: InitOptions = {}): Ga
       killCount: 0,
       apparentRole: null,
       doused: false,
+      infected: false,
+      plunderCount: 0,
       leaving: false,
       stumped: false,
       deathCause: null,
@@ -254,6 +259,8 @@ export function init(setup: GameSetup, seed: string, opts: InitOptions = {}): Ga
     jesterWinners: [],
     exeWinners: [],
     gaWinners: [],
+    pirateWinners: [],
+    witchWinners: [],
     traces: [],
     gameOver: null,
   };

@@ -270,4 +270,10 @@ const KNOWN_ROLES = new Set<string>([
   'DRAGON_HEAD',
   'ENFORCER',
   'VANGUARD',
+  // --- Role-expansion batch E (complex neutrals / conversions) ---
+  'WITCH',
+  'PIRATE',
+  'PLAGUEBEARER',
+  'PESTILENCE',
+  'RETRIBUTIONIST',
 ]);

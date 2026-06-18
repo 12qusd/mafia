@@ -69,8 +69,11 @@ export function sendVerdict(value: VerdictValue): void {
   conn.send({ v: V, type: 'verdict', value });
 }
 
-export function sendNightAction(ability: string, target: number | null): void {
-  conn.send({ v: V, type: 'night_action', ability, target });
+export function sendNightAction(ability: string, target: number | null, target2?: number): void {
+  // `target2` (batch E, Witch): the Witch's `witch_control` carries the PUPPET in
+  // `target` and the VICTIM in `target2`. Optional and additive — omitted for every
+  // single-target ability.
+  conn.send({ v: V, type: 'night_action', ability, target, ...(target2 !== undefined ? { target2 } : {}) });
 }
 
 export function sendDayAbility(ability: string, target?: number): void {

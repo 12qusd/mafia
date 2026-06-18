@@ -52,6 +52,13 @@ export const LookoutResultPayload = z.object({
 });
 
 export const RoleblockedPayload = z.object({ kind: z.literal('roleblocked') });
+/**
+ * Witch control (batch E): the puppet learns their hand was moved tonight, with
+ * NO controller identity and NO role/seat payload — exactly as leak-trivial as
+ * `roleblocked`. The noir wording ("a force not your own moved your hand") lives
+ * client-side in strings.ts. Delivered to the controlled seat alone.
+ */
+export const ControlledPayload = z.object({ kind: z.literal('controlled') });
 export const BlockFailedPayload = z.object({ kind: z.literal('block_failed') });
 export const TargetUnreachablePayload = z.object({ kind: z.literal('target_unreachable') });
 export const AttackedSurvivedPayload = z.object({ kind: z.literal('attacked_survived') });
@@ -115,6 +122,7 @@ export const PrivateResultPayloadSchema = z.discriminatedUnion('kind', [
   JanitorResultPayload,
   LookoutResultPayload,
   RoleblockedPayload,
+  ControlledPayload,
   BlockFailedPayload,
   TargetUnreachablePayload,
   AttackedSurvivedPayload,

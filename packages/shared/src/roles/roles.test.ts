@@ -48,6 +48,12 @@ describe('unique roles (§6.5, §6.10)', () => {
         'MAYOR',
         'SERIAL_KILLER',
         'WEREWOLF',
+        // Batch E complex neutrals / conversions — one-per-setup like the SK.
+        'WITCH',
+        'PIRATE',
+        'PLAGUEBEARER',
+        'PESTILENCE',
+        'RETRIBUTIONIST',
       ].sort(),
     );
   });
@@ -63,13 +69,13 @@ describe('investigator result classes (§6.6)', () => {
   // The exact table from §6.6.
   const SPEC_TABLE: Record<string, RoleId[]> = {
     R1: ['CITIZEN', 'SURVIVOR', 'EXECUTIONER', 'AMNESIAC', 'GUARDIAN_ANGEL'],
-    R2: ['SHERIFF', 'JAILOR', 'BLACKMAILER', 'TRACKER'],
+    R2: ['SHERIFF', 'JAILOR', 'BLACKMAILER', 'TRACKER', 'RETRIBUTIONIST'],
     R3: ['INVESTIGATOR', 'JESTER', 'CONSIGLIERE', 'SPY', 'PSYCHIC'],
-    R4: ['DOCTOR', 'SERIAL_KILLER', 'MEDIUM', 'MASS_MURDERER'],
+    R4: ['DOCTOR', 'SERIAL_KILLER', 'MEDIUM', 'MASS_MURDERER', 'PLAGUEBEARER', 'PESTILENCE'],
     R5: ['ESCORT', 'CONSORT', 'JANITOR', 'HYPNOTIST', 'VANGUARD'],
-    R6: ['VIGILANTE', 'MAFIOSO', 'VETERAN', 'CRUSADER', 'WEREWOLF', 'JUGGERNAUT', 'ENFORCER'],
+    R6: ['VIGILANTE', 'MAFIOSO', 'VETERAN', 'CRUSADER', 'WEREWOLF', 'JUGGERNAUT', 'ENFORCER', 'PIRATE'],
     R7: ['GODFATHER', 'MAYOR', 'BODYGUARD', 'ARSONIST', 'DRAGON_HEAD'],
-    R8: ['FRAMER', 'LOOKOUT', 'FORGER', 'DISGUISER', 'AMBUSHER'],
+    R8: ['FRAMER', 'LOOKOUT', 'FORGER', 'DISGUISER', 'AMBUSHER', 'WITCH'],
   };
 
   it('the class table matches §6.6 exactly', () => {
@@ -124,6 +130,11 @@ describe('sheriff alignment table (§6.6)', () => {
     // the Dragon Head reads clean like the Godfather.
     'ENFORCER',
     'VANGUARD',
+    // Batch E: the Witch, Plaguebearer, and Pestilence read suspicious; the Pirate
+    // and Retributionist read clean.
+    'WITCH',
+    'PLAGUEBEARER',
+    'PESTILENCE',
   ];
 
   it('exactly the spec set reads suspicious un-framed', () => {
@@ -169,15 +180,19 @@ describe('ability metadata (§6.5)', () => {
         'MASS_MURDERER',
         'SERIAL_KILLER',
         'WEREWOLF',
+        // Batch E: the Witch (spoiler, untouchable) and Pestilence (powerful final
+        // form) are night-immune.
+        'WITCH',
+        'PESTILENCE',
       ].sort(),
     );
   });
 
-  it('roleblock-immune is the Godfather and the Triad Dragon Head (§6.5; SK handled by hazard rule)', () => {
+  it('roleblock-immune is the Godfather, the Triad Dragon Head, and the batch-E Witch/Pestilence (§6.5; SK handled by hazard rule)', () => {
     const rbImmune = ALL_ROLES.filter((r) => r.roleblockImmune)
       .map((r) => r.id)
       .sort();
-    expect(rbImmune).toEqual(['DRAGON_HEAD', 'GODFATHER'].sort());
+    expect(rbImmune).toEqual(['DRAGON_HEAD', 'GODFATHER', 'PESTILENCE', 'WITCH'].sort());
   });
 
   it('Mafia faction has exactly the mafia roles (core + batch-A support)', () => {

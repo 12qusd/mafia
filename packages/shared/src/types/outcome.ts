@@ -18,6 +18,14 @@ export const WINNING_PARTIES = [
   // Guardian Angel (batch D) personal win: their assigned charge survived to the
   // end. A rider alongside the faction outcome, like JESTER / EXECUTIONER.
   'GUARDIAN_ANGEL',
+  // --- Role-expansion batch E (complex neutrals) ---
+  // Witch SPOILER win: the Witch is alive at game end and the Town did NOT win —
+  // she rides any evil/neutral-killing victory (or a non-Town stalemate). A rider
+  // alongside the faction outcome, like the Guardian Angel.
+  'WITCH',
+  // Pirate personal win: landed enough successful plunders AND is alive at the
+  // end. A personal rider like the Executioner — independent of who took the match.
+  'PIRATE',
   'DRAW',
 ] as const;
 

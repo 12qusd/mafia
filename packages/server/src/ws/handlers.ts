@@ -363,7 +363,15 @@ export class MessageHandlers {
     const binding = room.seats[seat];
     const role = binding?.role as Parameters<typeof room.nightAbility>[0] | undefined;
     const ability = role ? (room.nightAbility(role) ?? msg.ability) : msg.ability;
-    room.applyEvent({ type: 'night_action', seat, ability, target: msg.target, ts: Date.now() });
+    room.applyEvent({
+      type: 'night_action',
+      seat,
+      ability,
+      target: msg.target,
+      // Witch control (batch E) carries a SECOND target (the victim).
+      ...(msg.target2 !== undefined ? { target2: msg.target2 } : {}),
+      ts: Date.now(),
+    });
     room.notedAction(seat);
   }
 

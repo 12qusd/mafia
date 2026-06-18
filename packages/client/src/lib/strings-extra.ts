@@ -413,6 +413,11 @@ export const TRACE_STEP_LABEL: Record<string, string> = {
   shield: '3 · Guardian Angel',
   juggernaut: '5 · Juggernaut',
   divine: '6 · Psychic vision',
+  witch: '0 · Witch control',
+  duel: '2 · Pirate duel',
+  infect: '8 · Plague spread',
+  retribute: '8 · Retribution',
+  pestilence: '5 · Pestilence',
   investigate: '6 · Investigate',
   death: '7 · Death',
   promotion: '8 · Promotion',
@@ -438,6 +443,7 @@ export const DEATH_CAUSE_LABEL: Record<DeathCause, string> = {
   werewolf: 'Werewolf',
   massacre: 'Mass Murderer',
   juggernaut: 'Juggernaut',
+  pestilence: 'Pestilence',
 };
 
 /** Faction display names (machine key → noir label). */
@@ -459,6 +465,8 @@ export const WINNER_LABEL: Record<WinningParty, string> = {
   EXECUTIONER: 'The Executioner got their man',
   SURVIVOR: 'The Survivor lived to see the dawn',
   GUARDIAN_ANGEL: 'The Guardian Angel kept their charge alive',
+  WITCH: 'The Witch outlasted the town',
+  PIRATE: 'The Pirate took the plunder and the glory',
   DRAW: 'The night ends in a stalemate',
 };
 

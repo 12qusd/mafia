@@ -50,6 +50,9 @@ export type TrialOutcome = z.infer<typeof TrialOutcomeSchema>;
  * - psychic_vision      — a set of seats among which at least one is evil (odd
  *                         nights) or good (even nights); seats only, no roles
  *                         (Town Psychic; batch C).
+ * - controlled          — your night action was seized and turned on a stranger by
+ *                         a Witch (batch E); carries NO controller identity, NO
+ *                         seats, NO roles — as leak-trivial as `roleblocked`.
  */
 export const PRIVATE_RESULT_KINDS = [
   'sheriff_result',
@@ -58,6 +61,7 @@ export const PRIVATE_RESULT_KINDS = [
   'janitor_result',
   'lookout_result',
   'roleblocked',
+  'controlled',
   'block_failed',
   'target_unreachable',
   'attacked_survived',

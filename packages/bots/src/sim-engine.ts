@@ -168,7 +168,16 @@ function toEngineEvent(
   const p = entry.payload;
   switch (entry.type) {
     case 'night_action':
-      return { type: 'night_action', seat, ability: p.ability as never, target: (p.target as SeatId | null) ?? null, ts };
+      return {
+        type: 'night_action',
+        seat,
+        ability: p.ability as never,
+        target: (p.target as SeatId | null) ?? null,
+        // Witch control (batch E) carries a SECOND target (the victim); pass it
+        // through so the engine can steer the puppet.
+        ...(p.target2 !== undefined ? { target2: p.target2 as SeatId | null } : {}),
+        ts,
+      };
     case 'day_ability':
       return {
         type: 'day_ability',

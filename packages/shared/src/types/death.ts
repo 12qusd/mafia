@@ -37,6 +37,9 @@ import { z } from 'zod';
  * - juggernaut     — a Juggernaut kill (batch D). A neutral-killing attack that is
  *                    basic at first and becomes powerful (piercing, with a rampage
  *                    on visitors) once the Juggernaut has enough kills.
+ * - pestilence     — a Pestilence reaping (batch E). The Plaguebearer's transformed
+ *                    final form; a powerful neutral-killing attack that pierces basic
+ *                    defense but is stopped by jail/plunder and night-immunity.
  */
 export const DEATH_CAUSES = [
   'mafia',
@@ -56,6 +59,7 @@ export const DEATH_CAUSES = [
   'werewolf',
   'massacre',
   'juggernaut',
+  'pestilence',
 ] as const;
 
 export const DeathCauseSchema = z.enum(DEATH_CAUSES);

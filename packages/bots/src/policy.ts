@@ -157,6 +157,18 @@ export class BotPolicy {
 
     const target = this.pickNightTarget(ability);
     if (target === null && !SELF_ONLY_ABILITIES.has(ability)) return;
+    // Witch control (batch E) needs a SECOND target: a victim to steer the puppet
+    // onto, distinct from the puppet. A control missing either is dropped, so we
+    // only submit when we have both.
+    if (ability === 'witch_control') {
+      if (target === null) return;
+      const self = this.bot.view.seat;
+      const victims = [...this.bot.view.alive].filter((s) => s !== self && s !== target);
+      const victim = this.choice(victims);
+      if (victim === null) return;
+      this.bot.send({ v: 1, type: 'night_action', ability, target, target2: victim } as ClientMessage);
+      return;
+    }
     this.bot.send({ v: 1, type: 'night_action', ability, target } as ClientMessage);
   }
 

@@ -54,6 +54,12 @@ export const ROLE_IDS = [
   'DRAGON_HEAD',
   'ENFORCER',
   'VANGUARD',
+  // --- Role-expansion batch E (complex neutrals / conversions) ---
+  'WITCH', // Neutral spoiler: controls a puppet onto a victim; rides any non-Town win
+  'PIRATE', // Neutral benign-ish: duels a target, plunders for a personal win
+  'PLAGUEBEARER', // Neutral Killing: infects via visits; transforms into Pestilence
+  'PESTILENCE', // Neutral Killing: the Plaguebearer's powerful rampaging final form
+  'RETRIBUTIONIST', // Town: once-per-game revive a dead Town player
 ] as const;
 
 export const RoleIdSchema = z.enum(ROLE_IDS);

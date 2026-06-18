@@ -29,6 +29,7 @@ const SETUP_MAP: Record<string, string> = {
   'full-moon': 'full-moon',
   tong_war: 'tong-war',
   'tong-war': 'tong-war',
+  reckoning: 'reckoning',
 };
 
 function main(): void {

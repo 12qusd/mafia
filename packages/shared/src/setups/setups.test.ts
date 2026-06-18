@@ -5,6 +5,7 @@ import {
   GUNSMOKE,
   SMOKE_AND_MIRRORS,
   FULL_MOON,
+  RECKONING,
   SETUPS,
   getSetup,
   factionCountsAt,
@@ -105,8 +106,8 @@ describe('Classic Nocturne unique-role constraint (§6.10)', () => {
 });
 
 describe('setup registry', () => {
-  it('ships the curated setups (3 MVP + batch-A/D showcases + Tong War)', () => {
-    expect(SETUPS).toHaveLength(6);
+  it('ships the curated setups (3 MVP + batch-A/D showcases + Tong War + Reckoning)', () => {
+    expect(SETUPS).toHaveLength(7);
   });
 
   it('getSetup resolves by id', () => {
@@ -115,6 +116,7 @@ describe('setup registry', () => {
     expect(getSetup('gunsmoke')).toBe(GUNSMOKE);
     expect(getSetup('smoke-and-mirrors')).toBe(SMOKE_AND_MIRRORS);
     expect(getSetup('full-moon')).toBe(FULL_MOON);
+    expect(getSetup('reckoning')).toBe(RECKONING);
     expect(getSetup('nope')).toBeUndefined();
   });
 

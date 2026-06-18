@@ -92,6 +92,17 @@ export function roleToNightAbility(role: RoleId): NightAbility | null {
       return 'douse';
     case 'GODFATHER':
       return 'mafia_control';
+    // --- Role-expansion batch E ---
+    case 'WITCH':
+      return 'witch_control';
+    case 'PIRATE':
+      return 'duel';
+    case 'PLAGUEBEARER':
+      return 'infect';
+    case 'PESTILENCE':
+      return 'pestilence';
+    case 'RETRIBUTIONIST':
+      return 'retribute';
     // JAILOR's execution uses 'kill_jailor', but only after a jailing — handled
     // by the server when the jailor presses "execute".
     case 'JAILOR':
@@ -141,6 +152,21 @@ export function abilityInfoFor(seat: SeatState): AbilityInfo[] {
       break;
     case 'JUGGERNAUT':
       out.push({ id: 'juggernaut', name: 'Crush', timing: 'night', usesRemaining: null });
+      break;
+    case 'WITCH':
+      out.push({ id: 'witch_control', name: 'Control', timing: 'night', usesRemaining: null });
+      break;
+    case 'PIRATE':
+      out.push({ id: 'duel', name: 'Duel', timing: 'night', usesRemaining: null });
+      break;
+    case 'PLAGUEBEARER':
+      out.push({ id: 'infect', name: 'Infect', timing: 'night', usesRemaining: null });
+      break;
+    case 'PESTILENCE':
+      out.push({ id: 'pestilence', name: 'Reap', timing: 'night', usesRemaining: null });
+      break;
+    case 'RETRIBUTIONIST':
+      out.push({ id: 'retribute', name: 'Revive', timing: 'night', usesRemaining: seat.usesRemaining });
       break;
     case 'DOCTOR':
       out.push({ id: 'protect', name: 'Heal', timing: 'night', usesRemaining: null });

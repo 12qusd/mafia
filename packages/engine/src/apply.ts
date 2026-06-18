@@ -118,7 +118,7 @@ export function apply(prev: GameState, event: GameEvent): ApplyResult {
       handleVerdict(state, event.seat, event.value, effects);
       return { state, effects };
     case 'night_action':
-      handleNightAction(state, event.seat, event.ability, event.target);
+      handleNightAction(state, event.seat, event.ability, event.target, event.target2 ?? null);
       return { state, effects };
     case 'day_ability':
       handleDayAbility(state, event.seat, event.ability, event.target, effects);
@@ -472,6 +472,7 @@ function handleNightAction(
   seat: SeatId,
   ability: NightAbility,
   target: SeatId | null,
+  target2: SeatId | null,
 ): void {
   if (state.phase !== 'NIGHT') return;
   const s = seatOf(state, seat);
@@ -491,7 +492,17 @@ function handleNightAction(
   ) {
     return; // cancel
   }
-  state.nightIntents.push({ seat, ability, target });
+  // Witch control (batch E) needs BOTH a puppet (target) and a victim (target2);
+  // a control submission missing either is a no-op cancellation.
+  if (ability === 'witch_control' && (target === null || target2 === null)) {
+    return; // cancel — control requires both targets
+  }
+  state.nightIntents.push({
+    seat,
+    ability,
+    target,
+    ...(ability === 'witch_control' ? { target2 } : {}),
+  });
   state.nightIntents.sort((a, b) => a.seat - b.seat);
 }
 

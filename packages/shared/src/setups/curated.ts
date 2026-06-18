@@ -266,3 +266,53 @@ export const TONG_WAR: GameSetup = {
     '15': TONG_WAR_15,
   },
 };
+
+/**
+ * "The Reckoning" — a 15-player showcase of the batch-E complex neutrals. A Witch
+ * bends the town's own hands against itself, a Pirate duels for personal glory, a
+ * Plaguebearer creeps toward the transformation into Pestilence, and a
+ * Retributionist holds a single miracle in reserve to claw a fallen townsperson
+ * back from the grave. The Mafia keeps its head down while the spoilers and the
+ * plague carve up the board.
+ *
+ * Town (8): Jailor, Sheriff, Doctor, Lookout, Vigilante, Escort, Retributionist,
+ *           Citizen.
+ * Mafia (3): Godfather, Mafioso, + one RANDOM_MAFIA.
+ * Neutral (4): Witch, Pirate, Plaguebearer, Serial Killer.
+ */
+const RECKONING_15: SetupSlot[] = [
+  // Town
+  F('JAILOR'),
+  F('SHERIFF'),
+  F('DOCTOR'),
+  F('LOOKOUT'),
+  F('VIGILANTE'),
+  F('ESCORT'),
+  F('RETRIBUTIONIST'),
+  F('CITIZEN'),
+  // Mafia
+  F('GODFATHER'),
+  F('MAFIOSO'),
+  RANDOM_MAFIA,
+  // Neutral
+  F('WITCH'),
+  F('PIRATE'),
+  F('PLAGUEBEARER'),
+  F('SERIAL_KILLER'),
+];
+
+export const RECKONING: GameSetup = {
+  id: 'reckoning',
+  name: 'The Reckoning',
+  description:
+    'A 15-player showcase of the strangest neutrals. A Witch turns the town against itself, a ' +
+    'Pirate duels for plunder, and a Plaguebearer spreads a sickness toward a terrible ' +
+    'transformation — while a Retributionist guards a single miracle to call one fallen ' +
+    'townsperson back from the dead.',
+  minPlayers: 15,
+  maxPlayers: 15,
+  townPool: ['CITIZEN', 'DOCTOR', 'SHERIFF', 'LOOKOUT', 'VIGILANTE', 'RETRIBUTIONIST'],
+  slotsByPlayerCount: {
+    '15': RECKONING_15,
+  },
+};

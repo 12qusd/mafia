@@ -1336,3 +1336,110 @@ The rule (rewritten, all old + new goldens green):
   visited" vision stays mafia-scoped (the Spy is a Town role thematically tied to the
   Mafia; a triad-watching variant is out of scope). Exposing RANDOM_TRIAD in the
   Custom Setup Builder dropdown deferred (see Bots/client decision above).
+
+---
+
+## Role expansion batch E — complex neutrals / conversions
+
+Five complex roles: **Witch** (neutral spoiler/control), **Pirate** (neutral
+benign duel/plunder), **Plaguebearer → Pestilence** (NK conversion), and
+**Retributionist** (Town resurrection). Four shipped, none skipped — all stay
+determinism/leak/win-check green.
+
+### Shared types / protocol
+- `ROLE_IDS` += WITCH, PIRATE, PLAGUEBEARER, PESTILENCE, RETRIBUTIONIST. New role
+  files + index.ts wiring + INVESTIGATOR_CLASS_TABLE (WITCH→R8, PIRATE→R6,
+  PLAGUEBEARER/PESTILENCE→R4, RETRIBUTIONIST→R2). Each role's `investigatorClass`
+  agrees with the table; roles.test.ts spec sets updated (unique, night-immune,
+  roleblock-immune, sheriff-suspicious, invest table).
+- `WINNING_PARTIES` += `WITCH` (spoiler rider) and `PIRATE` (personal rider).
+- `DEATH_CAUSES` += `pestilence` (powerful NK attack); deathLine + DEATH_CAUSE_LABEL
+  + anim effectForCause (poison) + KILL_SOURCE_ORDER entries added.
+- `PRIVATE_RESULT_KINDS` += `controlled` (Witch). Carries NO controller identity,
+  NO seats, NO roles — exactly as leak-trivial as `roleblocked`; needs NO whitelist
+  in either leak auditor. PRIVATE_RESULT_TEXT noir line added.
+- **Two-target night action**: added optional `target2` to the `night_action`
+  protocol schema, the engine `NightActionEvent` + `NightIntent`, apply.ts
+  handleNightAction (a `witch_control` missing either target is a no-op cancel),
+  the server ws handler, the bots sim-engine event mapping, and client
+  `sendNightAction`. DECISION: a full two-target client picker UI is a follow-up
+  client feature; the engine/protocol/bots path is complete and exercised.
+- Constants: RETRIBUTIONIST_REVIVES=1, PIRATE_PLUNDERS_TO_WIN=2.
+
+### Engine state / abilities
+- Seat fields: `infected` (Plaguebearer spread) + `plunderCount` (Pirate). GameState
+  fields: `pirateWinners`, `witchWinners` (computed at game over, mirror gaWinners).
+- NightAbility += witch_control, duel, infect, pestilence, retribute. ResolutionTrace
+  += witch / duel / infect / retribute / promotion:plaguebearer_to_pestilence.
+- roleinfo.ts: roleToNightAbility + abilityInfoFor for all five. resolve.ts gets a
+  local `roleNightAbility(role)` (redirect-target mapper for the Witch).
+
+### Witch (priority #1, NEUTRAL_BENIGN, control/spoiler)
+- Runs in a NEW **Step 0.5** at the very TOP of resolveNight, BEFORE jail/roleblock/
+  kills, so the redirected action flows through the rest of the pipeline normally.
+  The puppet (`target`)'s intent target is overwritten to the victim (`target2`); if
+  the puppet submitted nothing, an intent with its natural ability is CREATED. The
+  puppet gets a `controlled` private_result (NO controller id). Control-immune (a
+  Witch cannot be a puppet; another Witch is skipped, trace `redirected:false`),
+  roleblock-immune + night-immune (added to isRoleblockImmune/isNightImmune). The
+  Witch visits the puppet (actorVisits). Lowest-seat Witch wins a contested puppet.
+- WIN: `witchWinners` rider in buildGameOver — a LIVING Witch wins iff the Town did
+  NOT win (computed AFTER base winners, BEFORE the rider is added, so she never
+  counts herself). seatWon recognizes the rider. Verified across 80 sim games: WITCH
+  and TOWN NEVER co-win (0 violations); Witch rides MAFIA/SK/etc. ends.
+
+### Pirate (NEUTRAL_BENIGN, duel/plunder)
+- A `duel` adds a BlockIntent (occupies the target = roleblock) AND a `plundered`
+  guard in the kill pass (target untouchable by every kill except a leaver suicide —
+  same shape as jail). Outcome is the seeded PRNG vs a FIXED rock-paper-scissors
+  rule: draw attack a∈{0,1,2} and defense d∈{0,1,2}; plunder SUCCEEDS iff
+  (a-d+3)%3===1. A success credits `plunderCount`. WIN: `pirateWinners` rider —
+  plunderCount ≥ 2 AND alive (personal, like the Executioner).
+
+### Plaguebearer → Pestilence (NEUTRAL_KILLING conversion; reuses the NK win)
+- Infection spread in step 8 over THIS night's visit graph (visitorsByTarget /
+  visitedByActor): (1) the Plaguebearer infects everyone it visited + everyone who
+  visited it; (2) a one-step outward creep from every already-infected carrier. A
+  single bounded pass over a finite fixed graph — TERMINATES, deterministic. When
+  ALL living seats are infected, role → PESTILENCE (faction stays NEUTRAL_KILLING →
+  reuses the existing SK/last-killer win; NO new faction). Pestilence's `pestilence`
+  kill is a powerful attack (pierces basic defense; stopped by jail/plunder +
+  night-immunity). Verified: 11/60 sims reached the transform.
+
+### Retributionist (TOWN resurrection) — SHIPPED (not skipped)
+- Step-8 revive: once per game, a living Retributionist raises a DEAD **TOWN** seat
+  (alive=true, deathCause/deathDay cleared, role/faction intact, one use spent).
+  LEAK ANALYSIS: the revived seat's role was already publicly revealed at death
+  (death_announce marked it revealed for every observer), so re-aliving leaks
+  NOTHING new — we deliberately keep `revealed=true`. Only TOWN seats are revivable,
+  so no faction-roster (mafia/triad mates) re-leak is possible. The leak auditor's
+  per-observer `revealed` set already contains the seat, so a post-revive frame
+  naming the role is legitimate. Confirmed: reckoning leak sweep 0 leaks; the revived
+  seat is counted alive by the win check + rosters refresh.
+
+### Setup
+- New curated 15p **The Reckoning** (`reckoning`): Town(8: Jailor, Sheriff, Doctor,
+  Lookout, Vigilante, Escort, Retributionist, Citizen) + Mafia(3: GF, Mafioso,
+  RANDOM_MAFIA) + Neutral(4: Witch, Pirate, Plaguebearer, Serial Killer). PESTILENCE
+  is a conversion-only role (never slotted). Registered in setups/index SETUPS,
+  leakcheck SETUP_MAP. validateSetup passes. Bot policy now supplies a `target2` for
+  a Witch's control so the two-target path is exercised in sims.
+
+### Gate (batch E)
+- `pnpm -r build` green (all exhaustive WinningParty/DeathCause/PrivateResultKind/
+  Faction switches compile). `pnpm -r test`: 527 pass (shared 179, engine 165 [+16
+  batch-E goldens: witch redirect/immunity/spoiler-win, pirate duel/plunder/win,
+  plague spread→pestilence, pestilence powerful kill, retri revive/non-town/alive],
+  client 91, server 56, bots 36). `npx eslint .` clean. Leak gate: classic-9p 0
+  leaks/200 (200/200); reckoning-15p 0 leaks/60 (60/60, fresh seeds) — the Witch
+  `controlled` result + the plaguebearer→pestilence conversion + retri revive all
+  exercised and clean. Determinism: same seed → identical fingerprint across 20
+  reckoning games (incl. the Pirate PRNG draws). Sim sanity (60 games): SK 39, WITCH
+  34, MAFIA 9, PIRATE 4, TOWN 12; PESTILENCE transform in 11; PIRATE personal win in
+  4; WITCH never co-wins with TOWN (0/80). Did NOT restart pm2 / deploy; did NOT commit.
+
+### Skipped / deferred
+- Nothing skipped. The Retributionist was the at-risk role (re-aliving a revealed
+  seat) but is leak-safe (see analysis above) and shipped green. Deferred: a full
+  two-target Witch picker in the human client UI (the engine/protocol/bots path is
+  complete; `sendNightAction` accepts an optional `target2`).

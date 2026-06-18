@@ -90,6 +90,19 @@ export interface SeatState {
    * ignite burns it or the dousing Arsonist dies.
    */
   doused: boolean;
+  /**
+   * Plaguebearer (batch E): whether this seat carries the plague. Spreads via
+   * visits (the Plaguebearer's visits, and visitors to the Plaguebearer, and on
+   * outward each night). When ALL living seats are infected the Plaguebearer
+   * transforms into Pestilence. False for every seat at init.
+   */
+  infected: boolean;
+  /**
+   * Pirate (batch E): the number of successful plunders this seat has landed.
+   * Drives the personal win (reach the threshold AND be alive at the end). 0 for
+   * every non-Pirate seat.
+   */
+  plunderCount: number;
   /** Whether this seat has explicitly left the game (queued suicide). */
   leaving: boolean;
 
@@ -117,6 +130,12 @@ export interface NightIntent {
   ability: NightAbility;
   /** Target seat, or null for self/none. */
   target: SeatId | null;
+  /**
+   * Optional SECOND target (batch E, Witch). The `witch_control` ability carries
+   * the PUPPET in `target` and the VICTIM (where the puppet's action is steered)
+   * in `target2`. Every other ability ignores it. Undefined = no second target.
+   */
+  target2?: SeatId | null;
 }
 
 /**
@@ -153,6 +172,12 @@ export type NightAbility =
   | 'massacre' // Mass Murderer: kill a chosen house's resident + all other visitors there
   | 'shield' // Guardian Angel: ward the assigned charge from one attack
   | 'juggernaut' // Juggernaut: escalating lone-killer attack (visitor rampage once powerful)
+  // --- Role-expansion batch E (complex neutrals / conversions) ---
+  | 'witch_control' // Witch: seize a puppet (target) + steer their action onto a victim (target2)
+  | 'duel' // Pirate: duel/plunder a target (occupies + shields them; PRNG-decided success)
+  | 'infect' // Plaguebearer: a visit that infects the target (and spreads)
+  | 'pestilence' // Pestilence: the transformed Plaguebearer's powerful kill
+  | 'retribute' // Retributionist: once-per-game revive a dead Town seat
   | 'kill_vigilante'
   | 'kill_mafia'
   | 'kill_serial'
@@ -216,7 +241,13 @@ export type ResolutionTrace =
   | { step: 'massacre'; murderer: SeatId; house: SeatId; victims: SeatId[] }
   | { step: 'shield'; angel: SeatId; charge: SeatId }
   | { step: 'juggernaut'; juggernaut: SeatId; target: SeatId; powerful: boolean; victims: SeatId[] }
+  // --- Role-expansion batch E ---
+  | { step: 'witch'; witch: SeatId; puppet: SeatId; victim: SeatId; redirected: boolean }
+  | { step: 'duel'; pirate: SeatId; target: SeatId; attack: number; success: boolean }
+  | { step: 'infect'; plaguebearer: SeatId; infected: SeatId[]; allInfected: boolean }
+  | { step: 'retribute'; retributionist: SeatId; target: SeatId; revived: boolean }
   | { step: 'promotion'; kind: 'guardian_to_survivor'; seat: SeatId }
+  | { step: 'promotion'; kind: 'plaguebearer_to_pestilence'; seat: SeatId }
   | {
       step: 'kill';
       source: DeathCause;
@@ -331,6 +362,17 @@ export interface GameState {
   /** Personal win flags accrued during play (riders awarded at game over). */
   jesterWinners: SeatId[];
   exeWinners: SeatId[];
+  /**
+   * Pirate (batch E) personal-win seats. Computed at game over from the live
+   * state (enough successful plunders AND alive at the end), mirroring the
+   * Guardian Angel's gaWinners. Kept as a state field to surface in replays.
+   */
+  pirateWinners: SeatId[];
+  /**
+   * Witch (batch E) spoiler-win seats. Computed at game over: a living Witch whose
+   * game the Town did NOT win rides the result. Mirrors gaWinners/pirateWinners.
+   */
+  witchWinners: SeatId[];
   /**
    * Guardian Angel (batch D) personal-win seats. Unlike the jester/exe winners
    * (recorded at a lynch), the GA win is computed at game over from the live state

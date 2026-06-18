@@ -77,6 +77,12 @@ const FACTION_OF: Record<RoleId, GameState['seats'][number]['faction']> = {
   DRAGON_HEAD: 'TRIAD',
   ENFORCER: 'TRIAD',
   VANGUARD: 'TRIAD',
+  // --- Role-expansion batch E ---
+  WITCH: 'NEUTRAL_BENIGN',
+  PIRATE: 'NEUTRAL_BENIGN',
+  PLAGUEBEARER: 'NEUTRAL_KILLING',
+  PESTILENCE: 'NEUTRAL_KILLING',
+  RETRIBUTIONIST: 'TOWN',
 };
 
 const USES: Partial<Record<RoleId, { uses: number; self: number }>> = {
@@ -87,6 +93,7 @@ const USES: Partial<Record<RoleId, { uses: number; self: number }>> = {
   JANITOR: { uses: 3, self: 0 },
   VETERAN: { uses: 3, self: 0 },
   MEDIUM: { uses: 1, self: 0 },
+  RETRIBUTIONIST: { uses: 1, self: 0 },
 };
 
 /**
@@ -121,6 +128,8 @@ export function makeGame(roles: RoleId[], seed = 'seed'): GameState {
       killCount: 0,
       apparentRole: null,
       doused: false,
+      infected: false,
+      plunderCount: 0,
       leaving: false,
       stumped: false,
       deathCause: null,

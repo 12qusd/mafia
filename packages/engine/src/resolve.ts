@@ -19,7 +19,7 @@ import {
   UNIQUE_ROLES,
 } from '@nocturne/shared';
 import type { Effect } from '@nocturne/shared';
-import type { GameState, SeatState, NightIntent, ResolutionTrace } from './state.js';
+import type { GameState, SeatState, NightIntent, ResolutionTrace, NightAbility } from './state.js';
 import { pick, shuffle, type PrngState } from './prng.js';
 import { resolveBlocks, type BlockIntent } from './roleblock.js';
 import { toSeat, seatOf } from './helpers.js';
@@ -39,6 +39,7 @@ const KILL_SOURCE_ORDER: DeathCause[] = [
   'werewolf',
   'massacre',
   'juggernaut',
+  'pestilence',
   'arsonist',
   'jester_grief',
 ];
@@ -114,6 +115,53 @@ export function resolveNight(state: GameState): ResolveResult {
   const intentBySeat = new Map<SeatId, NightIntent>();
   for (const i of intents) intentBySeat.set(i.seat, i);
 
+  // -------------------------------------------------------------------------
+  // Step 0.5: WITCH CONTROL (batch E) — runs BEFORE everything resolves.
+  // -------------------------------------------------------------------------
+  // Each living Witch seizes a PUPPET (the intent's `target`) and steers their
+  // night action onto a VICTIM (`target2`). The puppet's intent target is
+  // overwritten (or, if the puppet submitted nothing, an intent is created so the
+  // puppet's natural ability fires at the victim). The Witch is control-immune (a
+  // Witch cannot be a puppet) and a Witch who would be controlled is skipped here.
+  // The puppet is told privately they were controlled — WITHOUT the controller's
+  // identity. Resolved in deterministic Witch-seat order; the lowest-seat Witch
+  // wins if two seize the same puppet. The control is applied even to a roleblocked
+  // puppet's slot — the later roleblock/jail steps then act on the redirected
+  // intent exactly as they would on any other (a jailed/blocked puppet is still
+  // stopped). The Witch herself visits the puppet (handled by `actorVisits`).
+  const controlledBy = new Map<SeatId, SeatId>(); // puppet → controlling witch
+  for (const i of [...intentBySeat.values()].sort((a, b) => a.seat - b.seat)) {
+    if (i.ability !== 'witch_control') continue;
+    const witch = seatOf(state, i.seat);
+    if (witch.role !== 'WITCH') continue;
+    const puppet = i.target;
+    const victim = i.target2 ?? null;
+    if (puppet === null || victim === null) continue;
+    if (puppet === i.seat) continue; // cannot ride yourself
+    const pSeat = seatOf(state, puppet);
+    // A Witch cannot control another control-immune seat (another Witch).
+    if (!pSeat.alive || pSeat.role === 'WITCH') {
+      traces.push({ step: 'witch', witch: i.seat, puppet, victim, redirected: false });
+      continue;
+    }
+    if (controlledBy.has(puppet)) continue; // lowest-seat witch already took them
+    controlledBy.set(puppet, i.seat);
+    // Steer the puppet's action onto the victim. If the puppet has no natural
+    // night ability, the control does nothing mechanical (still a visit/feedback).
+    const natural = roleNightAbility(pSeat.role);
+    if (natural !== null) {
+      const existing = intentBySeat.get(puppet);
+      if (existing && existing.seat === puppet) {
+        existing.target = victim;
+      } else {
+        intentBySeat.set(puppet, { seat: puppet, ability: natural, target: victim });
+      }
+    }
+    traces.push({ step: 'witch', witch: i.seat, puppet, victim, redirected: natural !== null });
+    // Tell the puppet privately their hand was moved — no controller identity.
+    effects.push(toSeat(puppet, { type: 'private_result', kind: 'controlled' }));
+  }
+
   // Werewolf (batch D): on a NON-full-moon night the beast sleeps. Drop any
   // `rampage` intent so the Werewolf neither visits (a Lookout sees nothing) nor
   // kills tonight — it simply stayed home. The rampage trace is still recorded in
@@ -165,6 +213,37 @@ export function resolveNight(state: GameState): ResolveResult {
       blockIntents.push({ blocker: i.seat, target: i.target });
     }
   }
+
+  // Pirate duel (batch E): each Pirate calls one living soul out for a duel. The
+  // dueled target is OCCUPIED for the night — roleblocked AND plundered: untouchable
+  // by every kill (like a jailed prisoner), but they survive (a duel, not a
+  // killing). The duel's outcome is decided by the seeded PRNG against a FIXED
+  // rock-paper-scissors rule: the Pirate draws an attack a∈{0,1,2}, the target a
+  // defense d∈{0,1,2}; the plunder SUCCEEDS iff (a-d+3)%3===1 (the attack "beats"
+  // the defense). A successful plunder credits the Pirate's counter (step 8).
+  // Resolved in deterministic Pirate-seat order; a jailed Pirate's intent was
+  // already removed. The duel still ROLEBLOCKS the target even on a failed plunder.
+  const dueledTargets = new Set<SeatId>(); // targets occupied + shielded by a duel
+  const duelOutcomes: { pirate: SeatId; target: SeatId; attack: number; success: boolean }[] = [];
+  for (const i of [...intentBySeat.values()].sort((a, b) => a.seat - b.seat)) {
+    if (i.ability !== 'duel' || i.target === null || i.target === i.seat) continue;
+    if (seatOf(state, i.seat).role !== 'PIRATE') continue;
+    const tgt = seatOf(state, i.target);
+    if (!tgt.alive) continue;
+    const aPick = pick(state.prng, [0, 1, 2]);
+    state.prng = aPick.state;
+    const dPick = pick(state.prng, [0, 1, 2]);
+    state.prng = dPick.state;
+    const attack = aPick.value;
+    const defense = dPick.value;
+    const success = (attack - defense + 3) % 3 === 1;
+    dueledTargets.add(i.target);
+    // The duel occupies the target (roleblock). A dueled Witch/Pestilence is
+    // roleblock-immune, so resolveBlocks will leave their action standing — but the
+    // plunder shield (untouchable) still applies below.
+    blockIntents.push({ blocker: i.seat, target: i.target });
+    duelOutcomes.push({ pirate: i.seat, target: i.target, attack, success });
+  }
   // Immune to roleblock: roleblockImmune roles (Godfather) + the SK (hazard) +
   // an alerting Veteran (batch A — barred door).
   const immune = new Set<SeatId>();
@@ -209,6 +288,19 @@ export function resolveNight(state: GameState): ResolveResult {
   // Cancel blocked seats' intents.
   for (const seat of blockRes.blocked) {
     intentBySeat.delete(seat);
+  }
+
+  // Pirate duel (batch E): record the duel outcomes (sorted) and credit each
+  // successful plunder to the Pirate's counter (drives the personal win, step 8).
+  // The trace carries the chosen attack + success; the dueled target's roleblock
+  // and untouchable shield were applied above. A plundered Witch/Pestilence is
+  // roleblock-immune (their action stands) but still shielded from kills.
+  for (const d of duelOutcomes.sort((a, b) => a.pirate - b.pirate || a.target - b.target)) {
+    traces.push({ step: 'duel', pirate: d.pirate, target: d.target, attack: d.attack, success: d.success });
+    if (d.success) {
+      const p = seatOf(state, d.pirate);
+      if (p.alive && p.role === 'PIRATE') p.plunderCount += 1;
+    }
   }
 
   // Apply SK redirects: rewrite the SK's kill target.
@@ -521,6 +613,18 @@ export function resolveNight(state: GameState): ResolveResult {
     traces.push({ step: 'juggernaut', juggernaut: i.seat, target: i.target, powerful, victims: victims.slice() });
   }
 
+  // Pestilence (batch E): the Plaguebearer's final form. A powerful lone-killer
+  // attack (pierces basic defense; stopped only by jail/plunder and night-immunity).
+  // Strikes a single chosen victim. Resolved in deterministic Pestilence-seat
+  // order; a single (unique) Pestilence owns it. The Plaguebearer itself does NOT
+  // kill — only its transformed form does.
+  for (const i of [...intentBySeat.values()].sort((a, b) => a.seat - b.seat)) {
+    if (i.ability !== 'pestilence' || seatOf(state, i.seat).role !== 'PESTILENCE') continue;
+    if (i.target === null || i.target === i.seat) continue;
+    if (!seatOf(state, i.target).alive) continue;
+    kills.push({ source: 'pestilence', attacker: i.seat, target: i.target, powerful: true });
+  }
+
   // Arsonist ignite (batch B): an arsonist who strikes the match burns EVERY
   // currently-doused living seat at once. A powerful attack — it pierces basic
   // defense (heal / bodyguard / vest) but is still stopped by jail and
@@ -588,6 +692,17 @@ export function resolveNight(state: GameState): ResolveResult {
 
     // (a) jailed & not a jailor execution → unreachable.
     if (jailed.has(k.target) && k.source !== 'jailor_execute' && k.source !== 'leave') {
+      traces.push({ step: 'kill', source: k.source, attacker: k.attacker, target: k.target, outcome: 'unreachable' });
+      if (k.attacker !== null) {
+        effects.push(toSeat(k.attacker, { type: 'private_result', kind: 'target_unreachable' }));
+      }
+      continue;
+    }
+
+    // (a.5) PLUNDERED (batch E, Pirate duel) → unreachable. A dueled soul is locked
+    // in the duel all night and cannot be killed by anyone (they survive the night);
+    // a leaver suicide is the only exception (their own choice). Same shape as jail.
+    if (dueledTargets.has(k.target) && k.source !== 'leave') {
       traces.push({ step: 'kill', source: k.source, attacker: k.attacker, target: k.target, outcome: 'unreachable' });
       if (k.attacker !== null) {
         effects.push(toSeat(k.attacker, { type: 'private_result', kind: 'target_unreachable' }));
@@ -910,6 +1025,60 @@ export function resolveNight(state: GameState): ResolveResult {
     if (landed > 0) s.killCount += landed;
   }
 
+  // Plaguebearer infection spread (batch E). The contagion spreads through this
+  // night's VISIT graph (the same `visitorsByTarget` / `visitedByActor` maps the
+  // Lookout/Tracker use). Classic spread rule (recorded, and guaranteed to
+  // terminate — it is a single bounded pass over a finite, fixed graph):
+  //   1. The Plaguebearer infects everyone IT visited and everyone who visited IT.
+  //   2. The plague then creeps one step outward from every already-infected seat:
+  //      everyone an infected seat visited, and everyone who visited an infected
+  //      seat, also catches it.
+  // Only LIVING seats are infected (the dead are past saving). When EVERY living
+  // seat is infected, the Plaguebearer transforms into Pestilence (role + faction
+  // change within NEUTRAL_KILLING — it reuses the NK win, no new faction). The
+  // transformation is the conversion mirror of executioner→jester.
+  const livingPlague = state.seats.filter((s) => s.alive && s.role === 'PLAGUEBEARER');
+  if (livingPlague.length > 0) {
+    const newlyInfected = new Set<SeatId>();
+    const infectFrom = (seat: SeatId): void => {
+      for (const v of visitedByActor.get(seat) ?? []) {
+        if (seatOf(state, v).alive) newlyInfected.add(v);
+      }
+      for (const v of visitorsByTarget.get(seat) ?? []) {
+        if (seatOf(state, v).alive) newlyInfected.add(v);
+      }
+    };
+    // Step 1: seed from each Plaguebearer's own visit edges.
+    for (const pb of livingPlague) infectFrom(pb.seat);
+    // Step 2: one-step outward creep from every seat ALREADY carrying the plague
+    // (persisted `infected` flag) plus this night's freshly-seeded carriers.
+    const carriers = state.seats.filter((s) => s.alive && s.infected).map((s) => s.seat);
+    for (const c of [...carriers, ...newlyInfected]) infectFrom(c);
+    // Apply: mark every newly-infected living seat (and the Plaguebearer itself is
+    // considered infected — it is patient zero).
+    for (const seat of newlyInfected) seatOf(state, seat).infected = true;
+    for (const pb of livingPlague) pb.infected = true;
+    // Determine whether ALL living seats now carry the plague.
+    const living = state.seats.filter((s) => s.alive);
+    const allInfected = living.length > 0 && living.every((s) => s.infected);
+    traces.push({
+      step: 'infect',
+      plaguebearer: livingPlague.map((p) => p.seat).sort((a, b) => a - b)[0]!,
+      infected: [...newlyInfected].sort((a, b) => a - b),
+      allInfected,
+    });
+    if (allInfected) {
+      for (const pb of livingPlague) {
+        pb.role = 'PESTILENCE';
+        // faction stays NEUTRAL_KILLING (reuses the existing NK / last-killer win).
+        const u = initialUses('PESTILENCE');
+        pb.usesRemaining = u.uses;
+        pb.selfUsesRemaining = u.self;
+        traces.push({ step: 'promotion', kind: 'plaguebearer_to_pestilence', seat: pb.seat });
+      }
+    }
+  }
+
   // Guardian Angel (batch D): if the GA's assigned charge died THIS night, the GA's
   // purpose is spent — it becomes a Survivor (the simpler classic rule; recorded).
   // The charge link is cleared. Mirrors the executioner→jester conversion.
@@ -925,6 +1094,40 @@ export function resolveNight(state: GameState): ResolveResult {
       s.selfUsesRemaining = u.self;
       traces.push({ step: 'promotion', kind: 'guardian_to_survivor', seat: s.seat });
     }
+  }
+
+  // Retributionist revive (batch E). Once per game, a living Retributionist who
+  // knelt at the grave of a DEAD TOWN seat raises them: they return alive with
+  // their original role and faction intact. Resolved in deterministic
+  // Retributionist-seat order; the lowest-seat Retributionist wins if two target
+  // the same grave. Only a DEAD seat of the TOWN faction is a legal target (the
+  // dark and lone killers stay buried). The revived seat's role was already
+  // publicly revealed at death, so re-aliving leaks nothing new (everyone who saw
+  // the death_announce already knows it); we keep `revealed=true` accordingly.
+  const revivedThisNight = new Set<SeatId>();
+  for (const i of [...intentBySeat.values()].sort((a, b) => a.seat - b.seat)) {
+    if (i.ability !== 'retribute' || i.target === null) continue;
+    const ret = seatOf(state, i.seat);
+    if (ret.role !== 'RETRIBUTIONIST' || !ret.alive || ret.usesRemaining <= 0) continue;
+    const tgt = seatOf(state, i.target);
+    const valid =
+      !tgt.alive &&
+      tgt.faction === 'TOWN' &&
+      !revivedThisNight.has(i.target) &&
+      !tgt.leaving; // a seat that walked out cannot be raised
+    if (!valid) {
+      traces.push({ step: 'retribute', retributionist: i.seat, target: i.target, revived: false });
+      continue;
+    }
+    // Raise the dead: restore life, clear the death bookkeeping, keep role/faction.
+    tgt.alive = true;
+    tgt.deathCause = null;
+    tgt.deathDay = null;
+    // `revealed` stays true — the role is already public from the death reveal; this
+    // does NOT re-leak. Consume the Retributionist's single use.
+    ret.usesRemaining = Math.max(0, ret.usesRemaining - 1);
+    revivedThisNight.add(i.target);
+    traces.push({ step: 'retribute', retributionist: i.seat, target: i.target, revived: true });
   }
 
   // Refresh mafia roster (drop dead members; a new Amnesiac→mafia is added).
@@ -944,6 +1147,80 @@ function sourceRank(source: DeathCause): number {
   return i === -1 ? KILL_SOURCE_ORDER.length : i;
 }
 
+/**
+ * The concrete night ability a role naturally submits (batch E, Witch control).
+ * Used to steer a controlled puppet's action onto the Witch's victim when the
+ * puppet submitted nothing. Self-only / control / passive abilities (vest, spy,
+ * alert, ignite, divine, the GF/Dragon-Head/Witch control, séance, jail-execute)
+ * cannot be meaningfully redirected at a victim, so they return null. Mirrors
+ * roleinfo.ts `roleToNightAbility` but scoped to the redirectable, single-target
+ * "act on someone" abilities a Witch can weaponize.
+ */
+function roleNightAbility(role: RoleId): NightAbility | null {
+  switch (role) {
+    case 'SHERIFF':
+      return 'investigate_sheriff';
+    case 'INVESTIGATOR':
+      return 'investigate_investigator';
+    case 'CONSIGLIERE':
+      return 'investigate_consigliere';
+    case 'LOOKOUT':
+      return 'watch';
+    case 'TRACKER':
+      return 'investigate_track';
+    case 'DOCTOR':
+      return 'protect';
+    case 'BODYGUARD':
+      return 'guard';
+    case 'CRUSADER':
+      return 'crusade';
+    case 'AMBUSHER':
+      return 'ambush';
+    case 'HYPNOTIST':
+      return 'hypnotize';
+    case 'MASS_MURDERER':
+      return 'massacre';
+    case 'JUGGERNAUT':
+      return 'juggernaut';
+    case 'GUARDIAN_ANGEL':
+      return 'shield';
+    case 'ESCORT':
+    case 'CONSORT':
+    case 'VANGUARD':
+      return 'roleblock';
+    case 'VIGILANTE':
+      return 'kill_vigilante';
+    case 'MAFIOSO':
+      return 'kill_mafia';
+    case 'ENFORCER':
+      return 'kill_triad';
+    case 'SERIAL_KILLER':
+      return 'kill_serial';
+    case 'FRAMER':
+      return 'frame';
+    case 'FORGER':
+      return 'forge';
+    case 'JANITOR':
+      return 'clean';
+    case 'BLACKMAILER':
+      return 'blackmail';
+    case 'DISGUISER':
+      return 'disguise';
+    case 'PIRATE':
+      return 'duel';
+    case 'PLAGUEBEARER':
+      return 'infect';
+    case 'PESTILENCE':
+      return 'pestilence';
+    // Arsonist's douse is its visiting single-target action.
+    case 'ARSONIST':
+      return 'douse';
+    // Not meaningfully redirectable at a victim (self / control / passive / convert).
+    default:
+      return null;
+  }
+}
+
 function findJailor(state: GameState): SeatId | null {
   const j = state.seats.find((s) => s.role === 'JAILOR' && s.alive);
   return j ? j.seat : null;
@@ -958,12 +1235,22 @@ function isNightImmune(seat: SeatState): boolean {
     seat.role === 'ARSONIST' ||
     seat.role === 'WEREWOLF' ||
     seat.role === 'MASS_MURDERER' ||
-    seat.role === 'JUGGERNAUT'
+    seat.role === 'JUGGERNAUT' ||
+    // Batch E: the Witch (control/spoiler) and Pestilence (the Plaguebearer's
+    // powerful final form) are both untouchable in the night.
+    seat.role === 'WITCH' ||
+    seat.role === 'PESTILENCE'
   );
 }
 
 function isRoleblockImmune(seat: SeatState): boolean {
-  return seat.role === 'GODFATHER' || seat.role === 'DRAGON_HEAD';
+  return (
+    seat.role === 'GODFATHER' ||
+    seat.role === 'DRAGON_HEAD' ||
+    // Batch E: the Witch and Pestilence cannot be roleblocked.
+    seat.role === 'WITCH' ||
+    seat.role === 'PESTILENCE'
+  );
 }
 
 /** Roles an Amnesiac may NOT remember (the "win by a trick" benigns, batch B). */
@@ -1109,11 +1396,21 @@ function actorVisits(_actor: SeatState, intent: NightIntent): boolean {
     case 'massacre':
     case 'shield':
     case 'juggernaut':
+    // Batch E: the Witch visits the puppet she rides; the Pirate visits the seat it
+    // duels; the Plaguebearer/Pestilence visit their target.
+    case 'witch_control': // eslint-disable-line no-fallthrough
+    case 'duel':
+    case 'infect':
+    case 'pestilence':
     case 'kill_vigilante':
     case 'kill_mafia':
     case 'kill_triad':
     case 'kill_serial':
       return true;
+    case 'retribute':
+      // Retributionist (batch E): the revive is resolved in the promotion step, not
+      // as a street visit — a graveside vigil, not a call on a living house.
+      return false;
     default:
       return false;
   }

@@ -41,6 +41,11 @@ import { JUGGERNAUT } from './juggernaut.js';
 import { DRAGON_HEAD } from './dragon_head.js';
 import { ENFORCER } from './enforcer.js';
 import { VANGUARD } from './vanguard.js';
+import { WITCH } from './witch.js';
+import { PIRATE } from './pirate.js';
+import { PLAGUEBEARER } from './plaguebearer.js';
+import { PESTILENCE } from './pestilence.js';
+import { RETRIBUTIONIST } from './retributionist.js';
 
 export type { RoleDefinition } from './types.js';
 export type { NightActionKind, DayActionKind, TargetScope, AbilityUses } from './types.js';
@@ -86,6 +91,11 @@ export {
   DRAGON_HEAD,
   ENFORCER,
   VANGUARD,
+  WITCH,
+  PIRATE,
+  PLAGUEBEARER,
+  PESTILENCE,
+  RETRIBUTIONIST,
 };
 
 /** Registry of every role definition, keyed by id (BUILD_SPEC §6.5). */
@@ -130,6 +140,11 @@ export const ROLES: Readonly<Record<RoleId, RoleDefinition>> = {
   DRAGON_HEAD,
   ENFORCER,
   VANGUARD,
+  WITCH,
+  PIRATE,
+  PLAGUEBEARER,
+  PESTILENCE,
+  RETRIBUTIONIST,
 };
 
 /** Look up a role definition by id. */
@@ -147,13 +162,13 @@ export const ALL_ROLES: readonly RoleDefinition[] = Object.values(ROLES);
  */
 export const INVESTIGATOR_CLASS_TABLE: Readonly<Record<InvestigatorClass, readonly RoleId[]>> = {
   R1: ['CITIZEN', 'SURVIVOR', 'EXECUTIONER', 'AMNESIAC', 'GUARDIAN_ANGEL'],
-  R2: ['SHERIFF', 'JAILOR', 'BLACKMAILER', 'TRACKER'],
+  R2: ['SHERIFF', 'JAILOR', 'BLACKMAILER', 'TRACKER', 'RETRIBUTIONIST'],
   R3: ['INVESTIGATOR', 'JESTER', 'CONSIGLIERE', 'SPY', 'PSYCHIC'],
-  R4: ['DOCTOR', 'SERIAL_KILLER', 'MEDIUM', 'MASS_MURDERER'],
+  R4: ['DOCTOR', 'SERIAL_KILLER', 'MEDIUM', 'MASS_MURDERER', 'PLAGUEBEARER', 'PESTILENCE'],
   R5: ['ESCORT', 'CONSORT', 'JANITOR', 'HYPNOTIST', 'VANGUARD'],
-  R6: ['VIGILANTE', 'MAFIOSO', 'VETERAN', 'CRUSADER', 'WEREWOLF', 'JUGGERNAUT', 'ENFORCER'],
+  R6: ['VIGILANTE', 'MAFIOSO', 'VETERAN', 'CRUSADER', 'WEREWOLF', 'JUGGERNAUT', 'ENFORCER', 'PIRATE'],
   R7: ['GODFATHER', 'MAYOR', 'BODYGUARD', 'ARSONIST', 'DRAGON_HEAD'],
-  R8: ['FRAMER', 'LOOKOUT', 'FORGER', 'DISGUISER', 'AMBUSHER'],
+  R8: ['FRAMER', 'LOOKOUT', 'FORGER', 'DISGUISER', 'AMBUSHER', 'WITCH'],
 };
 
 /**

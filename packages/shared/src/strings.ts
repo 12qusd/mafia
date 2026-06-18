@@ -113,6 +113,8 @@ export function deathLine(cause: DeathCause, seatLabel: string, roleName: string
       return `${seatLabel} was one of several found slaughtered in the same blood-soaked house. They were the ${roleName}.`;
     case 'juggernaut':
       return `${seatLabel} was beaten down by something that only grows stronger. They were the ${roleName}.`;
+    case 'pestilence':
+      return `${seatLabel} was carried off by a sickness that finally turned to ruin. They were the ${roleName}.`;
     default: {
       // Exhaustiveness guard.
       const _never: never = cause;
@@ -140,6 +142,8 @@ export const PRIVATE_RESULT_TEXT: Record<PrivateResultKind, string> = {
   janitor_result: '', // resolved via janitorResultLine (needs the cleaned role)
   lookout_result: '', // resolved via lookoutResultLine (needs the visitors)
   roleblocked: 'Someone kept you tied up all evening. Your work never got done.',
+  controlled:
+    'A force not your own moved your hand tonight. Whatever you set out to do, it was turned against a stranger.',
   block_failed: 'You tried, but your mark would not be drawn away from their business.',
   target_unreachable: 'Your mark was nowhere to be found tonight — locked away beyond your reach.',
   attacked_survived: 'You struck, but your mark shrugged it off and walked away whole.',

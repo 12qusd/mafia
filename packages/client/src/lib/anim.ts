@@ -235,6 +235,9 @@ export function effectForCause(cause: DeathCause): CauseEffect {
     case 'juggernaut':
       // Brutal, close-quarters killings — the knife flourish reads as savagery.
       return 'knife';
+    case 'pestilence':
+      // The plague's reaping — a creeping sickness reads as a poisoning.
+      return 'poison';
     case 'lynch':
     case 'jailor_execute':
       return 'noose';

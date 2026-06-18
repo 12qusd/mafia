@@ -22,7 +22,7 @@
  */
 
 import type { WinningParty, SeatOutcome } from '@nocturne/shared';
-import { STALEMATE_QUIET_NIGHTS } from '@nocturne/shared';
+import { STALEMATE_QUIET_NIGHTS, PIRATE_PLUNDERS_TO_WIN } from '@nocturne/shared';
 import type { GameState, SeatState, WinCheckReason, GameOverState, SeatResult } from './state.js';
 import { livingSeats } from './helpers.js';
 
@@ -182,6 +182,31 @@ export function buildGameOver(
   }
   if (state.gaWinners.length > 0) winners.add('GUARDIAN_ANGEL');
 
+  // Pirate (batch E) personal win: landed enough successful plunders AND alive at
+  // the end. A personal rider like the Executioner — independent of who took the
+  // match. Computed from the final state into pirateWinners (mirrors gaWinners).
+  state.pirateWinners = [];
+  for (const s of state.seats) {
+    if (s.role === 'PIRATE' && s.alive && s.plunderCount >= PIRATE_PLUNDERS_TO_WIN) {
+      state.pirateWinners.push(s.seat);
+    }
+  }
+  if (state.pirateWinners.length > 0) winners.add('PIRATE');
+
+  // Witch (batch E) SPOILER win: a living Witch wins iff the Town did NOT win
+  // (she rides any evil / neutral-killing victory, or a non-Town stalemate, or any
+  // end where the Town is not among the winners). Computed AFTER the base winners
+  // are known, BEFORE the Witch rider is added (so the Witch does not count herself
+  // as a non-Town winner). Recorded into witchWinners (mirrors gaWinners).
+  state.witchWinners = [];
+  const townWon = winners.has('TOWN');
+  if (!townWon) {
+    for (const s of state.seats) {
+      if (s.role === 'WITCH' && s.alive) state.witchWinners.push(s.seat);
+    }
+  }
+  if (state.witchWinners.length > 0) winners.add('WITCH');
+
   const winnerList = [...winners];
 
   // Per-seat outcome.
@@ -207,6 +232,11 @@ function seatWon(seat: SeatState, state: GameState, winners: WinningParty[]): bo
   if (state.jesterWinners.includes(seat.seat)) return true;
   if (state.exeWinners.includes(seat.seat)) return true;
   if (state.gaWinners.includes(seat.seat)) return true;
+  // Batch E personal riders: the Pirate (enough plunders, alive) and the Witch
+  // (alive in a game the Town did not win) were computed into their winner lists
+  // in buildGameOver.
+  if (state.pirateWinners.includes(seat.seat)) return true;
+  if (state.witchWinners.includes(seat.seat)) return true;
   // Survivor and a never-remembered Amnesiac ride any win if alive at the end.
   if (seat.role === 'SURVIVOR' || seat.role === 'AMNESIAC') return seat.alive;
 

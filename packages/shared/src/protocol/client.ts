@@ -83,10 +83,15 @@ export const VerdictSchema = envelope('verdict', {
   value: VerdictValueSchema,
 });
 
-// night_action {ability, target: SeatId | null}  // null = cancel
+// night_action {ability, target: SeatId | null, target2?}  // null = cancel
+// `target2` (batch E, Witch): a SECOND target some abilities take — the Witch's
+// `witch_control` carries the PUPPET in `target` and the VICTIM (where the
+// puppet's action is redirected) in `target2`. Optional and additive: every
+// existing single-target ability ignores it.
 export const NightActionSchema = envelope('night_action', {
   ability: AbilityIdSchema,
   target: z.union([SeatIdSchema, z.null()]),
+  target2: SeatIdSchema.optional(),
 });
 
 // day_ability {ability, target?}  // jailor select, mayor reveal

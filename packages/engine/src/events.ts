@@ -39,6 +39,12 @@ export interface NightActionEvent extends Stamped {
   seat: SeatId;
   ability: NightAbility;
   target: SeatId | null;
+  /**
+   * Optional SECOND target (batch E, Witch). The `witch_control` ability carries
+   * the PUPPET in `target` and the VICTIM (where the puppet's action is steered)
+   * in `target2`. Every other ability ignores it.
+   */
+  target2?: SeatId | null;
 }
 
 /** Day ability (jailor select / mayor reveal / medium séance). */
