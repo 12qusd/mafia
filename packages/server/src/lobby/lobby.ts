@@ -13,7 +13,7 @@ import {
   SPECTATOR_CAP,
   MIN_PLAYERS,
   MAX_PLAYERS,
-  getSetup,
+  type GameSetup,
   type Lobby as LobbyDTO,
   type LobbyConfig,
   type LobbyVisibility,
@@ -66,6 +66,12 @@ export class Lobby implements AudienceProvider {
     public config: ResolvedLobbyConfig,
     readonly inviteCode: string | null,
     hostConn: Connection,
+    /**
+     * The fully resolved GameSetup this lobby plays — shipped, `custom:`, or
+     * `chaos:`. Resolved once at creation (custom setups are async DB reads) so
+     * start/list never re-resolve a non-shipped setup. (custom setup builder)
+     */
+    readonly resolvedSetup: GameSetup,
   ) {
     this.hostId = hostConn.identityId as string;
     this.members.set(this.hostId, { conn: hostConn, joinedAt: this.createdAt, spectator: false });
@@ -127,8 +133,7 @@ export class Lobby implements AudienceProvider {
     if (asSpectator) {
       if (this.spectatorCount >= SPECTATOR_CAP) return 'lobby_full';
     } else {
-      const setup = getSetup(this.setupId);
-      const cap = setup ? Math.min(setup.maxPlayers, MAX_PLAYERS) : MAX_PLAYERS;
+      const cap = Math.min(this.resolvedSetup.maxPlayers, MAX_PLAYERS);
       if (this.playerCount >= cap) return 'lobby_full';
     }
     this.members.set(id, { conn, joinedAt: Date.now(), spectator: asSpectator });
@@ -172,8 +177,7 @@ export class Lobby implements AudienceProvider {
 
   /** Whether start preconditions are met (§7.4). */
   canStart(): boolean {
-    const setup = getSetup(this.setupId);
-    if (!setup) return false;
+    const setup = this.resolvedSetup;
     const n = this.playerCount;
     if (n < MIN_PLAYERS || n > MAX_PLAYERS) return false;
     if (n < setup.minPlayers || n > setup.maxPlayers) return false;

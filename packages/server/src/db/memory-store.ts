@@ -6,6 +6,7 @@
  * for the process lifetime; match writes are dropped.
  */
 
+import type { GameSetup } from '@nocturne/shared';
 import { newId } from '../ids.js';
 import { log } from '../log.js';
 import type {
@@ -20,6 +21,7 @@ import type {
   LeaderboardEntry,
   PointAwardRecord,
   StatsDelta,
+  CustomSetupRow,
 } from './types.js';
 
 export class MemoryStore implements Store {
@@ -31,6 +33,8 @@ export class MemoryStore implements Store {
   /** In-memory points/achievements (process-lifetime only; guests excluded). */
   private readonly stats = new Map<string, UserStatsRow>();
   private readonly achievementsByUser = new Map<string, Set<string>>();
+  /** In-process custom setups (process-lifetime only). */
+  private readonly customSetups = new Map<string, CustomSetupRow>();
 
   constructor() {
     log.warn('NO_DB mode: running guests-only with no persistence (§10).');
@@ -193,6 +197,37 @@ export class MemoryStore implements Store {
       }));
   }
   async upsertDailyRollup(): Promise<void> {}
+
+  async createCustomSetup(
+    ownerUserId: string,
+    name: string,
+    setup: GameSetup,
+  ): Promise<CustomSetupRow> {
+    const row: CustomSetupRow = {
+      id: `custom:${newId()}`,
+      ownerUserId,
+      name,
+      // Clone so later mutation of the caller's object cannot bleed in.
+      setup: JSON.parse(JSON.stringify(setup)) as GameSetup,
+      createdAt: Date.now(),
+    };
+    this.customSetups.set(row.id, row);
+    return row;
+  }
+  async getCustomSetup(id: string): Promise<CustomSetupRow | null> {
+    return this.customSetups.get(id) ?? null;
+  }
+  async listCustomSetups(ownerUserId: string): Promise<CustomSetupRow[]> {
+    return [...this.customSetups.values()]
+      .filter((r) => r.ownerUserId === ownerUserId)
+      .sort((a, b) => b.createdAt - a.createdAt);
+  }
+  async deleteCustomSetup(id: string, ownerUserId: string): Promise<boolean> {
+    const row = this.customSetups.get(id);
+    if (!row || row.ownerUserId !== ownerUserId) return false;
+    this.customSetups.delete(id);
+    return true;
+  }
 
   async close(): Promise<void> {}
 }

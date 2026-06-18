@@ -666,3 +666,43 @@ every protocol change.
 - **[admin] A "stump" is `alive` but `stumped`: faction forced to TOWN, vote
   weight 0, night/day actions rejected, removed from the mafia roster.** A public
   leak-safe `seat_transform` frame announces it.
+
+### Custom setups & setup-of-the-day (goals 10 & 11)
+
+- **[setups] Validation, chaos, and daily rotation are PURE functions in
+  `@nocturne/shared`** (`setups/validate.ts`, `setups/chaos.ts`,
+  `setups/daily.ts`) — no `Date.now`/`Math.random`. The chaos generator and daily
+  rotation are SEEDED via a shared-local PRNG (`setups/prng.ts`, FNV-1a +
+  mulberry32, mirroring `engine/src/prng.ts`) so `shared` keeps no engine
+  dependency while staying deterministic. The SERVER supplies the date string to
+  the daily helpers (`new Date().toISOString().slice(0,10)` is allowed in the
+  server, never in engine/shared). (goals 10, 11)
+- **[setups] `validateSetup` runs before any custom/generated setup is persisted
+  or used to create a lobby.** A malformed setup can crash engine `init()`, so the
+  validator checks per-count slot==count, real role ids, unique roles ≤1 per
+  count, faction-homogeneous & non-empty `RANDOM_TOWN` pools, and at least one
+  killing role (any MAFIA slot, any `nightAction:'kill'` role, or a Jailor's
+  execution) so a game can always end. A MAFIA-faction slot counts as killing
+  because the standing faction kill always lands even with a Godfather (whose
+  `nightAction` is `control`). (goal 10)
+- **[setups] `chaosSetup(seed)` builds a multi-count (7..15) auto-scaling setup;
+  `chaosSetup(seed, count)` pins one count.** The multi-count form lets a
+  `chaos:<seed>` id behave exactly like a shipped setup through the lobby/start
+  path, so no chaos seed needs separate persistence. Each count: Godfather +
+  Mafioso core, scaling Mafia support (3 mafia at 12+), a Serial Killer at 10+,
+  and the rest random Town (unique roles never doubled, Citizen pads any gap).
+  Original noir name/copy ("Anything Goes"). (goal 11)
+- **[setups] Lobby setup resolution is centralized in
+  `LobbyManager.resolveSetup`** and routes by id prefix: `custom:` (async store
+  read → `unknown_setup` if missing), `chaos:` (generated), else shipped. The
+  resolved `GameSetup` is stored on the `Lobby` (`resolvedSetup`); `startGame`,
+  `canStart`, the join cap, and `publicLobbyList` all read it instead of
+  re-calling `getSetup(setupId)`, so custom/chaos setups work end to end.
+  `createLobby` became `async` (one call site: `ws/handlers.onCreateLobby`). A
+  resolved setup that fails `validateSetup` is rejected as `unknown_setup`. (goal 10)
+- **[setups] Custom setups persist in `custom_setups` (JSONB) keyed
+  `custom:<uuid>`; `scheduled_setups` is the optional admin-override table for
+  setup-of-the-day** (the daily feature is otherwise computed purely). The
+  MemoryStore (NO_DB) keeps custom setups in a process Map so the resolution path
+  is testable without Postgres. The `POST /api/setups/custom` route is
+  registered-users-only (guests 403), so building setups needs an account. (goals 10, 11)

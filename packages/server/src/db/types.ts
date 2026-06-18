@@ -6,7 +6,7 @@
  * it only at login/lobby-join (ban/mute checks) and at match end (bulk write).
  */
 
-import type { ReportCategory } from '@nocturne/shared';
+import type { ReportCategory, GameSetup } from '@nocturne/shared';
 
 export interface UserRow {
   id: string;
@@ -122,6 +122,20 @@ export interface StatsDelta {
   daysDeadWatched: number;
 }
 
+// --------------------------------------------------------------------------
+// Custom setups (custom setup builder)
+// --------------------------------------------------------------------------
+
+/** A user-built, server-validated role setup persisted for lobby creation. */
+export interface CustomSetupRow {
+  /** `custom:<uuid>` — namespaced so the lobby resolver can route it. */
+  id: string;
+  ownerUserId: string;
+  name: string;
+  setup: GameSetup;
+  createdAt: number;
+}
+
 /** Active-sanction summary used at login / lobby-join (§10, §11). */
 export interface ActiveSanctions {
   banned: boolean;
@@ -181,6 +195,14 @@ export interface Store {
   getUserStats(userId: string): Promise<UserStatsRow | null>;
   getUserAchievements(userId: string): Promise<string[]>;
   getLeaderboard(limit: number): Promise<LeaderboardEntry[]>;
+
+  // Custom setups (custom setup builder). The server validates the setup before
+  // calling createCustomSetup; the store only persists/reads it.
+  createCustomSetup(ownerUserId: string, name: string, setup: GameSetup): Promise<CustomSetupRow>;
+  getCustomSetup(id: string): Promise<CustomSetupRow | null>;
+  listCustomSetups(ownerUserId: string): Promise<CustomSetupRow[]>;
+  /** Delete a setup; succeeds only if owned by `ownerUserId`. Returns whether a row was removed. */
+  deleteCustomSetup(id: string, ownerUserId: string): Promise<boolean>;
 
   // Telemetry rollup (§15)
   upsertDailyRollup(day: string, fields: Record<string, number>): Promise<void>;

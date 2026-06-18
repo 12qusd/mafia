@@ -111,6 +111,30 @@ CREATE TABLE IF NOT EXISTS point_log (
 CREATE INDEX IF NOT EXISTS point_log_user_idx ON point_log(user_id);
 
 -- --------------------------------------------------------------------------
+-- Custom & scheduled setups (custom setup builder + setup-of-the-day)
+-- --------------------------------------------------------------------------
+
+-- User-built role setups, validated server-side before insert. The full
+-- GameSetup is stored as JSONB; lobbies reference it by the `custom:<uuid>` id.
+CREATE TABLE IF NOT EXISTS custom_setups (
+  id            text PRIMARY KEY,
+  owner_user_id uuid REFERENCES users(id) ON DELETE CASCADE,
+  name          text NOT NULL,
+  json          jsonb NOT NULL,
+  created_at    timestamptz NOT NULL DEFAULT now()
+);
+CREATE INDEX IF NOT EXISTS custom_setups_owner_idx ON custom_setups(owner_user_id);
+
+-- Optional persistence for an admin-overridable setup-of-the-day. The daily
+-- feature is otherwise computed purely from the date; a row here pins a day.
+CREATE TABLE IF NOT EXISTS scheduled_setups (
+  day        date PRIMARY KEY,
+  setup_id   text NOT NULL,
+  kind       text NOT NULL,   -- shipped | custom | chaos
+  chaos_seed text NULL
+);
+
+-- --------------------------------------------------------------------------
 -- Chat (§10) — partitioned weekly; retention via DROP PARTITION (90d)
 -- --------------------------------------------------------------------------
 

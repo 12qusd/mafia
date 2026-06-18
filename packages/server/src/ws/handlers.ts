@@ -187,7 +187,7 @@ export class MessageHandlers {
       replyError(conn, 'forbidden', 'banned');
       return;
     }
-    const res = this.ctx.manager.createLobby(conn, {
+    const res = await this.ctx.manager.createLobby(conn, {
       name: msg.name,
       visibility: msg.visibility,
       setupId: msg.setupId,

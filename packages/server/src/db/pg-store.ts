@@ -5,6 +5,7 @@
  */
 
 import { Pool } from 'pg';
+import type { GameSetup } from '@nocturne/shared';
 import { newId } from '../ids.js';
 import type {
   Store,
@@ -19,6 +20,7 @@ import type {
   LeaderboardEntry,
   PointAwardRecord,
   StatsDelta,
+  CustomSetupRow,
 } from './types.js';
 
 interface PgUser {
@@ -492,6 +494,82 @@ export class PgStore implements Store {
        ON CONFLICT (day) DO UPDATE SET ${setSql}`,
       [day, ...cols.map((c) => fields[c])],
     );
+  }
+
+  // --- Custom setups (custom setup builder) --------------------------------
+
+  private mapCustomSetup(r: {
+    id: string;
+    owner_user_id: string;
+    name: string;
+    json: unknown;
+    created_at: Date;
+  }): CustomSetupRow {
+    return {
+      id: r.id,
+      ownerUserId: r.owner_user_id,
+      name: r.name,
+      setup: r.json as GameSetup,
+      createdAt: r.created_at.getTime(),
+    };
+  }
+
+  async createCustomSetup(
+    ownerUserId: string,
+    name: string,
+    setup: GameSetup,
+  ): Promise<CustomSetupRow> {
+    const id = `custom:${newId()}`;
+    const { rows } = await this.pool.query<{
+      id: string;
+      owner_user_id: string;
+      name: string;
+      json: unknown;
+      created_at: Date;
+    }>(
+      `INSERT INTO custom_setups (id, owner_user_id, name, json)
+       VALUES ($1, $2, $3, $4)
+       RETURNING id, owner_user_id, name, json, created_at`,
+      [id, ownerUserId, name, JSON.stringify(setup)],
+    );
+    return this.mapCustomSetup(rows[0] as never);
+  }
+
+  async getCustomSetup(id: string): Promise<CustomSetupRow | null> {
+    const { rows } = await this.pool.query<{
+      id: string;
+      owner_user_id: string;
+      name: string;
+      json: unknown;
+      created_at: Date;
+    }>(
+      `SELECT id, owner_user_id, name, json, created_at FROM custom_setups WHERE id = $1`,
+      [id],
+    );
+    return rows[0] ? this.mapCustomSetup(rows[0]) : null;
+  }
+
+  async listCustomSetups(ownerUserId: string): Promise<CustomSetupRow[]> {
+    const { rows } = await this.pool.query<{
+      id: string;
+      owner_user_id: string;
+      name: string;
+      json: unknown;
+      created_at: Date;
+    }>(
+      `SELECT id, owner_user_id, name, json, created_at
+       FROM custom_setups WHERE owner_user_id = $1 ORDER BY created_at DESC`,
+      [ownerUserId],
+    );
+    return rows.map((r) => this.mapCustomSetup(r));
+  }
+
+  async deleteCustomSetup(id: string, ownerUserId: string): Promise<boolean> {
+    const res = await this.pool.query(
+      `DELETE FROM custom_setups WHERE id = $1 AND owner_user_id = $2`,
+      [id, ownerUserId],
+    );
+    return (res.rowCount ?? 0) > 0;
   }
 
   async close(): Promise<void> {

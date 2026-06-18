@@ -21,7 +21,8 @@ export function registerPublicRoutes(app: FastifyInstance, ctx: GatewayContext):
   // Public lobby browser data (§7.3).
   app.get('/api/lobbies', async () => ({ lobbies: ctx.manager.publicLobbyList() }));
 
-  // Setup catalog (lobby creation picker).
+  // Setup catalog (lobby creation picker). Shipped setups carry `chaos: false`;
+  // chaos setups are generated on demand via /api/setups/chaos and /api/setups/daily.
   app.get('/api/setups', async () => ({
     setups: SETUPS.map((s) => ({
       id: s.id,
@@ -29,6 +30,7 @@ export function registerPublicRoutes(app: FastifyInstance, ctx: GatewayContext):
       description: s.description,
       minPlayers: s.minPlayers,
       maxPlayers: s.maxPlayers,
+      chaos: false,
     })),
   }));
 

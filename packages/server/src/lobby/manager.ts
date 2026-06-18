@@ -9,6 +9,8 @@
 
 import {
   getSetup,
+  chaosSetup,
+  validateSetup,
   type GameSetup,
   type LobbyVisibility,
   type LobbyConfig,
@@ -70,16 +72,19 @@ export class LobbyManager {
 
   // --- Lobby creation / joining (§7.2, §7.3) -------------------------------
 
-  createLobby(
+  async createLobby(
     conn: Connection,
     input: { name: string; visibility: LobbyVisibility; setupId: string; config?: LobbyConfig },
-  ): { lobby: Lobby } | { error: string } {
+  ): Promise<{ lobby: Lobby } | { error: string }> {
     if (this.draining) return { error: 'cannot_start' };
     const identityId = conn.identityId;
     if (!identityId) return { error: 'not_authenticated' };
     if (this.identityScope.has(identityId)) return { error: 'already_in_lobby' };
-    const setup = getSetup(input.setupId);
-    if (!setup) return { error: 'unknown_setup' };
+    // Resolve shipped / custom: / chaos: setups to a concrete GameSetup. Custom
+    // setups are async store reads; all are validated before use so a malformed
+    // setup can never reach engine init().
+    const resolved = await this.resolveSetup(input.setupId);
+    if ('error' in resolved) return { error: resolved.error };
 
     // TEST MODE gating (§5 is still law for normal games). A test lobby is only
     // honored when the env gate is open OR the creator is an admin. It is forced
@@ -100,7 +105,16 @@ export class LobbyManager {
     const cfg = resolveConfig(visibility, { ...input.config, testMode });
     const inviteCode = visibility === 'private' ? this.uniqueInvite() : null;
     const id = newId();
-    const lobby = new Lobby(id, input.name, visibility, input.setupId, cfg, inviteCode, conn);
+    const lobby = new Lobby(
+      id,
+      input.name,
+      visibility,
+      input.setupId,
+      cfg,
+      inviteCode,
+      conn,
+      resolved.setup,
+    );
     this.lobbies.set(id, lobby);
     if (inviteCode) this.inviteIndex.set(inviteCode, id);
     this.identityScope.set(identityId, id);
@@ -117,6 +131,33 @@ export class LobbyManager {
       if (!this.inviteIndex.has(code)) return code;
     }
     return newInviteCode();
+  }
+
+  /**
+   * Resolve a setupId to a concrete, validated GameSetup. Routes by prefix:
+   *  - `custom:<uuid>` → loaded from the store (404 ⇒ unknown_setup).
+   *  - `chaos:<seed>`  → generated deterministically (multi-count, 7..15).
+   *  - otherwise       → a shipped setup via `getSetup`.
+   * Every resolved setup is validated; an invalid one (e.g. tampered custom row)
+   * is rejected so it can never crash engine init().
+   */
+  private async resolveSetup(
+    setupId: string,
+  ): Promise<{ setup: GameSetup } | { error: string }> {
+    let setup: GameSetup | undefined;
+    if (setupId.startsWith('custom:')) {
+      const row = await this.deps.store.getCustomSetup(setupId);
+      if (!row) return { error: 'unknown_setup' };
+      setup = row.setup;
+    } else if (setupId.startsWith('chaos:')) {
+      // Build a full auto-scaling chaos setup from the seed in the id.
+      setup = chaosSetup(setupId.slice('chaos:'.length));
+    } else {
+      setup = getSetup(setupId);
+    }
+    if (!setup) return { error: 'unknown_setup' };
+    if (!validateSetup(setup).ok) return { error: 'unknown_setup' };
+    return { setup };
   }
 
   joinLobby(
@@ -377,8 +418,7 @@ export class LobbyManager {
       identityId: c.identityId as string,
       name: this.deps.nameOf(c.identityId as string),
     }));
-    const setup = getSetup(lobby.setupId);
-    if (!setup) return { error: 'unknown_setup' };
+    const setup = lobby.resolvedSetup;
     const playerCount = roster.length;
     const lockedSetup = lockSetupToCount(setup, playerCount);
     if (!lockedSetup) return { error: 'cannot_start' };
@@ -510,12 +550,11 @@ export class LobbyManager {
     const out = [];
     for (const lobby of this.lobbies.values()) {
       if (lobby.visibility !== 'public') continue;
-      const setup = getSetup(lobby.setupId);
       out.push({
         id: lobby.id,
         name: lobby.name,
         players: lobby.playerCount,
-        capacity: setup?.maxPlayers ?? 15,
+        capacity: lobby.resolvedSetup.maxPlayers,
         setup: lobby.setupId,
         status: lobby.status,
       });

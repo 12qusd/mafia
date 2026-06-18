@@ -22,6 +22,7 @@ import { Gateway } from './ws/gateway.js';
 import type { GatewayContext } from './ws/context.js';
 import { registerAuthRoutes } from './http/auth-routes.js';
 import { registerPublicRoutes } from './http/public-routes.js';
+import { registerSetupRoutes } from './http/setups-routes.js';
 import { registerAdminRoutes } from './http/admin-routes.js';
 import { registerTestRoutes } from './http/test-routes.js';
 import { BotManager, type BotLlmConfig } from './bots/manager.js';
@@ -117,6 +118,7 @@ export async function buildApp(cfg: ServerConfig): Promise<BuiltApp> {
 
   registerPublicRoutes(app, ctx);
   registerAuthRoutes(app, ctx);
+  registerSetupRoutes(app, ctx);
   registerAdminRoutes(app, ctx);
   registerTestRoutes(app, ctx);
 
