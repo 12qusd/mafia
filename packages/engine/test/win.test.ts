@@ -191,4 +191,87 @@ describe('§6.9 win conditions', () => {
       expect(go.msg.winners).toContain('MAFIA');
     }
   });
+
+  // --- Vampire faction (third evil killing faction) ------------------------
+
+  it('Vampire wins at parity (vampireCount >= rest, no other killer)', () => {
+    // 2 vampire, 2 town → vampireCount(2) >= rest(2) ⇒ vampire win.
+    const s = makeGame(['VAMPIRE', 'VAMPIRE', 'CITIZEN', 'SHERIFF']);
+    const win = checkWin(s);
+    expect(win).toMatchObject({ reason: 'vampire_parity', winners: ['VAMPIRE'] });
+  });
+
+  it('Town does NOT win while a Vampire lives', () => {
+    // 1 vampire + 3 town: no parity yet, but a vampire alive ⇒ town cannot win.
+    const s = makeGame(['VAMPIRE', 'CITIZEN', 'SHERIFF', 'DOCTOR']);
+    expect(checkWin(s)).toBeNull();
+  });
+
+  it('Town wins once the Vampires are all gone (no Mafia/Triad/Vampire/SK)', () => {
+    const s = makeGame(['SHERIFF', 'DOCTOR', 'VAMPIRE_HUNTER']);
+    expect(checkWin(s)).toMatchObject({ reason: 'town_elimination', winners: ['TOWN'] });
+  });
+
+  it('Vampire does NOT win while a Mafia lives (two killing factions ⇒ continue)', () => {
+    // 2 vampire, 1 mafia: vampire at parity vs the rest, but Mafia alive blocks it.
+    const s = makeGame(['VAMPIRE', 'VAMPIRE', 'MAFIOSO']);
+    expect(checkWin(s)).toBeNull();
+  });
+
+  it('Vampire does NOT win while a Serial Killer lives', () => {
+    const s = makeGame(['VAMPIRE', 'VAMPIRE', 'SERIAL_KILLER']);
+    expect(checkWin(s)).toBeNull();
+  });
+
+  it('coexistence: Mafia + Vampire + Town alive ⇒ game continues', () => {
+    const s = makeGame(['GODFATHER', 'VAMPIRE', 'CITIZEN', 'SHERIFF', 'DOCTOR']);
+    expect(checkWin(s)).toBeNull();
+    expect(checkWin(s, { atDayVotingStart: true })).toBeNull();
+  });
+
+  it('Mafia-vs-Vampire pure endgame: larger faction wins at DAY_VOTING start', () => {
+    // 2 mafia vs 1 vampire, nothing else ⇒ Mafia (larger) wins the deadlock.
+    const s = makeGame(['GODFATHER', 'MAFIOSO', 'VAMPIRE']);
+    expect(checkWin(s, { atDayVotingStart: true })).toMatchObject({
+      reason: 'one_v_one',
+      winners: ['MAFIA'],
+    });
+  });
+
+  it('stalemate: Vampire beats Triad on a tie (priority Vampire > Triad)', () => {
+    // 2 vampire, 2 triad → tie ⇒ Vampire (priority ladder: Vampire > Triad > Mafia).
+    const s = makeGame(['VAMPIRE', 'VAMPIRE', 'DRAGON_HEAD', 'ENFORCER']);
+    s.quietNights = 3;
+    expect(checkStalemate(s)).toMatchObject({ reason: 'stalemate', winners: ['VAMPIRE'] });
+  });
+
+  it('a lone starting Vampire can convert its way to a parity win', () => {
+    // 0 Vampire, 1 Citizen, 2 Citizen. Night 1: bite seat 1 → 2 vampires vs 1 town.
+    // vampireCount(2) >= rest(1) ⇒ vampire parity at night resolution.
+    let s = makeGame(['VAMPIRE', 'CITIZEN', 'CITIZEN']);
+    s = toFirstNight(s);
+    s = night(s, 0, 'bite', 1);
+    const { state, effects } = resolveNightPhase(s);
+    expect(state.gameOver).not.toBeNull();
+    const go = effects.find((e) => e.msg.type === 'game_over');
+    expect(go).toBeTruthy();
+    if (go && go.msg.type === 'game_over') {
+      expect(go.msg.winners).toContain('VAMPIRE');
+    }
+  });
+
+  it('Town beats the Vampires once the coven is staked out', () => {
+    // 0 Vampire, 1 Vampire Hunter, 2 Sheriff. The vampire bites the Hunter and is
+    // staked → no vampires remain → Town wins at night resolution.
+    let s = makeGame(['VAMPIRE', 'VAMPIRE_HUNTER', 'SHERIFF']);
+    s = toFirstNight(s);
+    s = night(s, 0, 'bite', 1); // staked
+    const { state, effects } = resolveNightPhase(s);
+    expect(state.seats[0]!.alive).toBe(false);
+    expect(state.gameOver).not.toBeNull();
+    const go = effects.find((e) => e.msg.type === 'game_over');
+    if (go && go.msg.type === 'game_over') {
+      expect(go.msg.winners).toContain('TOWN');
+    }
+  });
 });

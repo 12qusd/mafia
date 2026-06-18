@@ -1443,3 +1443,110 @@ determinism/leak/win-check green.
   seat) but is leak-safe (see analysis above) and shipped green. Deferred: a full
   two-target Witch picker in the human client UI (the engine/protocol/bots path is
   complete; `sendNightAction` accepts an optional `target2`).
+
+---
+
+## Vampire conversion faction (third evil killing faction)
+
+The Vampire is Nocturne's first MID-GAME FACTION CHANGE faction: it grows by
+CONVERSION (a night bite that turns a seat TOWN→VAMPIRE) rather than by a faction
+kill. It mirrors the Mafia/Triad architecture where sensible, but is deliberately
+KNOWLEDGE-ISOLATED to keep the information-leak invariant trivially provable.
+
+### Leak-safety: knowledge-isolated (NO vampire chat, NO roster)
+- Vampires share NO secret chat (no 'vampire' ChatChannel) and NO `your_role.mates`
+  roster. Each vampire acts independently and is NEVER told who the others are. The
+  ONLY private info a vampire receives is the `turned` private_result delivered to
+  the converted seat alone, which carries NO other seat's identity or role (as
+  leak-trivial as `roleblocked`/`controlled`).
+- Rationale: the leak auditor derives true faction from the FINAL game_over reveal,
+  so it cannot cheaply validate "this seat legitimately got vampire-secret info only
+  AFTER it converted." By keeping the vampire info-surface empty (nothing secret
+  crosses seats), the existing auditor needs only KNOWN_ROLES additions — no
+  dynamic-faction-timeline rewrite. This is the recommended default; we took it.
+- A converted seat is NEVER re-sent `your_role` — it keeps the (TOWN/benign, NO
+  mates) role card it received at deal time. `yourRoleEffect` was NOT extended to
+  emit mates for VAMPIRE. So no roster, no chat, no new your_role ⇒ no new leak
+  surface. Verified: 0 leaks / 80 games on the-long-night 15p (conversion exercised)
+  and 0 leaks / 200 on classic 9p.
+
+### Conversion design
+- WHO converts: only ONE vampire bites per night — the LOWEST-SEAT living vampire
+  with a standing `bite` intent and a valid living target. Other vampires' bites are
+  dropped (deterministic, bounded — avoids unbounded same-night chaos).
+- WHAT is convertible: only a living TOWN or NEUTRAL_BENIGN seat that is NOT already
+  a Vampire and NOT night-immune. Mafia/Triad/NK/other neutrals are non-convertible
+  (the bite just fails) — avoids cross-faction-roster complications.
+- IMMUNITY: vampires are NOT night-immune (classic) and NOT roleblock-immune. A
+  jailed/roleblocked vampire's bite intent is dropped like any other.
+- ROLE/FACTION CHANGE: a successful bite changes the target's role to VAMPIRE and
+  faction to VAMPIRE (so investigations read consistently — a freshly-turned seat
+  reads sheriff-suspicious / investigator-R4 / psychic-evil thereafter). Mirrors the
+  executioner→jester / plaguebearer→pestilence / amnesiac-remember conversions.
+- The bite is a VISIT (a Lookout/Tracker/Veteran/Crusader/Ambusher sees it). NO
+  separate vampire kill — conversion + parity is the entire win condition.
+- Resolution order: the stake (see below) is collected in the kill step; the
+  conversion is applied in step 8 AFTER kills are settled, so a vampire killed this
+  night (e.g. staked or shot) turns no one, and a target who dies this night is not
+  turned. New ResolutionTrace `convert {vampire,target,converted,staked}`.
+
+### Vampire Hunter (Town counter)
+- PASSIVE STAKE: any vampire that bites the Hunter is killed on the spot (death
+  cause `staked`, a powerful Town counter that pierces basic defense — a stake to
+  the heart). Only a REACHABLE Hunter stakes (a jailed/dueled Hunter is locked away,
+  so the bite simply fails). The stake routes through the normal kill pass.
+- ACTIVE CHECK (classic-simpler variant chosen): each night the Hunter may study a
+  target and learn vampire/not — a single boolean `vampire_hunter_result
+  {target,isVampire}` (no role strings, leak-trivial like the sheriff read). It is
+  NOT a kill (the only kill is the reactive stake). New trace `vampire_check`.
+- RETIREMENT: once NO vampires remain in the game, every living Vampire Hunter
+  becomes a VIGILANTE (role change within TOWN, mirroring exe→jester / GA→survivor),
+  evaluated after the night's conversions/deaths so it never retires while a
+  freshly-turned vampire still walks. New promotion trace `hunter_to_vigilante`.
+
+### Win-check extension to THREE evil killing factions
+wincheck.ts was generalized from the two-evil-faction (Mafia/Triad) form to a
+uniform THREE-evil-faction form (Mafia, Triad, Vampire). The Vampire is just a third
+killing faction that wins on parity; conversion is irrelevant to the math.
+- Town wins iff no living Mafia, Triad, Vampire, OR NK.
+- An evil faction F (Mafia|Triad|Vampire) wins iff F is the SOLE living killing
+  faction (no other evil faction AND no SK) and F is at parity (|F| >= |living
+  non-F|). Two+ killing factions alive ⇒ continue. Implemented via a uniform
+  `livingEvil` list (length 1 ⇒ parity check) — no per-faction branch duplication.
+- SK wins iff last killer (no living Mafia/Triad/Vampire), among only itself+benign.
+- 1v1 DAY_VOTING auto-resolve + stalemate priority ladder: SK > Vampire > Triad >
+  Mafia > Town. A pure evil-vs-evil endgame resolves to the strictly-larger faction;
+  an exact top tie continues (auto-resolve) / draws-by-priority (stalemate). The
+  two-faction Mafia-vs-Triad behavior is preserved exactly.
+- New WinningParty VAMPIRE (shared outcome.ts) + WinCheckReason `vampire_parity`.
+- ALL pre-existing win/triad/determinism goldens stay GREEN; added goldens: vampire
+  parity, town beats vampires, vampire-vs-mafia continues, lone-vampire conversion to
+  a parity win, town staking the coven out, stalemate Vampire>Triad tie, etc.
+
+### Additions (surfaces touched)
+- Faction VAMPIRE (FactionSchema; compose/validate/builder records; client
+  FACTION_LABEL + `--f-vampire` desaturated crimson-violet [colorblind magenta] +
+  .faction-VAMPIRE + IconVampire fangs glyph + FactionIcon case).
+- WinningParty VAMPIRE + WINNER_LABEL line. WinCheckReason `vampire_parity`.
+- RoleIds VAMPIRE (biter) + VAMPIRE_HUNTER (Town counter), with original noir copy.
+  INVESTIGATOR_CLASS_TABLE: VAMPIRE→R4, VAMPIRE_HUNTER→R2. Sheriff: VAMPIRE
+  suspicious, VAMPIRE_HUNTER clean. Psychic treats VAMPIRE as evil.
+- NightAbility `bite` (VAMPIRE) + `vampire_check` (VAMPIRE_HUNTER); both visit.
+  roleToNightAbility + abilityInfoFor (Bite / Hunt cards).
+- DeathCause `staked`. PrivateResultKind `turned` + `vampire_hunter_result` (+ zod
+  payloads, strings, client PrivateLog rendering). ResolutionTrace `convert`,
+  `vampire_check`, promotion `hunter_to_vigilante`. KILL_SOURCE_ORDER `staked`.
+- Curated setup "The Long Night" (the-long-night, 15p: 2 Vampires + Vampire Hunter
+  + small Mafia + Town); validateSetup passes (VAMPIRE slot counts as a killing
+  path in validate.ts). Added to leakcheck + sim CLI SETUP_MAPs.
+- leak.ts KNOWN_ROLES += VAMPIRE, VAMPIRE_HUNTER. NO new whitelist needed (the
+  knowledge-isolated design adds no secret-bearing frame type).
+
+### Skipped / deferred
+- NO vampire chat channel and NO vampire human-client night UI beyond the generic
+  single-target picker (the engine/protocol/bots path is complete; a converted seat
+  keeps its original role card by design, so the human-client convert experience is
+  "you receive a `turned` note in your private log" — no new picker was required).
+  The bot policy needs no vampire awareness: only the lowest-seat STARTING vampire's
+  bite resolves, and the bite is a generic single-target ability the policy already
+  drives.

@@ -103,6 +103,11 @@ export function roleToNightAbility(role: RoleId): NightAbility | null {
       return 'pestilence';
     case 'RETRIBUTIONIST':
       return 'retribute';
+    // --- Vampire conversion faction ---
+    case 'VAMPIRE':
+      return 'bite';
+    case 'VAMPIRE_HUNTER':
+      return 'vampire_check';
     // JAILOR's execution uses 'kill_jailor', but only after a jailing — handled
     // by the server when the jailor presses "execute".
     case 'JAILOR':
@@ -167,6 +172,12 @@ export function abilityInfoFor(seat: SeatState): AbilityInfo[] {
       break;
     case 'RETRIBUTIONIST':
       out.push({ id: 'retribute', name: 'Revive', timing: 'night', usesRemaining: seat.usesRemaining });
+      break;
+    case 'VAMPIRE':
+      out.push({ id: 'bite', name: 'Bite', timing: 'night', usesRemaining: null });
+      break;
+    case 'VAMPIRE_HUNTER':
+      out.push({ id: 'vampire_check', name: 'Hunt', timing: 'night', usesRemaining: null });
       break;
     case 'DOCTOR':
       out.push({ id: 'protect', name: 'Heal', timing: 'night', usesRemaining: null });

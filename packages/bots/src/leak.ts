@@ -276,4 +276,12 @@ const KNOWN_ROLES = new Set<string>([
   'PLAGUEBEARER',
   'PESTILENCE',
   'RETRIBUTIONIST',
+  // --- Vampire conversion faction ---
+  // Knowledge-isolated design: vampires share NO chat and NO roster, so no new
+  // entitlement check is needed. We register both role ids so the cross-capture
+  // deep scan still catches any accidental broadcast of a VAMPIRE / VAMPIRE_HUNTER
+  // role string (e.g. if a `turned` result ever leaked the convert's role, or a
+  // converted seat's pre-reveal role appeared at an unentitled observer).
+  'VAMPIRE',
+  'VAMPIRE_HUNTER',
 ]);

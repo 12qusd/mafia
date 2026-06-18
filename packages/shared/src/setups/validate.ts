@@ -29,11 +29,13 @@ const CATEGORY_FACTION: Record<SlotCategory, Faction> = {
 function slotIsKilling(slot: SetupSlot, townPool: readonly RoleId[]): boolean {
   if (slot.kind === 'fixed') {
     if (!ALL_ROLE_IDS.has(slot.role)) return false; // unknown role: not a kill source.
-    // Any MAFIA or TRIAD slot carries a standing faction kill; an explicit `kill`
-    // role (Vigilante / Mafioso / Enforcer / Serial Killer / jailed execution)
-    // also qualifies.
+    // Any MAFIA or TRIAD slot carries a standing faction kill; a VAMPIRE slot
+    // carries a standing CONVERSION that drives the game to a parity win (it
+    // grows the coven until it ends the game, so the game can always reach a
+    // terminal state); an explicit `kill` role (Vigilante / Mafioso / Enforcer /
+    // Serial Killer / jailed execution) also qualifies.
     const f = slotFaction(slot);
-    return f === 'MAFIA' || f === 'TRIAD' || ROLES[slot.role].nightAction === 'kill';
+    return f === 'MAFIA' || f === 'TRIAD' || f === 'VAMPIRE' || ROLES[slot.role].nightAction === 'kill';
   }
   // RANDOM_MAFIA / RANDOM_TRIAD carry a standing faction kill.
   if (slot.category === 'RANDOM_MAFIA' || slot.category === 'RANDOM_TRIAD') return true;

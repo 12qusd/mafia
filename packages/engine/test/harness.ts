@@ -83,6 +83,9 @@ const FACTION_OF: Record<RoleId, GameState['seats'][number]['faction']> = {
   PLAGUEBEARER: 'NEUTRAL_KILLING',
   PESTILENCE: 'NEUTRAL_KILLING',
   RETRIBUTIONIST: 'TOWN',
+  // --- Vampire conversion faction ---
+  VAMPIRE: 'VAMPIRE',
+  VAMPIRE_HUNTER: 'TOWN',
 };
 
 const USES: Partial<Record<RoleId, { uses: number; self: number }>> = {

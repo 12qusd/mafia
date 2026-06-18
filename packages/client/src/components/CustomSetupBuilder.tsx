@@ -60,10 +60,14 @@ const DEFAULT_SLOT: DraftSlot = { kind: 'category', category: 'RANDOM_TOWN' };
 
 /** Roles grouped by faction for the role picker. */
 const ROLES_BY_FACTION: Record<Faction, RoleId[]> = (() => {
-  const out = { TOWN: [], MAFIA: [], TRIAD: [], NEUTRAL_KILLING: [], NEUTRAL_BENIGN: [] } as Record<
-    Faction,
-    RoleId[]
-  >;
+  const out = {
+    TOWN: [],
+    MAFIA: [],
+    TRIAD: [],
+    VAMPIRE: [],
+    NEUTRAL_KILLING: [],
+    NEUTRAL_BENIGN: [],
+  } as Record<Faction, RoleId[]>;
   for (const r of ALL_ROLES) out[r.faction].push(r.id);
   return out;
 })();
@@ -147,6 +151,7 @@ export function CustomSetupBuilder() {
       TOWN: 0,
       MAFIA: 0,
       TRIAD: 0,
+      VAMPIRE: 0,
       NEUTRAL_KILLING: 0,
       NEUTRAL_BENIGN: 0,
     };

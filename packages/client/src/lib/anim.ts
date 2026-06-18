@@ -238,6 +238,9 @@ export function effectForCause(cause: DeathCause): CauseEffect {
     case 'pestilence':
       // The plague's reaping — a creeping sickness reads as a poisoning.
       return 'poison';
+    case 'staked':
+      // A stake through the heart — a close-quarters strike reads as a knife.
+      return 'knife';
     case 'lynch':
     case 'jailor_execute':
       return 'noose';

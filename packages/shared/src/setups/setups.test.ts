@@ -6,10 +6,12 @@ import {
   SMOKE_AND_MIRRORS,
   FULL_MOON,
   RECKONING,
+  LONG_NIGHT,
   SETUPS,
   getSetup,
   factionCountsAt,
   slotCountAt,
+  validateSetup,
 } from './index.js';
 import { UNIQUE_ROLES } from '../roles/index.js';
 import type { SetupSlot } from '../types/setup.js';
@@ -92,6 +94,19 @@ describe('curated 15-player setups (§6.10)', () => {
     expect(maxFixedRoleCount(slots, 'VIGILANTE')).toBe(2);
     expect(maxFixedRoleCount(slots, 'SERIAL_KILLER')).toBe(1);
   });
+
+  it('The Long Night fields 2 Vampires + a Vampire Hunter (15 slots, validates)', () => {
+    expect(slotCountAt(LONG_NIGHT, 15)).toBe(15);
+    expect(LONG_NIGHT.minPlayers).toBe(15);
+    expect(LONG_NIGHT.maxPlayers).toBe(15);
+    const slots = LONG_NIGHT.slotsByPlayerCount['15']!;
+    expect(maxFixedRoleCount(slots, 'VAMPIRE')).toBe(2);
+    expect(maxFixedRoleCount(slots, 'VAMPIRE_HUNTER')).toBe(1);
+    const counts = factionCountsAt(LONG_NIGHT, 15)!;
+    expect(counts.VAMPIRE).toBe(2);
+    // Validation passes (the Vampire conversion counts as a killing path).
+    expect(validateSetup(LONG_NIGHT, 15)).toEqual({ ok: true });
+  });
 });
 
 describe('Classic Nocturne unique-role constraint (§6.10)', () => {
@@ -106,8 +121,8 @@ describe('Classic Nocturne unique-role constraint (§6.10)', () => {
 });
 
 describe('setup registry', () => {
-  it('ships the curated setups (3 MVP + batch-A/D showcases + Tong War + Reckoning)', () => {
-    expect(SETUPS).toHaveLength(7);
+  it('ships the curated setups (3 MVP + batch-A/D showcases + Tong War + Reckoning + Long Night)', () => {
+    expect(SETUPS).toHaveLength(8);
   });
 
   it('getSetup resolves by id', () => {
@@ -117,6 +132,7 @@ describe('setup registry', () => {
     expect(getSetup('smoke-and-mirrors')).toBe(SMOKE_AND_MIRRORS);
     expect(getSetup('full-moon')).toBe(FULL_MOON);
     expect(getSetup('reckoning')).toBe(RECKONING);
+    expect(getSetup('the-long-night')).toBe(LONG_NIGHT);
     expect(getSetup('nope')).toBeUndefined();
   });
 

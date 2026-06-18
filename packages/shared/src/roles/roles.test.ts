@@ -69,9 +69,9 @@ describe('investigator result classes (§6.6)', () => {
   // The exact table from §6.6.
   const SPEC_TABLE: Record<string, RoleId[]> = {
     R1: ['CITIZEN', 'SURVIVOR', 'EXECUTIONER', 'AMNESIAC', 'GUARDIAN_ANGEL'],
-    R2: ['SHERIFF', 'JAILOR', 'BLACKMAILER', 'TRACKER', 'RETRIBUTIONIST'],
+    R2: ['SHERIFF', 'JAILOR', 'BLACKMAILER', 'TRACKER', 'RETRIBUTIONIST', 'VAMPIRE_HUNTER'],
     R3: ['INVESTIGATOR', 'JESTER', 'CONSIGLIERE', 'SPY', 'PSYCHIC'],
-    R4: ['DOCTOR', 'SERIAL_KILLER', 'MEDIUM', 'MASS_MURDERER', 'PLAGUEBEARER', 'PESTILENCE'],
+    R4: ['DOCTOR', 'SERIAL_KILLER', 'MEDIUM', 'MASS_MURDERER', 'PLAGUEBEARER', 'PESTILENCE', 'VAMPIRE'],
     R5: ['ESCORT', 'CONSORT', 'JANITOR', 'HYPNOTIST', 'VANGUARD'],
     R6: ['VIGILANTE', 'MAFIOSO', 'VETERAN', 'CRUSADER', 'WEREWOLF', 'JUGGERNAUT', 'ENFORCER', 'PIRATE'],
     R7: ['GODFATHER', 'MAYOR', 'BODYGUARD', 'ARSONIST', 'DRAGON_HEAD'],
@@ -135,6 +135,8 @@ describe('sheriff alignment table (§6.6)', () => {
     'WITCH',
     'PLAGUEBEARER',
     'PESTILENCE',
+    // Vampire faction: the Vampire reads suspicious; the Town Vampire Hunter reads clean.
+    'VAMPIRE',
   ];
 
   it('exactly the spec set reads suspicious un-framed', () => {
@@ -221,5 +223,14 @@ describe('ability metadata (§6.5)', () => {
       .map((r) => r.id)
       .sort();
     expect(triad).toEqual(['DRAGON_HEAD', 'ENFORCER', 'VANGUARD'].sort());
+  });
+
+  it('Vampire faction has exactly the Vampire biter (the Hunter is Town)', () => {
+    const vamps = ALL_ROLES.filter((r) => r.faction === 'VAMPIRE')
+      .map((r) => r.id)
+      .sort();
+    expect(vamps).toEqual(['VAMPIRE']);
+    // The Vampire Hunter is a TOWN counter, NOT a vampire.
+    expect(ROLES.VAMPIRE_HUNTER.faction).toBe('TOWN');
   });
 });

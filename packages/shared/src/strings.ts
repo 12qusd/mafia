@@ -115,6 +115,8 @@ export function deathLine(cause: DeathCause, seatLabel: string, roleName: string
       return `${seatLabel} was beaten down by something that only grows stronger. They were the ${roleName}.`;
     case 'pestilence':
       return `${seatLabel} was carried off by a sickness that finally turned to ruin. They were the ${roleName}.`;
+    case 'staked':
+      return `${seatLabel} crept to the wrong bedside and met a stake through the heart. They were the ${roleName}.`;
     default: {
       // Exhaustiveness guard.
       const _never: never = cause;
@@ -156,6 +158,9 @@ export const PRIVATE_RESULT_TEXT: Record<PrivateResultKind, string> = {
   spy_result: '', // resolved via spyResultLine (needs the mafia-visited seats)
   remember_result: '', // resolved via rememberResultLine (needs the new role)
   psychic_vision: '', // resolved via psychicVisionLine (needs the seats + parity)
+  turned:
+    'Teeth found your throat in the dark, and the thirst is yours now. You have been turned — you hunt with the coven from this night on.',
+  vampire_hunter_result: '', // resolved via vampireHunterResultLine (needs the verdict)
 };
 
 /** Sheriff result line (BUILD_SPEC §6.6). */
@@ -223,6 +228,17 @@ export function psychicVisionLine(parity: 'evil' | 'good', seatLabels: string[])
   return parity === 'evil'
     ? `The cards turn dark: at least one of these carries a black heart — ${list}.`
     : `The cards turn kind: at least one of these is true and good — ${list}.`;
+}
+
+/**
+ * Vampire Hunter check result line (Vampire faction). The caller supplies the
+ * target label; the `isVampire` flag says whether the studied neighbor carries
+ * the curse. Carries only a seat label + a yes/no — never a role.
+ */
+export function vampireHunterResultLine(targetLabel: string, isVampire: boolean): string {
+  return isVampire
+    ? `You studied ${targetLabel} by lamplight — no pulse, no breath fogging the glass. ${targetLabel} is a vampire.`
+    : `You studied ${targetLabel} and found a living, breathing soul. ${targetLabel} is no vampire.`;
 }
 
 /** Error-code → human message (BUILD_SPEC §9). */

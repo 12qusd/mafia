@@ -316,3 +316,62 @@ export const RECKONING: GameSetup = {
     '15': RECKONING_15,
   },
 };
+
+/**
+ * "The Long Night" — a 15-player showcase of the Vampire conversion faction. Two
+ * Vampires open the night, and every successful bite swells the coven from the
+ * town's own ranks — so the danger grows the longer the town dithers. A lone
+ * Vampire Hunter is the town's one true answer: a stake for any vampire that comes
+ * to turn them, and a check to root the coven out by lamplight (and when the last
+ * vampire falls, the Hunter takes up a pistol as a Vigilante). A small Mafia keeps
+ * its head down and works the chaos, while the town fields its readers and
+ * protectives. Conversion play happens, and the game still terminates: the coven
+ * wins by reaching parity, or the town stakes and lynches it out.
+ *
+ * Town (10): Vampire Hunter, Jailor, Sheriff, Investigator, Doctor, Lookout,
+ *            Escort, Vigilante, + two RANDOM_TOWN.
+ * Mafia (3): Godfather, Mafioso, + one RANDOM_MAFIA.
+ * Vampire (2): Vampire, Vampire.
+ *
+ * Exercises the full conversion path: the `bite` ability + the `turned`
+ * private_result, the lowest-seat one-bite-per-night rule, the Vampire Hunter's
+ * stake (cause `staked`) + check + retirement to Vigilante, the third evil
+ * faction in the generalized win check, and the knowledge-isolated design (no
+ * vampire chat / roster — verified by the leak sweep).
+ */
+const LONG_NIGHT_15: SetupSlot[] = [
+  // Town
+  F('VAMPIRE_HUNTER'),
+  F('JAILOR'),
+  F('SHERIFF'),
+  F('INVESTIGATOR'),
+  F('DOCTOR'),
+  F('LOOKOUT'),
+  F('ESCORT'),
+  F('VIGILANTE'),
+  RANDOM_TOWN,
+  RANDOM_TOWN,
+  // Mafia
+  F('GODFATHER'),
+  F('MAFIOSO'),
+  RANDOM_MAFIA,
+  // Vampire
+  F('VAMPIRE'),
+  F('VAMPIRE'),
+];
+
+export const LONG_NIGHT: GameSetup = {
+  id: 'the-long-night',
+  name: 'The Long Night',
+  description:
+    'A 15-player showcase of the coven. Two Vampires turn the town against itself one bite at a ' +
+    'time — every kill recruits — while a lone Vampire Hunter stakes the ones who come for them ' +
+    'and hunts the rest by lamplight. A quiet Mafia works the chaos. The longer the town waits, ' +
+    'the larger the coven grows.',
+  minPlayers: 15,
+  maxPlayers: 15,
+  townPool: ['CITIZEN', 'DOCTOR', 'SHERIFF', 'LOOKOUT', 'VIGILANTE', 'BODYGUARD'],
+  slotsByPlayerCount: {
+    '15': LONG_NIGHT_15,
+  },
+};

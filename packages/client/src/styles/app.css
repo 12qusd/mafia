@@ -166,6 +166,9 @@ label {
 .faction-TRIAD {
   color: var(--f-triad);
 }
+.faction-VAMPIRE {
+  color: var(--f-vampire);
+}
 .faction-NEUTRAL_KILLING {
   color: var(--f-nk);
 }

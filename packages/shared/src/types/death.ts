@@ -40,6 +40,12 @@ import { z } from 'zod';
  * - pestilence     — a Pestilence reaping (batch E). The Plaguebearer's transformed
  *                    final form; a powerful neutral-killing attack that pierces basic
  *                    defense but is stopped by jail/plunder and night-immunity.
+ * - staked         — a Vampire Hunter staking a vampire that came to bite them
+ *                    (Vampire faction). A reactive Town kill: a vampire that visits
+ *                    the Hunter to turn them is killed where it stands. It pierces
+ *                    basic defense for the assailant (a stake to the heart), like a
+ *                    point-blank counter — the only way to lose the bite is to be
+ *                    jailed/blocked off the Hunter entirely.
  */
 export const DEATH_CAUSES = [
   'mafia',
@@ -60,6 +66,7 @@ export const DEATH_CAUSES = [
   'massacre',
   'juggernaut',
   'pestilence',
+  'staked',
 ] as const;
 
 export const DeathCauseSchema = z.enum(DEATH_CAUSES);

@@ -60,6 +60,10 @@ function normalizeSetup(id: string): string {
     gunsmoke: 'gunsmoke',
     tong_war: 'tong-war',
     'tong-war': 'tong-war',
+    long_night: 'the-long-night',
+    'long-night': 'the-long-night',
+    the_long_night: 'the-long-night',
+    'the-long-night': 'the-long-night',
   };
   return map[id] ?? id;
 }

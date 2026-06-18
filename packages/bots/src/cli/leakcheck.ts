@@ -30,6 +30,10 @@ const SETUP_MAP: Record<string, string> = {
   tong_war: 'tong-war',
   'tong-war': 'tong-war',
   reckoning: 'reckoning',
+  long_night: 'the-long-night',
+  'long-night': 'the-long-night',
+  the_long_night: 'the-long-night',
+  'the-long-night': 'the-long-night',
 };
 
 function main(): void {

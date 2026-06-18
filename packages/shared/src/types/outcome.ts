@@ -11,6 +11,10 @@ export const WINNING_PARTIES = [
   'TOWN',
   'MAFIA',
   'TRIAD',
+  // VAMPIRE — the third evil killing faction (conversion + parity win). A
+  // collective faction winner like TOWN / MAFIA / TRIAD; can never co-win with
+  // another killing faction (see wincheck.ts).
+  'VAMPIRE',
   'SERIAL_KILLER',
   'JESTER',
   'EXECUTIONER',

@@ -178,6 +178,9 @@ export type NightAbility =
   | 'infect' // Plaguebearer: a visit that infects the target (and spreads)
   | 'pestilence' // Pestilence: the transformed Plaguebearer's powerful kill
   | 'retribute' // Retributionist: once-per-game revive a dead Town seat
+  // --- Vampire conversion faction (third evil killing faction) ---
+  | 'bite' // Vampire: a visiting conversion attempt (turns the target into a Vampire)
+  | 'vampire_check' // Vampire Hunter: study a target, learn vampire/not; passively stakes a biting vampire
   | 'kill_vigilante'
   | 'kill_mafia'
   | 'kill_serial'
@@ -246,8 +249,18 @@ export type ResolutionTrace =
   | { step: 'duel'; pirate: SeatId; target: SeatId; attack: number; success: boolean }
   | { step: 'infect'; plaguebearer: SeatId; infected: SeatId[]; allInfected: boolean }
   | { step: 'retribute'; retributionist: SeatId; target: SeatId; revived: boolean }
+  // --- Vampire conversion faction ---
+  // A vampire's bite resolved: `converted` true ⇒ the target was turned into a
+  // Vampire; false ⇒ the bite failed (immune/already-vampire/non-convertible/the
+  // biter was staked by a Vampire Hunter). `staked` true ⇒ the biting vampire died
+  // on the Hunter's ward this night.
+  | { step: 'convert'; vampire: SeatId; target: SeatId; converted: boolean; staked: boolean }
+  // The Vampire Hunter's active check: whether the studied target is a vampire.
+  | { step: 'vampire_check'; hunter: SeatId; target: SeatId; isVampire: boolean }
   | { step: 'promotion'; kind: 'guardian_to_survivor'; seat: SeatId }
   | { step: 'promotion'; kind: 'plaguebearer_to_pestilence'; seat: SeatId }
+  // The Vampire Hunter retires to a Vigilante once no vampires remain (role change).
+  | { step: 'promotion'; kind: 'hunter_to_vigilante'; seat: SeatId }
   | {
       step: 'kill';
       source: DeathCause;
@@ -273,6 +286,7 @@ export type WinCheckReason =
   | 'town_elimination'
   | 'mafia_parity'
   | 'triad_parity'
+  | 'vampire_parity'
   | 'serial_killer_last'
   | 'one_v_one'
   | 'stalemate'

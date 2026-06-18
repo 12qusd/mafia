@@ -31,6 +31,7 @@ const KILL_SOURCE_ORDER: DeathCause[] = [
   'bodyguard',
   'veteran',
   'crusader',
+  'staked',
   'vigilante',
   'mafia',
   'triad',
@@ -661,6 +662,39 @@ export function resolveNight(state: GameState): ResolveResult {
     state.pendingJesterGrief = null;
   }
 
+  // Vampire bite (Vampire faction): determine the SINGLE bite that resolves this
+  // night. To keep the conversion deterministic and bounded, only ONE vampire
+  // bites per night — the lowest-seat LIVING vampire with a (still-standing) bite
+  // intent and a valid target (recorded decision). Other vampires' bites are
+  // dropped. The bite is a VISIT (so a Lookout/Veteran/Crusader/Ambusher sees it).
+  // The actual conversion is applied in step 8 (after kills are known); here we
+  // only resolve the Vampire Hunter STAKE: if the bite lands on a reachable
+  // Vampire Hunter, the biting vampire is staked (a powerful counter — see the
+  // kill pass) and the bite fails. The chosen bite is carried in `resolvingBite`.
+  let resolvingBite: { vampire: SeatId; target: SeatId } | null = null;
+  for (const i of [...intentBySeat.values()].sort((a, b) => a.seat - b.seat)) {
+    if (i.ability !== 'bite' || i.target === null || i.target === i.seat) continue;
+    const v = seatOf(state, i.seat);
+    if (!v.alive || v.faction !== 'VAMPIRE') continue;
+    if (!seatOf(state, i.target).alive) continue;
+    resolvingBite = { vampire: i.seat, target: i.target };
+    break; // lowest-seat vampire wins (intents iterated in seat order)
+  }
+  // Stake: a vampire that bites a Vampire Hunter is killed on the Hunter's ward.
+  // Only a REACHABLE Hunter stakes — a jailed/dueled Hunter is locked away, so the
+  // vampire never reaches them (the bite simply fails, handled in step 8). The
+  // stake is a basic Town kill on the vampire (cause `staked`); the vampire's
+  // immunity does not save it (a stake to the heart), but we route it through the
+  // normal kill pass as a basic attack so jail/redirect bookkeeping stays uniform.
+  if (
+    resolvingBite !== null &&
+    seatOf(state, resolvingBite.target).role === 'VAMPIRE_HUNTER' &&
+    !jailed.has(resolvingBite.target) &&
+    !dueledTargets.has(resolvingBite.target)
+  ) {
+    kills.push({ source: 'staked', attacker: resolvingBite.target, target: resolvingBite.vampire, powerful: true });
+  }
+
   // Resolve kills simultaneously against state after steps 1–4.
   // Track which seats die; a doctor shield absorbs exactly one successful kill.
   const shieldUsed = new Set<SeatId>();
@@ -892,6 +926,23 @@ export function resolveNight(state: GameState): ResolveResult {
     traces.push({ step: 'divine', psychic: i.seat, parity: vision.parity, seats: vision.seats.slice() });
     effects.push(
       toSeat(i.seat, { type: 'private_result', kind: 'psychic_vision', parity: vision.parity, seats: vision.seats.slice() }),
+    );
+  }
+
+  // Vampire Hunter (Vampire faction): each Hunter who studied a target learns
+  // whether that target is currently a vampire — a single yes/no read carrying
+  // ONLY the target seat + the flag (no role strings), so it is leak-trivial like
+  // the sheriff's read. The faction is read from the CURRENT state: a seat the
+  // coven turns THIS same night converts later in step 8, so it reads as "not a
+  // vampire" tonight (the Hunter sees them as they were before dawn — fair).
+  // Skipped for a jailed/blocked Hunter (their intent was already removed).
+  for (const i of [...intentBySeat.values()].sort((a, b) => a.seat - b.seat)) {
+    if (i.ability !== 'vampire_check' || i.target === null) continue;
+    if (seatOf(state, i.seat).role !== 'VAMPIRE_HUNTER') continue;
+    const isVampire = seatOf(state, i.target).faction === 'VAMPIRE';
+    traces.push({ step: 'vampire_check', hunter: i.seat, target: i.target, isVampire });
+    effects.push(
+      toSeat(i.seat, { type: 'private_result', kind: 'vampire_hunter_result', target: i.target, isVampire }),
     );
   }
 
@@ -1128,6 +1179,69 @@ export function resolveNight(state: GameState): ResolveResult {
     ret.usesRemaining = Math.max(0, ret.usesRemaining - 1);
     revivedThisNight.add(i.target);
     traces.push({ step: 'retribute', retributionist: i.seat, target: i.target, revived: true });
+  }
+
+  // Vampire conversion (Vampire faction). The single resolving bite (the lowest-
+  // seat vampire's, chosen above) TURNS its target into a new Vampire — a role +
+  // faction change, mirroring the executioner→jester / plaguebearer→pestilence
+  // conversions. The bite CONVERTS iff, after this night's kills are settled:
+  //   - the biting vampire is still alive (a staked vampire turns no one), and
+  //   - the target is still alive (a corpse cannot be turned), and
+  //   - the target was reachable (not jailed / dueled away), and
+  //   - the target is CONVERTIBLE: a living TOWN or NEUTRAL_BENIGN seat that is
+  //     NOT already a vampire and is NOT night-immune (recorded rule — Mafia/Triad/
+  //     NK/other neutrals are left non-convertible; the bite just fails on them).
+  // The converted seat is told privately "you have been turned" — carrying NO
+  // other identity or role (as leak-trivial as `roleblocked`). A `convert` trace
+  // records the outcome either way. NO new your_role is sent: the seat keeps the
+  // (TOWN/benign, no-mates) role card it received at deal time, so the knowledge-
+  // isolated design leaks nothing (see DECISIONS.md "Vampire conversion faction").
+  if (resolvingBite !== null) {
+    const vampire = seatOf(state, resolvingBite.vampire);
+    const target = seatOf(state, resolvingBite.target);
+    const vampireSurvived = vampire.alive && !dyingSet.has(resolvingBite.vampire);
+    const targetSurvived = target.alive && !dyingSet.has(resolvingBite.target);
+    const reachable = !jailed.has(resolvingBite.target) && !dueledTargets.has(resolvingBite.target);
+    const convertible =
+      (target.faction === 'TOWN' || target.faction === 'NEUTRAL_BENIGN') &&
+      !isNightImmune(target);
+    const staked = !vampireSurvived; // the vampire died — staked by a Hunter (or otherwise)
+    const converted = vampireSurvived && targetSurvived && reachable && convertible;
+    if (converted) {
+      target.role = 'VAMPIRE';
+      target.faction = 'VAMPIRE';
+      const u = initialUses('VAMPIRE');
+      target.usesRemaining = u.uses;
+      target.selfUsesRemaining = u.self;
+      // Tell the convert privately — no other seat's identity revealed.
+      effects.push(toSeat(resolvingBite.target, { type: 'private_result', kind: 'turned' }));
+    }
+    traces.push({
+      step: 'convert',
+      vampire: resolvingBite.vampire,
+      target: resolvingBite.target,
+      converted,
+      staked,
+    });
+  }
+
+  // Vampire Hunter retirement (Vampire faction): once NO vampires remain in the
+  // game, every living Vampire Hunter's hunt is over — it becomes a Vigilante
+  // (role change within TOWN, mirroring the executioner→jester / guardian→survivor
+  // conversions). Evaluated AFTER this night's conversions and deaths, so a Hunter
+  // does not retire while a freshly-turned vampire still walks. Resolved in
+  // deterministic seat order.
+  const anyVampireAlive = state.seats.some((s) => s.alive && s.faction === 'VAMPIRE');
+  if (!anyVampireAlive) {
+    for (const s of state.seats) {
+      if (s.role !== 'VAMPIRE_HUNTER' || !s.alive) continue;
+      s.role = 'VIGILANTE';
+      // faction stays TOWN.
+      const u = initialUses('VIGILANTE');
+      s.usesRemaining = u.uses;
+      s.selfUsesRemaining = u.self;
+      traces.push({ step: 'promotion', kind: 'hunter_to_vigilante', seat: s.seat });
+    }
   }
 
   // Refresh mafia roster (drop dead members; a new Amnesiac→mafia is added).
@@ -1402,6 +1516,11 @@ function actorVisits(_actor: SeatState, intent: NightIntent): boolean {
     case 'duel':
     case 'infect':
     case 'pestilence':
+    // Vampire faction: the Vampire visits the throat it bites; the Vampire Hunter
+    // visits the neighbor it studies (so a Lookout sees both, and a vampire that
+    // bites a Hunter is a visitor the Hunter can stake).
+    case 'bite': // eslint-disable-line no-fallthrough
+    case 'vampire_check':
     case 'kill_vigilante':
     case 'kill_mafia':
     case 'kill_triad':
@@ -1424,10 +1543,11 @@ function apparentRoleOf(target: SeatState): RoleId {
   return target.apparentRole ?? target.role;
 }
 
-/** Factions the Psychic's vision treats as "evil" (batch C). */
+/** Factions the Psychic's vision treats as "evil" (batch C; Vampire faction adds VAMPIRE). */
 const PSYCHIC_EVIL_FACTIONS: ReadonlySet<Faction> = new Set<Faction>([
   'MAFIA',
   'TRIAD',
+  'VAMPIRE',
   'NEUTRAL_KILLING',
 ]);
 
@@ -1493,6 +1613,10 @@ function sheriffRead(target: SeatState, framed: ReadonlySet<SeatId>): SheriffRes
     // counterparts (Mafioso / Consort). The Dragon Head reads clean like the GF.
     'ENFORCER',
     'VANGUARD',
+    // Vampire faction: a Vampire reads suspicious (the Vampire Hunter, a Town role,
+    // reads clean). A seat the coven turns therefore starts reading suspicious from
+    // the night it is turned — its sheriff alignment tracks its true faction.
+    'VAMPIRE',
   ];
   return suspiciousRoles.includes(apparentRoleOf(target)) ? 'suspicious' : 'not_suspicious';
 }

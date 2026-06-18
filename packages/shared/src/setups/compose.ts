@@ -34,6 +34,7 @@ export function factionCounts(slots: readonly SetupSlot[]): Record<Faction, numb
     TOWN: 0,
     MAFIA: 0,
     TRIAD: 0,
+    VAMPIRE: 0,
     NEUTRAL_KILLING: 0,
     NEUTRAL_BENIGN: 0,
   };

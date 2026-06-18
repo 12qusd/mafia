@@ -53,6 +53,16 @@ export type TrialOutcome = z.infer<typeof TrialOutcomeSchema>;
  * - controlled          — your night action was seized and turned on a stranger by
  *                         a Witch (batch E); carries NO controller identity, NO
  *                         seats, NO roles — as leak-trivial as `roleblocked`.
+ * - turned              — you have been bitten and TURNED into a Vampire (Vampire
+ *                         faction). Delivered to the converted seat ALONE; carries
+ *                         NO other seat's identity or role (not even the biter's),
+ *                         so it is as leak-trivial as `roleblocked`. The seat's own
+ *                         new alignment is its own — it learns it the way the
+ *                         Amnesiac learns its remembered role.
+ * - vampire_hunter_result — the Vampire Hunter's check: a single boolean
+ *                         `isVampire` for the studied target. Carries the target
+ *                         seat + a yes/no flag — NO role strings — so it is
+ *                         leak-trivial (like the sheriff's suspicious/not read).
  */
 export const PRIVATE_RESULT_KINDS = [
   'sheriff_result',
@@ -73,6 +83,8 @@ export const PRIVATE_RESULT_KINDS = [
   'spy_result',
   'remember_result',
   'psychic_vision',
+  'turned',
+  'vampire_hunter_result',
 ] as const;
 export const PrivateResultKindSchema = z.enum(PRIVATE_RESULT_KINDS);
 export type PrivateResultKind = z.infer<typeof PrivateResultKindSchema>;

@@ -55,6 +55,19 @@ export function IconTriad({ size = 14, className }: P) {
     className,
   );
 }
+/** Vampire: a pair of fangs over a drop (distinct from the dagger / fedora / knot). */
+export function IconVampire({ size = 14, className }: P) {
+  return svg(
+    size,
+    <>
+      <path d="M4 6c3 3 13 3 16 0" />
+      <path d="M8 7l1.5 4L11 7" />
+      <path d="M13 7l1.5 4L16 7" />
+      <path d="M12 14c1.5 1.6 2.5 2.8 2.5 4a2.5 2.5 0 11-5 0c0-1.2 1-2.4 2.5-4z" />
+    </>,
+    className,
+  );
+}
 /** Neutral killing: a dagger. */
 export function IconNK({ size = 14, className }: P) {
   return svg(
@@ -81,6 +94,8 @@ export function FactionIcon({ faction, size, className }: P & { faction: Faction
       return <IconMafia {...p} />;
     case 'TRIAD':
       return <IconTriad {...p} />;
+    case 'VAMPIRE':
+      return <IconVampire {...p} />;
     case 'NEUTRAL_KILLING':
       return <IconNK {...p} />;
     case 'NEUTRAL_BENIGN':

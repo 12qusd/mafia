@@ -114,6 +114,27 @@ export const PsychicVisionPayload = z.object({
   seats: z.array(SeatIdSchema),
 });
 
+/**
+ * Vampire turned result (Vampire faction). The bitten seat learns they have been
+ * CONVERTED into a Vampire. Carries NO other seat's identity or role (not even the
+ * biter's) — exactly as leak-trivial as `roleblocked`/`controlled`. The seat's own
+ * new alignment is its own to know (like the Amnesiac's remember). Delivered to
+ * the converted seat ALONE.
+ */
+export const TurnedPayload = z.object({ kind: z.literal('turned') });
+
+/**
+ * Vampire Hunter check result (Vampire faction). The Hunter learns whether the
+ * studied target is a vampire — a single boolean against the target seat. Carries
+ * ONLY a seat id and a yes/no flag — NO role strings — so it is leak-trivial (like
+ * the sheriff's suspicious/not read). Delivered to the Hunter alone.
+ */
+export const VampireHunterResultPayload = z.object({
+  kind: z.literal('vampire_hunter_result'),
+  target: SeatIdSchema,
+  isVampire: z.boolean(),
+});
+
 /** Discriminated union of all private-result payloads (without envelope). */
 export const PrivateResultPayloadSchema = z.discriminatedUnion('kind', [
   SheriffResultPayload,
@@ -134,5 +155,7 @@ export const PrivateResultPayloadSchema = z.discriminatedUnion('kind', [
   SpyResultPayload,
   RememberResultPayload,
   PsychicVisionPayload,
+  TurnedPayload,
+  VampireHunterResultPayload,
 ]);
 export type PrivateResultPayload = z.infer<typeof PrivateResultPayloadSchema>;
