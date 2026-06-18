@@ -62,6 +62,7 @@ export function roleToNightAbility(role: RoleId): NightAbility | null {
       return 'vest';
     case 'ESCORT':
     case 'CONSORT':
+    case 'VANGUARD':
       return 'roleblock';
     case 'VIGILANTE':
       return 'kill_vigilante';
@@ -69,6 +70,10 @@ export function roleToNightAbility(role: RoleId): NightAbility | null {
       return 'alert';
     case 'MAFIOSO':
       return 'kill_mafia';
+    case 'ENFORCER':
+      return 'kill_triad';
+    case 'DRAGON_HEAD':
+      return 'triad_control';
     case 'SERIAL_KILLER':
       return 'kill_serial';
     case 'FRAMER':
@@ -157,13 +162,22 @@ export function abilityInfoFor(seat: SeatState): AbilityInfo[] {
   return out;
 }
 
-/** Build the `your_role` effect for a seat (mafia roster only for mafia, §5). */
+/**
+ * Build the `your_role` effect for a seat (§5). The faction roster ("mates") is
+ * delivered ONLY to seats of an informed evil faction — a MAFIA seat learns the
+ * Mafia roster, a TRIAD seat learns the Triad roster, and crucially NEVER the
+ * other faction's roster. Town/neutral seats receive no mates at all. The frame
+ * is addressed to the owning seat alone, so a non-faction seat can never receive
+ * it (mirrors the mafia-only delivery the leak auditor enforces).
+ */
 export function yourRoleEffect(state: GameState, seat: SeatState): Effect {
   const def = ROLES[seat.role];
   const abilities = abilityInfoFor(seat);
   const mates =
-    seat.faction === 'MAFIA'
-      ? state.seats.filter((s) => s.faction === 'MAFIA' && s.seat !== seat.seat).map((s) => s.seat)
+    seat.faction === 'MAFIA' || seat.faction === 'TRIAD'
+      ? state.seats
+          .filter((s) => s.faction === seat.faction && s.seat !== seat.seat)
+          .map((s) => s.seat)
       : undefined;
   const payload: Record<string, unknown> = {
     type: 'your_role',

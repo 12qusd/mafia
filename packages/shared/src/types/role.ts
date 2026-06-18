@@ -50,6 +50,10 @@ export const ROLE_IDS = [
   'MASS_MURDERER',
   'GUARDIAN_ANGEL',
   'JUGGERNAUT',
+  // --- Triad faction (second evil killing faction) ---
+  'DRAGON_HEAD',
+  'ENFORCER',
+  'VANGUARD',
 ] as const;
 
 export const RoleIdSchema = z.enum(ROLE_IDS);

@@ -86,6 +86,7 @@ export const GAME = {
   nightNumber: (n: number) => `Night ${n}`,
   channelDay: 'Town',
   channelMafia: 'Mafia',
+  channelTriad: 'Triad',
   channelJail: 'Cell',
   channelDead: 'Beyond',
   channelWhisper: 'Whispers',
@@ -421,6 +422,7 @@ export const TRACE_STEP_LABEL: Record<string, string> = {
 /** Death-cause labels for the god view (plain, not the in-fiction death lines). */
 export const DEATH_CAUSE_LABEL: Record<DeathCause, string> = {
   mafia: 'Mafia',
+  triad: 'Triad',
   serial_killer: 'Serial Killer',
   vigilante: 'Vigilante',
   jailor_execute: 'Jailor execution',
@@ -442,6 +444,7 @@ export const DEATH_CAUSE_LABEL: Record<DeathCause, string> = {
 export const FACTION_LABEL: Record<Faction, string> = {
   TOWN: 'Town',
   MAFIA: 'Mafia',
+  TRIAD: 'Triad',
   NEUTRAL_KILLING: 'Lone Killer',
   NEUTRAL_BENIGN: 'Neutral',
 };
@@ -450,6 +453,7 @@ export const FACTION_LABEL: Record<Faction, string> = {
 export const WINNER_LABEL: Record<WinningParty, string> = {
   TOWN: 'The Town holds the streets',
   MAFIA: 'The Mafia owns the town',
+  TRIAD: 'The Triad rules the streets',
   SERIAL_KILLER: 'The Lone Killer stands alone at the end',
   JESTER: 'The Jester got the last laugh',
   EXECUTIONER: 'The Executioner got their man',

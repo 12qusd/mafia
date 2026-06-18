@@ -34,8 +34,16 @@ export function isMafiaFaction(faction: Faction): boolean {
   return faction === 'MAFIA';
 }
 
+export function isTriadFaction(faction: Faction): boolean {
+  return faction === 'TRIAD';
+}
+
 export function livingMafiaSeats(state: GameState): SeatState[] {
   return state.seats.filter((s) => s.alive && s.faction === 'MAFIA');
+}
+
+export function livingTriadSeats(state: GameState): SeatState[] {
+  return state.seats.filter((s) => s.alive && s.faction === 'TRIAD');
 }
 
 /** Seat vote weight (Mayor 3 after reveal, else 1; a stump cannot vote → 0). */
@@ -87,6 +95,10 @@ export function toPublic(payload: ServerMessagePayload): Effect {
 
 export function toMafia(payload: ServerMessagePayload): Effect {
   return { to: 'mafia', msg: msg(payload) };
+}
+
+export function toTriad(payload: ServerMessagePayload): Effect {
+  return { to: 'triad', msg: msg(payload) };
 }
 
 export function toDead(payload: ServerMessagePayload): Effect {

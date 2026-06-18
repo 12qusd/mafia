@@ -73,6 +73,10 @@ const FACTION_OF: Record<RoleId, GameState['seats'][number]['faction']> = {
   MASS_MURDERER: 'NEUTRAL_KILLING',
   GUARDIAN_ANGEL: 'NEUTRAL_BENIGN',
   JUGGERNAUT: 'NEUTRAL_KILLING',
+  // --- Triad faction ---
+  DRAGON_HEAD: 'TRIAD',
+  ENFORCER: 'TRIAD',
+  VANGUARD: 'TRIAD',
 };
 
 const USES: Partial<Record<RoleId, { uses: number; self: number }>> = {
@@ -124,6 +128,7 @@ export function makeGame(roles: RoleId[], seed = 'seed'): GameState {
     };
   });
   state.mafiaSeats = state.seats.filter((s) => s.faction === 'MAFIA').map((s) => s.seat);
+  state.triadSeats = state.seats.filter((s) => s.faction === 'TRIAD').map((s) => s.seat);
   return state;
 }
 

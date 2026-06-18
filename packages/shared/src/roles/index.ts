@@ -38,6 +38,9 @@ import { WEREWOLF } from './werewolf.js';
 import { MASS_MURDERER } from './mass_murderer.js';
 import { GUARDIAN_ANGEL } from './guardian_angel.js';
 import { JUGGERNAUT } from './juggernaut.js';
+import { DRAGON_HEAD } from './dragon_head.js';
+import { ENFORCER } from './enforcer.js';
+import { VANGUARD } from './vanguard.js';
 
 export type { RoleDefinition } from './types.js';
 export type { NightActionKind, DayActionKind, TargetScope, AbilityUses } from './types.js';
@@ -80,6 +83,9 @@ export {
   MASS_MURDERER,
   GUARDIAN_ANGEL,
   JUGGERNAUT,
+  DRAGON_HEAD,
+  ENFORCER,
+  VANGUARD,
 };
 
 /** Registry of every role definition, keyed by id (BUILD_SPEC §6.5). */
@@ -121,6 +127,9 @@ export const ROLES: Readonly<Record<RoleId, RoleDefinition>> = {
   MASS_MURDERER,
   GUARDIAN_ANGEL,
   JUGGERNAUT,
+  DRAGON_HEAD,
+  ENFORCER,
+  VANGUARD,
 };
 
 /** Look up a role definition by id. */
@@ -141,9 +150,9 @@ export const INVESTIGATOR_CLASS_TABLE: Readonly<Record<InvestigatorClass, readon
   R2: ['SHERIFF', 'JAILOR', 'BLACKMAILER', 'TRACKER'],
   R3: ['INVESTIGATOR', 'JESTER', 'CONSIGLIERE', 'SPY', 'PSYCHIC'],
   R4: ['DOCTOR', 'SERIAL_KILLER', 'MEDIUM', 'MASS_MURDERER'],
-  R5: ['ESCORT', 'CONSORT', 'JANITOR', 'HYPNOTIST'],
-  R6: ['VIGILANTE', 'MAFIOSO', 'VETERAN', 'CRUSADER', 'WEREWOLF', 'JUGGERNAUT'],
-  R7: ['GODFATHER', 'MAYOR', 'BODYGUARD', 'ARSONIST'],
+  R5: ['ESCORT', 'CONSORT', 'JANITOR', 'HYPNOTIST', 'VANGUARD'],
+  R6: ['VIGILANTE', 'MAFIOSO', 'VETERAN', 'CRUSADER', 'WEREWOLF', 'JUGGERNAUT', 'ENFORCER'],
+  R7: ['GODFATHER', 'MAYOR', 'BODYGUARD', 'ARSONIST', 'DRAGON_HEAD'],
   R8: ['FRAMER', 'LOOKOUT', 'FORGER', 'DISGUISER', 'AMBUSHER'],
 };
 
@@ -167,3 +176,12 @@ export const RANDOM_MAFIA_POOL: readonly RoleId[] = [
   'AMBUSHER',
   'HYPNOTIST',
 ];
+
+/**
+ * Roles a `RANDOM_TRIAD` slot may draw (Triad faction). Mirrors RANDOM_MAFIA but
+ * scoped to the Triad's own support roster. The Triad's killing core (Dragon
+ * Head / Enforcer) is placed via fixed slots, exactly like the Mafia core; this
+ * pool fills the Triad's flexible support slot. Currently the Vanguard is the
+ * only Triad support role, so a RANDOM_TRIAD slot resolves to a VANGUARD.
+ */
+export const RANDOM_TRIAD_POOL: readonly RoleId[] = ['VANGUARD'];

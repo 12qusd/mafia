@@ -17,6 +17,8 @@ export interface ChannelContext {
   alive: boolean;
   spectator: boolean;
   isMafia: boolean;
+  /** Whether the local seat is a member of the Triad (second evil faction). */
+  isTriad: boolean;
   chat: ChatLine[];
 }
 
@@ -44,6 +46,9 @@ export function entitledChannels(ctx: ChannelContext): ChatChannel[] {
   // chat to mafia seats, §5) or it's a known-mafia seat at night.
   if (seen.has('mafia') || (ctx.isMafia && ctx.phase === 'NIGHT')) out.push('mafia');
 
+  // Triad: the Mafia channel's mirror for the second evil faction.
+  if (seen.has('triad') || (ctx.isTriad && ctx.phase === 'NIGHT')) out.push('triad');
+
   // Jail: only when jail traffic has arrived (jailor or prisoner).
   if (seen.has('jail')) out.push('jail');
 
@@ -66,6 +71,8 @@ export function canSpeakIn(channel: ChatChannel, ctx: ChannelContext): boolean {
       return ctx.alive && DAY_PHASES.has(ctx.phase);
     case 'mafia':
       return ctx.alive && ctx.isMafia && ctx.phase === 'NIGHT';
+    case 'triad':
+      return ctx.alive && ctx.isTriad && ctx.phase === 'NIGHT';
     case 'jail':
       return ctx.phase === 'NIGHT';
     case 'dead':

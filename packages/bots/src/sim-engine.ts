@@ -142,11 +142,13 @@ function routeEffect(
   const aliveSeats = state.seats.filter((s) => s.alive).map((s) => s.seat);
   const deadSeats = state.seats.filter((s) => !s.alive).map((s) => s.seat);
   const mafiaSeats = state.seats.filter((s) => s.alive && s.faction === 'MAFIA').map((s) => s.seat);
+  const triadSeats = state.seats.filter((s) => s.alive && s.faction === 'TRIAD').map((s) => s.seat);
   const all = state.seats.map((s) => s.seat);
 
   let recipients: SeatId[];
   if (effect.to === 'public') recipients = all;
   else if (effect.to === 'mafia') recipients = mafiaSeats;
+  else if (effect.to === 'triad') recipients = triadSeats;
   else if (effect.to === 'dead') recipients = deadSeats;
   else recipients = effect.to;
 

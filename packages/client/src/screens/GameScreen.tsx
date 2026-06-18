@@ -63,22 +63,29 @@ export function GameScreen() {
   const alive = ownSeatPublic?.alive ?? false;
   const spectator = game.spectator || !own;
   const isMafia = own?.faction === 'MAFIA' || (own ? getRole(own.role).faction === 'MAFIA' : false);
+  const isTriad = own?.faction === 'TRIAD' || (own ? getRole(own.role).faction === 'TRIAD' : false);
 
   const channels = entitledChannels({
     phase: game.phase,
     alive,
     spectator,
     isMafia,
+    isTriad,
     chat,
   });
   // Always offer at least the day channel; spectators read it.
   const tabChannels: ChatChannel[] = channels.length ? channels : ['day'];
-  const activeDefault: ChatChannel = game.phase === 'NIGHT' && isMafia && alive ? 'mafia' : 'day';
+  const activeDefault: ChatChannel =
+    game.phase === 'NIGHT' && alive && isMafia
+      ? 'mafia'
+      : game.phase === 'NIGHT' && alive && isTriad
+        ? 'triad'
+        : 'day';
 
   // Can the local seat speak in the currently relevant context? The ChatPane
   // decides per-channel; we pass a coarse gate too.
   const speakAnywhere = tabChannels.some((ch) =>
-    canSpeakIn(ch, { phase: game.phase, alive, spectator, isMafia, chat }),
+    canSpeakIn(ch, { phase: game.phase, alive, spectator, isMafia, isTriad, chat }),
   );
 
   return (

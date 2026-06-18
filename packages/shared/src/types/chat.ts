@@ -6,11 +6,13 @@ import { z } from 'zod';
  * - lobby   — LOBBY phase; everyone in the lobby.
  * - day     — all day phases; living seats write, everyone reads.
  * - mafia   — NIGHT; living mafia seats.
+ * - triad   — NIGHT; living triad seats (the Mafia's mirror for the second evil
+ *             faction; never delivered to mafia/town/neutrals/spectators/dead).
  * - jail    — NIGHT (if jailed); jailor (masked as "Jailor") + prisoner.
  * - dead    — always after death; dead seats.
  * - whisper — day phases; sender → recipient (public "X whispers to Y" meta).
  */
-export const CHAT_CHANNELS = ['lobby', 'day', 'mafia', 'jail', 'dead', 'whisper'] as const;
+export const CHAT_CHANNELS = ['lobby', 'day', 'mafia', 'triad', 'jail', 'dead', 'whisper'] as const;
 
 export const ChatChannelSchema = z.enum(CHAT_CHANNELS);
 

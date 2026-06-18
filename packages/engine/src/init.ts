@@ -18,6 +18,7 @@ import {
   ROLES,
   UNIQUE_ROLES,
   RANDOM_MAFIA_POOL,
+  RANDOM_TRIAD_POOL,
   DEFAULT_LOBBY_CONFIG,
   type ResolvedLobbyConfig,
   VIGILANTE_BULLETS,
@@ -106,6 +107,7 @@ function assignRoles(
 
 function categoryPool(category: string, setup: GameSetup): RoleId[] {
   if (category === 'RANDOM_MAFIA') return RANDOM_MAFIA_POOL.slice();
+  if (category === 'RANDOM_TRIAD') return RANDOM_TRIAD_POOL.slice();
   // RANDOM_TOWN: draw from setup's town allowlist.
   return setup.townPool.slice();
 }
@@ -194,7 +196,7 @@ export function init(setup: GameSetup, seed: string, opts: InitOptions = {}): Ga
   }
 
   // Guardian Angel target assignment (batch D): one random NON-EVIL charge, never
-  // the GA itself nor another Guardian Angel. "Non-evil" excludes MAFIA and
+  // the GA itself nor another Guardian Angel. "Non-evil" excludes MAFIA, TRIAD and
   // NEUTRAL_KILLING (you cannot be tied to protect a killer); Town and other
   // benigns are valid charges. If no valid charge exists, the GA has no one to
   // watch over and becomes a Survivor immediately.
@@ -206,6 +208,7 @@ export function init(setup: GameSetup, seed: string, opts: InitOptions = {}): Ga
             c.seat !== s.seat &&
             c.role !== 'GUARDIAN_ANGEL' &&
             c.faction !== 'MAFIA' &&
+            c.faction !== 'TRIAD' &&
             c.faction !== 'NEUTRAL_KILLING',
         )
         .map((c) => c.seat);
@@ -224,6 +227,7 @@ export function init(setup: GameSetup, seed: string, opts: InitOptions = {}): Ga
   }
 
   const mafiaSeats = seats.filter((s) => s.faction === 'MAFIA').map((s) => s.seat);
+  const triadSeats = seats.filter((s) => s.faction === 'TRIAD').map((s) => s.seat);
 
   const state: GameState = {
     version: 1,
@@ -239,6 +243,7 @@ export function init(setup: GameSetup, seed: string, opts: InitOptions = {}): Ga
     lastTick: 0,
     seats,
     mafiaSeats,
+    triadSeats,
     nightIntents: [],
     jailTarget: null,
     seanceMedium: null,

@@ -40,6 +40,7 @@ describe('unique roles (§6.5, §6.10)', () => {
     expect([...UNIQUE_ROLES].sort()).toEqual(
       [
         'ARSONIST',
+        'DRAGON_HEAD', // Triad's Godfather-equivalent — unique like the GF.
         'GODFATHER',
         'JAILOR',
         'JUGGERNAUT',
@@ -65,9 +66,9 @@ describe('investigator result classes (§6.6)', () => {
     R2: ['SHERIFF', 'JAILOR', 'BLACKMAILER', 'TRACKER'],
     R3: ['INVESTIGATOR', 'JESTER', 'CONSIGLIERE', 'SPY', 'PSYCHIC'],
     R4: ['DOCTOR', 'SERIAL_KILLER', 'MEDIUM', 'MASS_MURDERER'],
-    R5: ['ESCORT', 'CONSORT', 'JANITOR', 'HYPNOTIST'],
-    R6: ['VIGILANTE', 'MAFIOSO', 'VETERAN', 'CRUSADER', 'WEREWOLF', 'JUGGERNAUT'],
-    R7: ['GODFATHER', 'MAYOR', 'BODYGUARD', 'ARSONIST'],
+    R5: ['ESCORT', 'CONSORT', 'JANITOR', 'HYPNOTIST', 'VANGUARD'],
+    R6: ['VIGILANTE', 'MAFIOSO', 'VETERAN', 'CRUSADER', 'WEREWOLF', 'JUGGERNAUT', 'ENFORCER'],
+    R7: ['GODFATHER', 'MAYOR', 'BODYGUARD', 'ARSONIST', 'DRAGON_HEAD'],
     R8: ['FRAMER', 'LOOKOUT', 'FORGER', 'DISGUISER', 'AMBUSHER'],
   };
 
@@ -119,6 +120,10 @@ describe('sheriff alignment table (§6.6)', () => {
     'WEREWOLF',
     'MASS_MURDERER',
     'JUGGERNAUT',
+    // Triad: the Enforcer and Vanguard read suspicious (mirror Mafioso/Consort);
+    // the Dragon Head reads clean like the Godfather.
+    'ENFORCER',
+    'VANGUARD',
   ];
 
   it('exactly the spec set reads suspicious un-framed', () => {
@@ -157,6 +162,7 @@ describe('ability metadata (§6.5)', () => {
     expect(immune).toEqual(
       [
         'ARSONIST',
+        'DRAGON_HEAD', // Triad's Godfather-equivalent — night-immune like the GF.
         'EXECUTIONER',
         'GODFATHER',
         'JUGGERNAUT',
@@ -167,9 +173,11 @@ describe('ability metadata (§6.5)', () => {
     );
   });
 
-  it('roleblock-immune is only the Godfather (§6.5; SK handled by hazard rule)', () => {
-    const rbImmune = ALL_ROLES.filter((r) => r.roleblockImmune).map((r) => r.id);
-    expect(rbImmune).toEqual(['GODFATHER']);
+  it('roleblock-immune is the Godfather and the Triad Dragon Head (§6.5; SK handled by hazard rule)', () => {
+    const rbImmune = ALL_ROLES.filter((r) => r.roleblockImmune)
+      .map((r) => r.id)
+      .sort();
+    expect(rbImmune).toEqual(['DRAGON_HEAD', 'GODFATHER'].sort());
   });
 
   it('Mafia faction has exactly the mafia roles (core + batch-A support)', () => {
@@ -191,5 +199,12 @@ describe('ability metadata (§6.5)', () => {
         'MAFIOSO',
       ].sort(),
     );
+  });
+
+  it('Triad faction has exactly the triad roles (Dragon Head, Enforcer, Vanguard)', () => {
+    const triad = ALL_ROLES.filter((r) => r.faction === 'TRIAD')
+      .map((r) => r.id)
+      .sort();
+    expect(triad).toEqual(['DRAGON_HEAD', 'ENFORCER', 'VANGUARD'].sort());
   });
 });

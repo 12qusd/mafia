@@ -98,6 +98,7 @@ export interface EngineSeatView {
 export interface EngineView {
   phaseInfo(state: GameState): { phase: Phase; dayNumber: number; endsAt: GameTick | null };
   mafiaSeats(state: GameState): SeatId[];
+  triadSeats(state: GameState): SeatId[];
   deadSeats(state: GameState): SeatId[];
   allSeats(state: GameState): SeatId[];
   isOver(state: GameState): boolean;
@@ -183,6 +184,7 @@ interface RealState {
   phaseEndsAt: GameTick | null;
   seats: RealSeat[];
   mafiaSeats: SeatId[];
+  triadSeats: SeatId[];
   gameOver: {
     winners: string[];
     results: { seat: SeatId; role: RoleId; faction: string; outcome: string }[];
@@ -219,6 +221,7 @@ function buildRealEngine(mod: RealEngineModule): Engine {
       return { phase: s.phase, dayNumber: s.dayNumber, endsAt: s.phaseEndsAt };
     },
     mafiaSeats: (state) => rs(state).mafiaSeats.filter((seat) => rs(state).seats[seat]?.alive),
+    triadSeats: (state) => rs(state).triadSeats.filter((seat) => rs(state).seats[seat]?.alive),
     deadSeats: (state) => rs(state).seats.filter((x) => !x.alive).map((x) => x.seat),
     allSeats: (state) => rs(state).seats.map((x) => x.seat),
     isOver: (state) => rs(state).gameOver !== null,

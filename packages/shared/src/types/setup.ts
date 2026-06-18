@@ -5,9 +5,11 @@ import { RoleIdSchema } from './role.js';
  * Slot category pools (BUILD_SPEC §6.10).
  *
  * - RANDOM_TOWN  — any Town role drawn from the setup's allowlist.
- * - RANDOM_MAFIA — Consort | Framer (the non-unique mafia support roles).
+ * - RANDOM_MAFIA — a non-unique Mafia support role (RANDOM_MAFIA_POOL).
+ * - RANDOM_TRIAD — a non-unique Triad support role (RANDOM_TRIAD_POOL); the
+ *                  Mafia mirror for the second evil faction.
  */
-export const SLOT_CATEGORIES = ['RANDOM_TOWN', 'RANDOM_MAFIA'] as const;
+export const SLOT_CATEGORIES = ['RANDOM_TOWN', 'RANDOM_MAFIA', 'RANDOM_TRIAD'] as const;
 export const SlotCategorySchema = z.enum(SLOT_CATEGORIES);
 export type SlotCategory = z.infer<typeof SlotCategorySchema>;
 

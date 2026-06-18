@@ -8,6 +8,9 @@ import { z } from 'zod';
  * `strings.ts`.
  *
  * - mafia          — the Mafia faction kill.
+ * - triad          — the Triad faction kill (the Mafia kill's mirror for the
+ *                    second evil faction). A basic attack, identical mechanics:
+ *                    stopped by Doctor/Bodyguard/vest/jail/night-immunity.
  * - serial_killer  — a Serial Killer night kill.
  * - vigilante      — a Vigilante shot.
  * - jailor_execute — a Jailor execution (pierces immunity and heals).
@@ -37,6 +40,7 @@ import { z } from 'zod';
  */
 export const DEATH_CAUSES = [
   'mafia',
+  'triad',
   'serial_killer',
   'vigilante',
   'jailor_execute',

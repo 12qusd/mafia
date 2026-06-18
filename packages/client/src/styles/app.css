@@ -163,6 +163,9 @@ label {
 .faction-MAFIA {
   color: var(--f-mafia);
 }
+.faction-TRIAD {
+  color: var(--f-triad);
+}
 .faction-NEUTRAL_KILLING {
   color: var(--f-nk);
 }

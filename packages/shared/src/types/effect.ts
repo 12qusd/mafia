@@ -12,10 +12,12 @@ import type { SeatId } from './ids.js';
  * - `'public'`      — every connected client, including spectators.
  * - `'dead'`        — dead seats (dead chat; full info only if `deadSeeAll`).
  * - `'mafia'`       — living mafia-member seats.
+ * - `'triad'`       — living triad-member seats (the Mafia mirror for the second
+ *                     evil faction; never routed to mafia/town/neutrals/dead/spec).
  * - `SeatId[]`      — an explicit, individually addressed set of seats
  *                     (your_role, private_result, whisper, jail chat, …).
  */
-export type EffectTarget = 'public' | 'dead' | 'mafia' | SeatId[];
+export type EffectTarget = 'public' | 'dead' | 'mafia' | 'triad' | SeatId[];
 
 /**
  * An addressed outbound message. Generic over the message payload so this core

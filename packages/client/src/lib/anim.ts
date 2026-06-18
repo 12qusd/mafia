@@ -217,6 +217,9 @@ export function effectForCause(cause: DeathCause): CauseEffect {
   switch (cause) {
     case 'mafia':
       return 'knife';
+    case 'triad':
+      // The Triad kill mirrors the Mafia kill — a knife in the dark.
+      return 'knife';
     case 'serial_killer':
       return 'knife';
     case 'vigilante':

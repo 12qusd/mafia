@@ -10,6 +10,7 @@ import { z } from 'zod';
 export const WINNING_PARTIES = [
   'TOWN',
   'MAFIA',
+  'TRIAD',
   'SERIAL_KILLER',
   'JESTER',
   'EXECUTIONER',

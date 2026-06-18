@@ -218,6 +218,9 @@ export class Room implements AudienceProvider {
   mafiaSeats(): SeatId[] {
     return this.engine.mafiaSeats(this.state);
   }
+  triadSeats(): SeatId[] {
+    return this.engine.triadSeats(this.state);
+  }
   deadSeats(): SeatId[] {
     return this.engine.deadSeats(this.state);
   }
@@ -573,7 +576,9 @@ export class Room implements AudienceProvider {
     const out: ChatChannel[] = ['day'];
     const dead = new Set(this.deadSeats());
     const mafia = new Set(this.mafiaSeats());
+    const triad = new Set(this.triadSeats());
     if (mafia.has(seat)) out.push('mafia');
+    if (triad.has(seat)) out.push('triad');
     if (dead.has(seat)) out.push('dead');
     return out;
   }

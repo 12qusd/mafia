@@ -81,6 +81,8 @@ export function deathLine(cause: DeathCause, seatLabel: string, roleName: string
   switch (cause) {
     case 'mafia':
       return `${seatLabel} was found in an alley, cold. They were the ${roleName}.`;
+    case 'triad':
+      return `${seatLabel} was found in a back room with a red cord drawn tight. They were the ${roleName}.`;
     case 'serial_killer':
       return `${seatLabel} met a private kind of violence in the night. They were the ${roleName}.`;
     case 'vigilante':

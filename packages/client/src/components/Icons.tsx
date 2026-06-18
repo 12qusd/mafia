@@ -43,6 +43,18 @@ export function IconMafia({ size = 14, className }: P) {
     className,
   );
 }
+/** Triad: a coiled dragon / interlocking knot (distinct from the fedora). */
+export function IconTriad({ size = 14, className }: P) {
+  return svg(
+    size,
+    <>
+      <path d="M5 9c3-4 11-4 14 0" />
+      <path d="M19 15c-3 4-11 4-14 0" />
+      <path d="M12 7v10" />
+    </>,
+    className,
+  );
+}
 /** Neutral killing: a dagger. */
 export function IconNK({ size = 14, className }: P) {
   return svg(
@@ -67,6 +79,8 @@ export function FactionIcon({ faction, size, className }: P & { faction: Faction
       return <IconTown {...p} />;
     case 'MAFIA':
       return <IconMafia {...p} />;
+    case 'TRIAD':
+      return <IconTriad {...p} />;
     case 'NEUTRAL_KILLING':
       return <IconNK {...p} />;
     case 'NEUTRAL_BENIGN':

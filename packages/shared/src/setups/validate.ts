@@ -11,7 +11,7 @@
 import type { GameSetup, SetupSlot, SlotCategory } from '../types/setup.js';
 import type { RoleId } from '../types/role.js';
 import type { Faction } from '../types/faction.js';
-import { ROLES, ALL_ROLES, UNIQUE_ROLES } from '../roles/index.js';
+import { ROLES, ALL_ROLES, UNIQUE_ROLES, RANDOM_TRIAD_POOL } from '../roles/index.js';
 import { slotFaction } from './compose.js';
 
 export type ValidationResult = { ok: true } | { ok: false; errors: string[] };
@@ -22,17 +22,21 @@ const ALL_ROLE_IDS = new Set<string>(ALL_ROLES.map((r) => r.id));
 const CATEGORY_FACTION: Record<SlotCategory, Faction> = {
   RANDOM_TOWN: 'TOWN',
   RANDOM_MAFIA: 'MAFIA',
+  RANDOM_TRIAD: 'TRIAD',
 };
 
 /** Whether a slot guarantees a kill-capable role (so a game can actually end). */
 function slotIsKilling(slot: SetupSlot, townPool: readonly RoleId[]): boolean {
   if (slot.kind === 'fixed') {
     if (!ALL_ROLE_IDS.has(slot.role)) return false; // unknown role: not a kill source.
-    // Any MAFIA slot carries the standing faction kill; an explicit `kill` role
-    // (Vigilante / Mafioso / Serial Killer / jailed execution) also qualifies.
-    return slotFaction(slot) === 'MAFIA' || ROLES[slot.role].nightAction === 'kill';
+    // Any MAFIA or TRIAD slot carries a standing faction kill; an explicit `kill`
+    // role (Vigilante / Mafioso / Enforcer / Serial Killer / jailed execution)
+    // also qualifies.
+    const f = slotFaction(slot);
+    return f === 'MAFIA' || f === 'TRIAD' || ROLES[slot.role].nightAction === 'kill';
   }
-  if (slot.category === 'RANDOM_MAFIA') return true;
+  // RANDOM_MAFIA / RANDOM_TRIAD carry a standing faction kill.
+  if (slot.category === 'RANDOM_MAFIA' || slot.category === 'RANDOM_TRIAD') return true;
   // RANDOM_TOWN: killing iff the pool can draw a kill-capable Town role.
   return townPool.some((r) => ALL_ROLE_IDS.has(r) && ROLES[r].nightAction === 'kill');
 }
@@ -118,6 +122,18 @@ export function validateSetup(setup: GameSetup, playerCount?: number): Validatio
     for (const roleId of townRoles) {
       if (ROLES[roleId].faction !== 'TOWN') {
         errors.push(`RANDOM_TOWN pool contains non-Town role "${roleId}".`);
+      }
+    }
+  }
+  // RANDOM_TRIAD draws from the fixed RANDOM_TRIAD_POOL; assert it is non-empty
+  // and Triad-homogeneous (defence in depth — the pool is a static constant).
+  if (usedCategories.has('RANDOM_TRIAD')) {
+    if (RANDOM_TRIAD_POOL.length === 0) {
+      errors.push('RANDOM_TRIAD is used but the Triad support pool is empty.');
+    }
+    for (const roleId of RANDOM_TRIAD_POOL) {
+      if (!ALL_ROLE_IDS.has(roleId) || ROLES[roleId].faction !== 'TRIAD') {
+        errors.push(`RANDOM_TRIAD pool contains non-Triad role "${roleId}".`);
       }
     }
   }

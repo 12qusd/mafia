@@ -160,32 +160,49 @@ export class BotPolicy {
     this.bot.send({ v: 1, type: 'night_action', ability, target } as ClientMessage);
   }
 
-  /** The lowest living mafia seat announces a kill target in mafia chat. */
+  /** The killing faction's own night chat channel (mafia or triad). */
+  private factionKillChannel(): 'mafia' | 'triad' {
+    return this.bot.view.faction === 'TRIAD' ? 'triad' : 'mafia';
+  }
+
+  /** The lowest living faction member announces a kill target in faction chat. */
   private coordinateMafiaKill(): void {
     const seat = this.bot.view.seat;
     if (seat === null) return;
     const livingMates = this.bot.view.mates.filter((m) => this.bot.view.alive.has(m));
-    const allMafiaLiving = [seat, ...livingMates].filter((s) => this.bot.view.alive.has(s));
-    const leader = Math.min(...allMafiaLiving);
+    const allFactionLiving = [seat, ...livingMates].filter((s) => this.bot.view.alive.has(s));
+    const leader = Math.min(...allFactionLiving);
     if (seat !== leader) return; // only the leader proposes
     const target = this.pickMafiaTarget();
     if (target === null) return;
     this.mafiaPlanTarget = target;
-    this.bot.send({ v: 1, type: 'chat', channel: 'mafia', text: `Tonight: ${target}.` } as ClientMessage);
+    this.bot.send({
+      v: 1,
+      type: 'chat',
+      channel: this.factionKillChannel(),
+      text: `Tonight: ${target}.`,
+    } as ClientMessage);
   }
 
   private submitMafiaKill(): void {
     const ability = this.nightAbility();
-    if (ability !== 'kill_mafia' && ability !== 'mafia_control') return;
+    if (
+      ability !== 'kill_mafia' &&
+      ability !== 'mafia_control' &&
+      ability !== 'kill_triad' &&
+      ability !== 'triad_control'
+    ) {
+      return;
+    }
     const target = this.mafiaPlanTarget ?? this.pickMafiaTarget();
     if (target === null) return;
     this.bot.send({ v: 1, type: 'night_action', ability, target } as ClientMessage);
   }
 
-  /** Choose a random non-mafia living seat as the mafia victim (§12.2). */
+  /** Choose a random non-faction living seat as the kill victim (§12.2). */
   private pickMafiaTarget(): SeatId | null {
-    const mafia = new Set([this.bot.view.seat as SeatId, ...this.bot.view.mates]);
-    const candidates = [...this.bot.view.alive].filter((s) => !mafia.has(s));
+    const allies = new Set([this.bot.view.seat as SeatId, ...this.bot.view.mates]);
+    const candidates = [...this.bot.view.alive].filter((s) => !allies.has(s));
     return this.choice(candidates);
   }
 
@@ -295,7 +312,11 @@ export class BotPolicy {
   }
   private isMafiaKiller(): boolean {
     const ab = this.nightAbility();
-    return ab === 'kill_mafia' || ab === 'mafia_control';
+    // True for EITHER evil faction's kill/control ability — the coordination
+    // logic is identical, only the faction chat channel differs.
+    return (
+      ab === 'kill_mafia' || ab === 'mafia_control' || ab === 'kill_triad' || ab === 'triad_control'
+    );
   }
   private alive(): boolean {
     return this.bot.view.selfAlive;

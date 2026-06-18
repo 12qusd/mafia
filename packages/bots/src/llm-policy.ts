@@ -242,7 +242,14 @@ export class LlmPolicy {
     if (this.bot.view.over || !this.bot.view.selfAlive) return;
     // Chat (rate-limited per bot).
     if (d.say && this.now() - this.lastChatAt >= this.cfg.chatCooldownMs) {
-      const channel = phase === 'NIGHT' && this.bot.view.faction === 'MAFIA' ? 'mafia' : 'day';
+      // At night an informed evil faction member speaks in its OWN faction channel
+      // (mafia or triad); everyone else speaks in day chat.
+      const channel =
+        phase === 'NIGHT' && this.bot.view.faction === 'MAFIA'
+          ? 'mafia'
+          : phase === 'NIGHT' && this.bot.view.faction === 'TRIAD'
+            ? 'triad'
+            : 'day';
       this.lastChatAt = this.now();
       this.bot.send({ v: 1, type: 'chat', channel, text: d.say } as ClientMessage);
     }

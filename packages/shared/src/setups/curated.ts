@@ -211,3 +211,58 @@ export const FULL_MOON: GameSetup = {
     '15': FULL_MOON_15,
   },
 };
+
+const RANDOM_TRIAD: SetupSlot = { kind: 'category', category: 'RANDOM_TRIAD' };
+
+/**
+ * "Tong War" — a 15-player two-evil-faction brawl. A small Mafia and a small
+ * Triad share the same streets: two informed killing factions that are NOT allies
+ * — they must wipe each other (and a lurking Serial Killer) out before either can
+ * win on parity. The Town, caught in the crossfire, tries to read which kills
+ * belong to which family while a Jester angles to be lynched.
+ *
+ * Town (7): Jailor, Sheriff, Investigator, Doctor, Escort, Lookout, + RANDOM_TOWN.
+ * Mafia (3): Godfather, Mafioso, + one RANDOM_MAFIA support.
+ * Triad (3): Dragon Head, Enforcer, Vanguard (the Mafia's structural mirror).
+ * Neutral (2): Serial Killer, Jester.
+ *
+ * This setup exercises the full two-evil-faction path: the 'triad' chat channel,
+ * the Triad faction kill, both faction rosters, and the generalized win check
+ * (Town vs Mafia vs Triad vs SK — no premature end while two killing factions live).
+ */
+const TONG_WAR_15: SetupSlot[] = [
+  // Town
+  F('JAILOR'),
+  F('SHERIFF'),
+  F('INVESTIGATOR'),
+  F('DOCTOR'),
+  F('ESCORT'),
+  F('LOOKOUT'),
+  RANDOM_TOWN,
+  // Mafia
+  F('GODFATHER'),
+  F('MAFIOSO'),
+  RANDOM_MAFIA,
+  // Triad
+  F('DRAGON_HEAD'),
+  F('ENFORCER'),
+  RANDOM_TRIAD,
+  // Neutral
+  F('SERIAL_KILLER'),
+  F('JESTER'),
+];
+
+export const TONG_WAR: GameSetup = {
+  id: 'tong-war',
+  name: 'Tong War',
+  description:
+    'A 15-player turf war between two crime families. A Mafia and a Triad work the same streets ' +
+    "— rival killers who must bury each other before either can take the town. The Town reads " +
+    'the bodies for a pattern; a lone cutthroat and a fool play their own angles.',
+  minPlayers: 15,
+  maxPlayers: 15,
+  townPool: ['CITIZEN', 'DOCTOR', 'SHERIFF', 'LOOKOUT', 'VIGILANTE', 'INVESTIGATOR'],
+  slotsByPlayerCount: {
+    '15': TONG_WAR_15,
+  },
+};

@@ -33,6 +33,7 @@ const KILL_SOURCE_ORDER: DeathCause[] = [
   'crusader',
   'vigilante',
   'mafia',
+  'triad',
   'ambush',
   'serial_killer',
   'werewolf',
@@ -48,6 +49,7 @@ const KILL_SOURCE_ORDER: DeathCause[] = [
  */
 const BASIC_ATTACK_SOURCES: ReadonlySet<DeathCause> = new Set<DeathCause>([
   'mafia',
+  'triad',
   'vigilante',
   'serial_killer',
   'veteran',
@@ -197,7 +199,7 @@ export function resolveNight(state: GameState): ResolveResult {
       traces.push({ step: 'roleblock', blocker: b.blocker, target: b.target, outcome: 'blocked' });
       // Target told they were distracted (only if they had an action to lose).
       const ti = intentBySeat.get(b.target);
-      if (ti && ti.ability !== 'mafia_control') {
+      if (ti && ti.ability !== 'mafia_control' && ti.ability !== 'triad_control') {
         effects.push(toSeat(b.target, { type: 'private_result', kind: 'roleblocked' }));
       }
     }
@@ -374,6 +376,8 @@ export function resolveNight(state: GameState): ResolveResult {
       kills.push({ source: 'serial_killer', attacker: i.seat, target: i.target });
     } else if (i.ability === 'kill_mafia') {
       kills.push({ source: 'mafia', attacker: i.seat, target: i.target });
+    } else if (i.ability === 'kill_triad') {
+      kills.push({ source: 'triad', attacker: i.seat, target: i.target });
     }
   }
 
@@ -857,6 +861,11 @@ export function resolveNight(state: GameState): ResolveResult {
   // mafia becomes Mafioso (effective next night).
   applyMafiaSuccession(state, traces);
 
+  // Triad succession: Dragon Head died & no living Enforcer ⇒ senior (lowest-seat)
+  // living triad becomes Enforcer (effective next night). Exact mirror of the
+  // Mafia succession above.
+  applyTriadSuccession(state, traces);
+
   // Executioner → Jester if target died at night.
   for (const s of state.seats) {
     if (s.role === 'EXECUTIONER' && s.alive && s.exeTarget !== null) {
@@ -920,6 +929,8 @@ export function resolveNight(state: GameState): ResolveResult {
 
   // Refresh mafia roster (drop dead members; a new Amnesiac→mafia is added).
   state.mafiaSeats = state.seats.filter((s) => s.faction === 'MAFIA').map((s) => s.seat);
+  // Refresh triad roster (mirror of the mafia roster refresh above).
+  state.triadSeats = state.seats.filter((s) => s.faction === 'TRIAD').map((s) => s.seat);
 
   return { effects, deaths, traces };
 }
@@ -941,6 +952,7 @@ function findJailor(state: GameState): SeatId | null {
 function isNightImmune(seat: SeatState): boolean {
   return (
     seat.role === 'GODFATHER' ||
+    seat.role === 'DRAGON_HEAD' ||
     seat.role === 'SERIAL_KILLER' ||
     seat.role === 'EXECUTIONER' ||
     seat.role === 'ARSONIST' ||
@@ -951,7 +963,7 @@ function isNightImmune(seat: SeatState): boolean {
 }
 
 function isRoleblockImmune(seat: SeatState): boolean {
-  return seat.role === 'GODFATHER';
+  return seat.role === 'GODFATHER' || seat.role === 'DRAGON_HEAD';
 }
 
 /** Roles an Amnesiac may NOT remember (the "win by a trick" benigns, batch B). */
@@ -1057,9 +1069,11 @@ function isFullMoon(state: GameState): boolean {
 const JUGGERNAUT_POWER_THRESHOLD = 2;
 
 function actorVisits(_actor: SeatState, intent: NightIntent): boolean {
-  // GF control never visits; mafia kill performer (kill_mafia) DOES visit.
+  // GF/Dragon-Head control never visits; the faction kill performer
+  // (kill_mafia / kill_triad) DOES visit.
   switch (intent.ability) {
     case 'mafia_control':
+    case 'triad_control':
       return false;
     case 'kill_jailor':
       return false; // jailing is not a street visit
@@ -1097,6 +1111,7 @@ function actorVisits(_actor: SeatState, intent: NightIntent): boolean {
     case 'juggernaut':
     case 'kill_vigilante':
     case 'kill_mafia':
+    case 'kill_triad':
     case 'kill_serial':
       return true;
     default:
@@ -1115,6 +1130,7 @@ function apparentRoleOf(target: SeatState): RoleId {
 /** Factions the Psychic's vision treats as "evil" (batch C). */
 const PSYCHIC_EVIL_FACTIONS: ReadonlySet<Faction> = new Set<Faction>([
   'MAFIA',
+  'TRIAD',
   'NEUTRAL_KILLING',
 ]);
 
@@ -1176,6 +1192,10 @@ function sheriffRead(target: SeatState, framed: ReadonlySet<SeatId>): SheriffRes
     'WEREWOLF',
     'MASS_MURDERER',
     'JUGGERNAUT',
+    // Triad: the Enforcer and Vanguard read suspicious, mirroring their Mafia
+    // counterparts (Mafioso / Consort). The Dragon Head reads clean like the GF.
+    'ENFORCER',
+    'VANGUARD',
   ];
   return suspiciousRoles.includes(apparentRoleOf(target)) ? 'suspicious' : 'not_suspicious';
 }
@@ -1229,5 +1249,23 @@ function applyMafiaSuccession(state: GameState, traces: ResolutionTrace[]): void
     senior.role = 'MAFIOSO';
     // faction stays MAFIA.
     traces.push({ step: 'promotion', kind: 'mafia_succession', seat: senior.seat, newRole: 'MAFIOSO' });
+  }
+}
+
+/**
+ * Triad succession (mirror of {@link applyMafiaSuccession}). If the Dragon Head
+ * and the last Enforcer are both gone but living Triad remain, the senior
+ * (lowest-seat) living Triad member is promoted to Enforcer so the faction kill
+ * carries on next night.
+ */
+function applyTriadSuccession(state: GameState, traces: ResolutionTrace[]): void {
+  const livingTriad = state.seats.filter((s) => s.alive && s.faction === 'TRIAD');
+  const hasDragonHead = livingTriad.some((s) => s.role === 'DRAGON_HEAD');
+  const hasEnforcer = livingTriad.some((s) => s.role === 'ENFORCER');
+  if (!hasDragonHead && !hasEnforcer && livingTriad.length > 0) {
+    const senior = livingTriad.slice().sort((a, b) => a.seat - b.seat)[0]!;
+    senior.role = 'ENFORCER';
+    // faction stays TRIAD.
+    traces.push({ step: 'promotion', kind: 'triad_succession', seat: senior.seat, newRole: 'ENFORCER' });
   }
 }

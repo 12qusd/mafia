@@ -5,9 +5,10 @@
  * Nothing outside this module may call `socket.send` directly. Every outbound
  * message goes through `sendTo(seatIds, msg)`, `broadcastPublic(msg)`, or
  * `dispatchEffect(...)` which maps an engine `Effect`'s `to` audience
- * ('public'|'dead'|'mafia'|SeatId[]) onto the right sockets. Membership of the
- * mafia/dead audiences is read from engine state (via the engine adapter view),
- * never from the message body. Spectators receive ONLY 'public' frames and never
+ * ('public'|'dead'|'mafia'|'triad'|SeatId[]) onto the right sockets. Membership
+ * of the mafia/triad/dead audiences is read from engine state (via the engine
+ * adapter view), never from the message body. Spectators receive ONLY 'public'
+ * frames and never
  * a secret, regardless of `deadSeeAll` (§5, §7.8).
  *
  * ESLint: `no-restricted-syntax` forbids `.send(` member calls in every other
@@ -40,6 +41,8 @@ export interface AudienceProvider {
   socketsForSeats(seats: Iterable<SeatId>): Iterable<Sendable>;
   /** Seats currently considered mafia members (engine-derived). */
   mafiaSeats(): SeatId[];
+  /** Seats currently considered triad members (engine-derived). */
+  triadSeats(): SeatId[];
   /** Seats currently dead (engine-derived). */
   deadSeats(): SeatId[];
 }
@@ -118,6 +121,8 @@ export class ScopedTransport {
       this.broadcastPublic(msg);
     } else if (to === 'mafia') {
       this.sendTo(this.audience.mafiaSeats(), msg);
+    } else if (to === 'triad') {
+      this.sendTo(this.audience.triadSeats(), msg);
     } else if (to === 'dead') {
       this.sendTo(this.audience.deadSeats(), msg);
     } else {

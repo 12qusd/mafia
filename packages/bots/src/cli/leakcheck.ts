@@ -27,6 +27,8 @@ const SETUP_MAP: Record<string, string> = {
   'smoke-and-mirrors': 'smoke-and-mirrors',
   full_moon: 'full-moon',
   'full-moon': 'full-moon',
+  tong_war: 'tong-war',
+  'tong-war': 'tong-war',
 };
 
 function main(): void {

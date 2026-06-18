@@ -158,7 +158,10 @@ export type NightAbility =
   | 'kill_serial'
   | 'kill_jailor'
   | 'frame'
-  | 'mafia_control';
+  | 'mafia_control'
+  // --- Triad faction (second evil killing faction; mirror of mafia) ---
+  | 'kill_triad' // Enforcer: performs the Triad kill (mirror of kill_mafia)
+  | 'triad_control'; // Dragon Head: orders the Triad kill (mirror of mafia_control)
 
 // ---------------------------------------------------------------------------
 // Voting / trial state
@@ -229,6 +232,7 @@ export type ResolutionTrace =
   | { step: 'investigate'; kind: 'spy'; investigator: SeatId; seats: SeatId[] }
   | { step: 'death'; seat: SeatId; role: RoleId; cause: DeathCause }
   | { step: 'promotion'; kind: 'mafia_succession'; seat: SeatId; newRole: RoleId }
+  | { step: 'promotion'; kind: 'triad_succession'; seat: SeatId; newRole: RoleId }
   | { step: 'promotion'; kind: 'executioner_to_jester'; seat: SeatId }
   | { step: 'promotion'; kind: 'amnesiac_remember'; seat: SeatId; newRole: RoleId }
   | { step: 'win'; reason: WinCheckReason; winners: WinningParty[] };
@@ -237,6 +241,7 @@ export type ResolutionTrace =
 export type WinCheckReason =
   | 'town_elimination'
   | 'mafia_parity'
+  | 'triad_parity'
   | 'serial_killer_last'
   | 'one_v_one'
   | 'stalemate'
@@ -294,6 +299,13 @@ export interface GameState {
 
   /** Mafia roster (seat ids), maintained as members die — for entitlement & roster. */
   mafiaSeats: SeatId[];
+
+  /**
+   * Triad roster (seat ids), maintained as members die — the Mafia's mirror for
+   * the second evil faction. Used for the 'triad' chat entitlement & roster
+   * delivery, exactly like {@link mafiaSeats} for the Mafia.
+   */
+  triadSeats: SeatId[];
 
   /** Submitted night intents (cleared each night). Sorted by seat. */
   nightIntents: NightIntent[];

@@ -51,7 +51,9 @@ function detectAchievements(
   if (p.survived) keys.push('survivor');
   if (!p.survived && stayed && p.deathDay === 1) keys.push('martyr');
   if (!p.survived && stayed && daysDead >= 5) keys.push('loyal_dead');
-  if (won && p.faction === 'MAFIA') keys.push('mastermind');
+  // The 'mastermind' achievement fires for a win as a member of EITHER informed
+  // evil faction (Mafia or Triad) — both run the family/tong and play the same role.
+  if (won && (p.faction === 'MAFIA' || p.faction === 'TRIAD')) keys.push('mastermind');
   if (won && p.role === 'SERIAL_KILLER') keys.push('lone_wolf');
   if (won && p.role === 'JESTER') keys.push('last_laugh');
   if (won && p.faction === 'TOWN' && p.survived) keys.push('clean_sweep');

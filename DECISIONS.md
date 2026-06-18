@@ -1204,3 +1204,135 @@ like the SK and the Arsonist — NO faction-logic change for them. The only
 ### Skipped
 - Nothing skipped. All four roles (including the Juggernaut, which the spec marked
   optional) shipped green.
+
+---
+
+## Triad faction (second evil killing faction)
+
+A full mirror of the Mafia faction: its own informed minority, private night chat,
+faction kill, faction roster, succession, and parity win. The two evil factions are
+ENEMIES (not allies) — they cannot co-win and must wipe each other out first.
+
+### Enum / type additions
+- **Faction**: added `TRIAD` (shared `faction.ts`). Updated every exhaustive
+  switch/Record over Faction across shared/engine/server/client (compose
+  `slotFaction`/`factionCounts`, validate `CATEGORY_FACTION`, wincheck tally +
+  `seatWon`, client `FACTION_LABEL`/`ROLES_BY_FACTION`/faction tally/`FactionIcon`/
+  `.faction-TRIAD`).
+- **ChatChannel**: added `'triad'` (shared `chat.ts`), mirroring `'mafia'`.
+- **EffectTarget**: added `'triad'` (shared `effect.ts`) → transport `triadSeats()`
+  routing; the `toTriad` engine effect helper. (Engine `apply.ts` triad chat is
+  addressed via explicit `toSeats(livingTriad)` like the mafia chat, which already
+  guarantees the audience; the `'triad'` target + `toTriad` helper are provided per
+  spec for parity and future faction-broadcast use.)
+- **WinningParty**: added `TRIAD` (shared `outcome.ts`) + client `WINNER_LABEL`.
+- **DeathCause**: added `triad` (a BASIC attack, identical to `mafia`: stopped by
+  Doctor/Bodyguard/vest/jail/night-immunity). Wired into `KILL_SOURCE_ORDER`
+  (right after `mafia`), `BASIC_ATTACK_SOURCES`, death-note attribution
+  (`killerOf`), client `DEATH_CAUSE_LABEL` + `effectForCause` ('knife'), shared
+  `deathLine`.
+- **NightAbility**: `kill_triad` (Enforcer performs) + `triad_control` (Dragon Head
+  orders), mirrors `kill_mafia`/`mafia_control`. `actorVisits`: triad_control does
+  NOT visit, kill_triad DOES.
+- **ResolutionTrace**: `promotion`/`triad_succession` variant. **WinCheckReason**:
+  `triad_parity`. **GameState**: `triadSeats: SeatId[]` (mirrors `mafiaSeats`),
+  maintained at init, in resolve.ts roster refresh, and on admin kill/stump.
+
+### Triad roles (generic names; faction TRIAD)
+- **DRAGON_HEAD** ≈ Godfather: unique, night-immune, roleblock-immune, sheriff
+  reads not_suspicious, investigator R7, `triad_control` (no visit unless it must
+  personally kill). 
+- **ENFORCER** ≈ Mafioso: not unique, sheriff suspicious, investigator R6,
+  blockable, `kill_triad`. Succession target.
+- **VANGUARD** ≈ Consort (DECISION: the Triad support is a ROLEBLOCKER, not a
+  framer — chosen because the roleblock mechanic is the cleanest standalone mirror
+  and the Triad already has its kill/deception covered by the core). Sheriff
+  suspicious, investigator R5, `roleblock`.
+- Added to `INVESTIGATOR_CLASS_TABLE` (R5/R6/R7), the resolve.ts sheriff-suspicious
+  list (ENFORCER, VANGUARD; DRAGON_HEAD reads clean), `isNightImmune` /
+  `isRoleblockImmune` (DRAGON_HEAD), Psychic evil factions (TRIAD).
+- **RANDOM_TRIAD** category (shared `setup.ts` SLOT_CATEGORIES) + `RANDOM_TRIAD_POOL`
+  (`['VANGUARD']`) mirroring RANDOM_MAFIA/RANDOM_MAFIA_POOL. DECISION: the Triad
+  killing core (Dragon Head/Enforcer) is fixed-slotted like the Mafia core; the one
+  flexible Triad support slot draws RANDOM_TRIAD.
+
+### Win conditions — generalized to two evil killing factions (wincheck.ts)
+The rule (rewritten, all old + new goldens green):
+- **Town** wins iff NO living Mafia, NO living Triad, and NO living NK.
+- **An evil killing faction F (Mafia or Triad)** wins iff F has living members,
+  there are NO living members of the OTHER evil killing factions (the other of
+  Mafia/Triad AND no living NK), and `|F| >= |living non-F|`. Two evil factions can
+  NEVER co-win.
+- **SK** wins iff last killer (no living Mafia, no living Triad), among only
+  itself + benign.
+- If two-or-more killing factions (Mafia/Triad/NK) are alive, the game CONTINUES.
+- **1v1 auto-resolve** (DAY_VOTING start) priority ladder SK > evil faction > Town.
+  Mafia-vs-Triad pure endgame (no Town/SK/benign): the LARGER faction wins; an
+  exact tie CONTINUES (neither can out-kill without dying).
+- **Stalemate guard** priority ladder: SK > Triad > Mafia > Town; larger count
+  wins, ties broken by that priority.
+- New goldens (engine `win.test.ts`, 24 total): triad-only parity; town-beats-triad
+  (lone triad blocks town win); two-evil-factions continue; mafia-vs-triad one wins
+  after the other is wiped; pure mafia-vs-triad larger-wins + tie-continues;
+  SK-vs-triad 1v1; SK last-killer; stalemate triad-beats-mafia; game_over emits
+  TRIAD. Plus `triad.test.ts` (10): kill lands/healed, Dragon-Head immunity, Vanguard
+  roleblock, sheriff reads, succession, and the §5 triad-chat/roster entitlement.
+
+### Leak auditor (bots/leak.ts + engine leak.test.ts)
+- Added `observerIsTriad` (derived from the game_over true-faction reveal, exactly
+  like `observerIsMafia`). A `'triad'` chat frame at a non-triad observer is a LEAK
+  (mirror of the mafia-chat check). KNOWN_ROLES gains DRAGON_HEAD/ENFORCER/VANGUARD.
+- `your_role.mates`: legitimate ONLY for an informed-evil owner of the SAME faction.
+  STRENGTHENED the check — a Mafia roster naming a non-mafia seat, or a Triad roster
+  naming a non-triad seat, is now flagged (cross-faction roster leak). The engine
+  addresses mates `toSeat([owner])` from the owner's own faction, so this never
+  fires in practice, but the auditor now has teeth for it. New `auditor.test.ts`
+  cases prove: non-triad receiving triad chat = leak; cross-faction mates = leak; a
+  legitimate triad seat receiving triad chat + triad mates = NOT a leak.
+
+### Roster delivery
+- `yourRoleEffect` (engine `roleinfo.ts`) + the fallback engine now deliver mates
+  to a MAFIA seat (mafia roster) OR a TRIAD seat (triad roster) — each gets ONLY its
+  own faction, addressed to the owning seat alone. Town/neutrals get no mates.
+
+### Bots / client
+- Bot policy (`policy.ts`): generalized the mafia-kill coordination to BOTH evil
+  factions — `isMafiaKiller` recognizes kill_triad/triad_control; the leader
+  proposes in the faction's OWN chat channel (`factionKillChannel()` → mafia|triad);
+  mates/targets are faction-relative. `llm-policy.ts` picks mafia|triad chat by
+  faction. `sim-engine.ts` `routeEffect` routes the `'triad'` target.
+- Client: `--f-triad` jade-green color (+ teal colorblind variant), `.faction-TRIAD`,
+  FACTION_LABEL/WINNER_LABEL/DEATH_CAUSE_LABEL entries, an original `IconTriad`
+  glyph in `FactionIcon`, a `'triad'` chat tab (CHANNEL_LABEL `channelTriad` 'Triad';
+  `lib/channels.ts` `isTriad` in entitledChannels/canSpeakIn; GameScreen computes
+  `isTriad` and defaults the night tab to triad for a triad seat). DECISION: the
+  Custom Setup Builder UI and lobby setup-preview keep their local
+  RANDOM_TOWN|RANDOM_MAFIA dropdown union (no RANDOM_TRIAD option) — the Tong War
+  curated setup uses FIXED Triad slots (+ one RANDOM_TRIAD), so the preview never
+  meets a RANDOM_TRIAD slot; exposing RANDOM_TRIAD in the builder dropdown is a
+  follow-up client-feature, not core to the faction.
+
+### Setups
+- New curated 15p **Tong War** (`tong-war`): Town(7: Jailor, Sheriff, Investigator,
+  Doctor, Escort, Lookout, RANDOM_TOWN) + Mafia(3: GF, Mafioso, RANDOM_MAFIA) +
+  Triad(3: Dragon Head, Enforcer, RANDOM_TRIAD→Vanguard) + Neutral(2: SK, Jester).
+  Registered in setups/index SETUPS, leakcheck SETUP_MAP, sim normalizeSetup.
+  `validateSetup` passes (auto-checked by validate.test over all SETUPS).
+
+### Gate (Triad)
+- `pnpm -r build` green (all exhaustive WinningParty/DeathCause/Faction/ChatChannel
+  switches compile). `pnpm -r test`: 510 tests pass (shared 178, engine 149
+  [+24 Triad goldens], client 91, server 56, bots 36 [+3 Triad auditor-teeth]).
+  `npx eslint .` clean. Leak gate: classic-9p 0 leaks / 200 games (200/200); tong-war
+  15p 0 leaks / 80 games (80/80) — the 'triad' chat + triad mates entitlement
+  exercised and clean. FAST sim: tong-war 20/20 complete, sane winners (TRIAD 7,
+  MAFIA 4, SERIAL_KILLER 5, +Jester riders — both evil factions win, none co-win);
+  classic-9p 20/20 no regression. Determinism property tests green; tong-war
+  fingerprints all distinct (20/20). Did NOT restart pm2 / deploy; did NOT commit.
+
+### Skipped / deferred
+- Janitor cleaning stays MAFIA-kill-only (the Janitor is a Mafia role; the Triad has
+  no Janitor, so no triad-kill sanitization path is needed). The Spy's "mafia
+  visited" vision stays mafia-scoped (the Spy is a Town role thematically tied to the
+  Mafia; a triad-watching variant is out of scope). Exposing RANDOM_TRIAD in the
+  Custom Setup Builder dropdown deferred (see Bots/client decision above).

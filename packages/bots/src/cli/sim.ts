@@ -58,6 +58,8 @@ function normalizeSetup(id: string): string {
     cross_examination: 'cross-examination',
     'cross-examination': 'cross-examination',
     gunsmoke: 'gunsmoke',
+    tong_war: 'tong-war',
+    'tong-war': 'tong-war',
   };
   return map[id] ?? id;
 }

@@ -91,6 +91,9 @@ export class Lobby implements AudienceProvider {
   mafiaSeats(): SeatId[] {
     return [];
   }
+  triadSeats(): SeatId[] {
+    return [];
+  }
   deadSeats(): SeatId[] {
     return [];
   }

@@ -17,6 +17,7 @@ const CHANNEL_LABEL: Record<ChatChannel, string> = {
   lobby: GAME.channelLobby,
   day: GAME.channelDay,
   mafia: GAME.channelMafia,
+  triad: GAME.channelTriad,
   jail: GAME.channelJail,
   dead: GAME.channelDead,
   whisper: GAME.channelWhisper,

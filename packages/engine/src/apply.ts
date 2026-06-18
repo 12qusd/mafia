@@ -31,6 +31,7 @@ import {
   seatOf,
   livingSeats,
   livingMafiaSeats,
+  livingTriadSeats,
   voteWeight,
   majorityThreshold,
   toPublic,
@@ -153,6 +154,7 @@ function handleAdminKill(state: GameState, seat: SeatId, now: GameTick, effects:
   state.traces.push({ step: 'death', seat, role: adminReveal, cause: 'admin' });
   // Detach the seat from any in-flight game machinery.
   state.mafiaSeats = state.mafiaSeats.filter((m) => m !== seat);
+  state.triadSeats = state.triadSeats.filter((m) => m !== seat);
   state.nightIntents = state.nightIntents.filter((i) => i.seat !== seat);
   state.nomination.votes = state.nomination.votes.filter((v) => v.seat !== seat);
   if (state.trial) state.trial.verdicts = state.trial.verdicts.filter((v) => v.seat !== seat);
@@ -182,6 +184,7 @@ function handleAdminStump(state: GameState, seat: SeatId, now: GameTick, effects
   s.faction = 'TOWN'; // town-aligned for win conditions
   // Strip all agency.
   state.mafiaSeats = state.mafiaSeats.filter((m) => m !== seat);
+  state.triadSeats = state.triadSeats.filter((m) => m !== seat);
   state.nightIntents = state.nightIntents.filter((i) => i.seat !== seat);
   state.nomination.votes = state.nomination.votes.filter((v) => v.seat !== seat);
   if (state.trial) state.trial.verdicts = state.trial.verdicts.filter((v) => v.seat !== seat);
@@ -250,6 +253,15 @@ function handleChat(
       if (!s.alive || s.faction !== 'MAFIA' || state.phase !== 'NIGHT') return;
       const mafia = livingMafiaSeats(state).map((m) => m.seat);
       effects.push(toSeats(mafia, { type: 'chat_message', channel: 'mafia', from: seat, text, ts }));
+      return;
+    }
+    case 'triad': {
+      // Living TRIAD only, during NIGHT (the Mafia channel's exact mirror). The
+      // frame is addressed ONLY to the living triad seats, so it can never reach
+      // mafia, town, neutrals, spectators, or the dead.
+      if (!s.alive || s.faction !== 'TRIAD' || state.phase !== 'NIGHT') return;
+      const triad = livingTriadSeats(state).map((m) => m.seat);
+      effects.push(toSeats(triad, { type: 'chat_message', channel: 'triad', from: seat, text, ts }));
       return;
     }
     case 'jail': {
@@ -688,7 +700,7 @@ function killerOf(
   // Look at the death trace's matching kill trace with outcome 'died'.
   for (const t of res.traces) {
     if (t.step === 'kill' && t.target === victim && t.outcome === 'died' && t.attacker !== null) {
-      if (t.source === 'mafia' || t.source === 'serial_killer') {
+      if (t.source === 'mafia' || t.source === 'triad' || t.source === 'serial_killer') {
         return seatOf(state, t.attacker);
       }
     }

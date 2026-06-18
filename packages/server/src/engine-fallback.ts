@@ -526,6 +526,11 @@ export function makeFallbackEngine(): Engine {
         .seats.filter((x) => x.faction === 'MAFIA' && x.alive)
         .map((x) => x.seat);
     },
+    triadSeats(state: GameState) {
+      return asFallback(state)
+        .seats.filter((x) => x.faction === 'TRIAD' && x.alive)
+        .map((x) => x.seat);
+    },
     deadSeats(state: GameState) {
       return asFallback(state)
         .seats.filter((x) => !x.alive)
@@ -544,8 +549,12 @@ export function makeFallbackEngine(): Engine {
       const s = asFallback(state);
       const st = s.seats[seat];
       if (!st) return null;
-      const mafia = s.seats.filter((x) => x.faction === 'MAFIA').map((x) => x.seat);
-      const mates = st.faction === 'MAFIA' ? mafia.filter((m) => m !== seat) : undefined;
+      // Faction roster ("mates") for an informed evil faction (MAFIA or TRIAD),
+      // delivered only to a seat of that same faction (mirrors the real engine).
+      const mates =
+        st.faction === 'MAFIA' || st.faction === 'TRIAD'
+          ? s.seats.filter((x) => x.faction === st.faction && x.seat !== seat).map((x) => x.seat)
+          : undefined;
       const payload: Record<string, unknown> = {
         type: 'your_role',
         role: st.role,

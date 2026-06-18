@@ -55,13 +55,16 @@ export function auditGame(input: AuditInput): LeakViolation[] {
   const trueRole = new Map<SeatId, string>();
   for (const s of input.seats) trueRole.set(s.seat, s.role);
   const mafiaSet = new Set(input.seats.filter((s) => s.faction === 'MAFIA').map((s) => s.seat));
+  // The second evil faction's roster, derived from the SAME game_over true-faction
+  // reveal as the mafia set — the ground truth the auditor trusts.
+  const triadSet = new Set(input.seats.filter((s) => s.faction === 'TRIAD').map((s) => s.seat));
 
   const godSeat = input.godSeat ?? null;
   for (const obs of input.seats) {
-    auditObserver(obs.frames, obs.seat, false, mafiaSet, trueRole, out, godSeat);
+    auditObserver(obs.frames, obs.seat, false, mafiaSet, triadSet, trueRole, out, godSeat);
   }
   input.spectators.forEach((spec, i) => {
-    auditObserver(spec.frames, -1 - i, true, mafiaSet, trueRole, out, godSeat);
+    auditObserver(spec.frames, -1 - i, true, mafiaSet, triadSet, trueRole, out, godSeat);
   });
   return out;
 }
@@ -71,12 +74,14 @@ function auditObserver(
   observerSeat: SeatId,
   isSpectator: boolean,
   mafiaSet: Set<SeatId>,
+  triadSet: Set<SeatId>,
   trueRole: Map<SeatId, string>,
   out: LeakViolation[],
   godSeat: number | null,
 ): void {
   const revealed = new Set<SeatId>();
   const observerIsMafia = !isSpectator && mafiaSet.has(observerSeat);
+  const observerIsTriad = !isSpectator && triadSet.has(observerSeat);
   const observerIsGod = godSeat !== null && observerSeat === godSeat;
 
   frames.forEach((msg, idx) => {
@@ -110,11 +115,26 @@ function auditObserver(
         if (msg.ability === 'reveal' && msg.target !== undefined) revealed.add(msg.target);
         break;
       case 'your_role':
+        // your_role is addressed to the owning seat alone, so the observer here IS
+        // the role's owner. The faction roster ("mates") is legitimate ONLY for a
+        // seat of an informed evil faction (Mafia OR Triad); a Town/neutral seat
+        // carrying mates — or a non-evil observer ever receiving them — is a leak.
         if (isSpectator) push('spectator received a your_role frame');
-        else if (msg.mates && !observerIsMafia) push('non-mafia seat received a mafia roster (mates)');
+        else if (msg.mates && !observerIsMafia && !observerIsTriad) {
+          push('non-evil seat received a faction roster (mates)');
+        } else if (msg.mates && observerIsMafia && msg.mates.some((m) => !mafiaSet.has(m))) {
+          // A Mafia seat's roster must list ONLY Mafia members — a TRIAD (or any
+          // non-mafia) seat in the mates list is a cross-faction leak.
+          push('mafia seat received a faction roster naming a non-mafia seat (mates)');
+        } else if (msg.mates && observerIsTriad && msg.mates.some((m) => !triadSet.has(m))) {
+          push('triad seat received a faction roster naming a non-triad seat (mates)');
+        }
         break;
       case 'chat_message':
-        if (msg.channel === 'mafia' && !observerIsMafia) push('received mafia night chat while not entitled');
+        if (msg.channel === 'mafia' && !observerIsMafia)
+          push('received mafia night chat while not entitled');
+        else if (msg.channel === 'triad' && !observerIsTriad)
+          push('received triad night chat while not entitled');
         else if (msg.channel === 'jail' && isSpectator) push('spectator received jail chat');
         else if (msg.channel === 'dead' && isSpectator) push('spectator received dead chat');
         break;
@@ -246,4 +266,8 @@ const KNOWN_ROLES = new Set<string>([
   'MASS_MURDERER',
   'GUARDIAN_ANGEL',
   'JUGGERNAUT',
+  // --- Triad faction ---
+  'DRAGON_HEAD',
+  'ENFORCER',
+  'VANGUARD',
 ]);

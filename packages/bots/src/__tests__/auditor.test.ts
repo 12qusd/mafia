@@ -16,7 +16,7 @@ function seat(s: number, role: string, faction: string, frames: ServerMessage[])
 }
 
 describe('leak auditor has teeth (§12.3)', () => {
-  it('flags a non-mafia seat that received a mafia roster (mates)', () => {
+  it('flags a non-evil seat that received a faction roster (mates)', () => {
     const frames: ServerMessage[] = [
       { v: 1, type: 'your_role', role: 'CITIZEN', faction: 'TOWN', abilities: [], mates: [1, 2] },
     ];
@@ -30,7 +30,62 @@ describe('leak auditor has teeth (§12.3)', () => {
       deadSeeAll: true,
     });
     expect(v.length).toBeGreaterThan(0);
-    expect(v.some((x) => x.reason.includes('mafia roster'))).toBe(true);
+    expect(v.some((x) => x.reason.includes('faction roster'))).toBe(true);
+  });
+
+  it('flags a non-triad seat that received a triad roster (mates)', () => {
+    // A Mafia seat receiving the TRIAD roster is a leak — the two evil factions
+    // must never learn each other's members.
+    const frames: ServerMessage[] = [
+      { v: 1, type: 'your_role', role: 'GODFATHER', faction: 'MAFIA', abilities: [], mates: [2, 3] },
+    ];
+    const v = auditGame({
+      seats: [
+        seat(0, 'GODFATHER', 'MAFIA', frames),
+        seat(1, 'CITIZEN', 'TOWN', []),
+        seat(2, 'DRAGON_HEAD', 'TRIAD', []),
+        seat(3, 'ENFORCER', 'TRIAD', []),
+      ],
+      spectators: [],
+      deadSeeAll: true,
+    });
+    // The Mafia GF legitimately carries Mafia mates only — here mates=[2,3] are
+    // TRIAD seats, so the deep scan / roster check must flag the cross-faction leak.
+    expect(v.length).toBeGreaterThan(0);
+  });
+
+  it('flags a non-triad seat that received triad night chat', () => {
+    // A Mafia seat receiving 'triad' chat is a leak (mirror of the mafia-chat case).
+    const mafiaObserver: ServerMessage[] = [
+      { v: 1, type: 'chat_message', channel: 'triad', from: 2, text: 'tonight: 0', ts: 1 },
+    ];
+    const v = auditGame({
+      seats: [
+        seat(0, 'GODFATHER', 'MAFIA', mafiaObserver),
+        seat(1, 'CITIZEN', 'TOWN', []),
+        seat(2, 'DRAGON_HEAD', 'TRIAD', []),
+      ],
+      spectators: [],
+      deadSeeAll: true,
+    });
+    expect(v.some((x) => x.reason.includes('triad night chat'))).toBe(true);
+  });
+
+  it('a triad seat legitimately receiving triad chat + triad mates is NOT a leak', () => {
+    const triadObserver: ServerMessage[] = [
+      { v: 1, type: 'your_role', role: 'DRAGON_HEAD', faction: 'TRIAD', abilities: [], mates: [1] },
+      { v: 1, type: 'chat_message', channel: 'triad', from: 1, text: 'tonight: 2', ts: 1 },
+    ];
+    const v = auditGame({
+      seats: [
+        seat(0, 'DRAGON_HEAD', 'TRIAD', triadObserver),
+        seat(1, 'ENFORCER', 'TRIAD', []),
+        seat(2, 'CITIZEN', 'TOWN', []),
+      ],
+      spectators: [],
+      deadSeeAll: true,
+    });
+    expect(v).toEqual([]);
   });
 
   it('flags a spectator that received mafia chat', () => {

@@ -51,7 +51,7 @@ const DEFAULT_SLOT: DraftSlot = { kind: 'category', category: 'RANDOM_TOWN' };
 
 /** Roles grouped by faction for the role picker. */
 const ROLES_BY_FACTION: Record<Faction, RoleId[]> = (() => {
-  const out = { TOWN: [], MAFIA: [], NEUTRAL_KILLING: [], NEUTRAL_BENIGN: [] } as Record<
+  const out = { TOWN: [], MAFIA: [], TRIAD: [], NEUTRAL_KILLING: [], NEUTRAL_BENIGN: [] } as Record<
     Faction,
     RoleId[]
   >;
@@ -137,6 +137,7 @@ export function CustomSetupBuilder() {
     const tally: Record<Faction, number> = {
       TOWN: 0,
       MAFIA: 0,
+      TRIAD: 0,
       NEUTRAL_KILLING: 0,
       NEUTRAL_BENIGN: 0,
     };

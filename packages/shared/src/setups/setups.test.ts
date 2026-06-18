@@ -105,8 +105,8 @@ describe('Classic Nocturne unique-role constraint (§6.10)', () => {
 });
 
 describe('setup registry', () => {
-  it('ships the curated setups (3 MVP + batch-A/D showcases)', () => {
-    expect(SETUPS).toHaveLength(5);
+  it('ships the curated setups (3 MVP + batch-A/D showcases + Tong War)', () => {
+    expect(SETUPS).toHaveLength(6);
   });
 
   it('getSetup resolves by id', () => {
