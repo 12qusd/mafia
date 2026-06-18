@@ -12,10 +12,13 @@ import { GAME, WINNER_LABEL, OUTCOME_LABEL, POINTS } from '../lib/strings-extra.
 import { sanitizeInline } from '../lib/sanitize.js';
 import { leaveLobby } from '../ws/actions.js';
 
+// Stable empty reference (avoids the Zustand v5 fresh-array selector loop, #185).
+const NO_SEATS: readonly never[] = [];
+
 export function GameOver() {
   const navigate = useNavigate();
   const over = useStore((s) => s.gameOver);
-  const seats = useStore((s) => s.game?.seats ?? []);
+  const seats = useStore((s) => s.game?.seats ?? NO_SEATS);
   const ownSeat = useStore((s) => s.own?.seat ?? null);
   const pointsAward = useStore((s) => s.pointsAward);
   const resetGame = useStore((s) => s.resetGame);

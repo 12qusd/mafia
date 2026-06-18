@@ -11,6 +11,11 @@ import { SETTINGS } from '../lib/strings-extra.js';
 import { sanitizeInline } from '../lib/sanitize.js';
 import type { TextScale, AnimationLevel } from '../lib/storage.js';
 
+// Stable empty reference: a selector must never return a fresh array literal —
+// under Zustand v5 (useSyncExternalStore) that triggers an infinite render loop
+// (React #185) whenever `game` is null (e.g. on this standalone screen).
+const NO_SEATS: readonly never[] = [];
+
 export function SettingsScreen() {
   const navigate = useNavigate();
   const settings = useStore((s) => s.settings);
@@ -20,7 +25,7 @@ export function SettingsScreen() {
   const setSound = useStore((s) => s.setSound);
   const setAnimations = useStore((s) => s.setAnimations);
   const toggleMute = useStore((s) => s.toggleMute);
-  const seats = useStore((s) => s.game?.seats ?? []);
+  const seats = useStore((s) => s.game?.seats ?? NO_SEATS);
 
   const nameFor = (seat: number) =>
     sanitizeInline(seats.find((s) => s.seat === seat)?.name ?? `#${seat + 1}`);

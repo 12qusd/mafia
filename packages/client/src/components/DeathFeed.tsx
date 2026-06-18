@@ -12,8 +12,11 @@ import { IconSkull } from './Icons.js';
 import { FactionTag } from './common.js';
 import { sanitizeInline, sanitizeText } from '../lib/sanitize.js';
 
+// Stable empty reference (avoids the Zustand v5 fresh-array selector loop, #185).
+const NO_FEED: readonly never[] = [];
+
 export function DeathFeed({ seatNameFor }: { seatNameFor: (seat: number) => string }) {
-  const feed = useStore((s) => s.game?.deathFeed ?? []);
+  const feed = useStore((s) => s.game?.deathFeed ?? NO_FEED);
   const dismiss = useStore((s) => s.dismissDeath);
 
   const item = feed[0];

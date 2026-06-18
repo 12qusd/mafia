@@ -29,6 +29,11 @@ import { SceneContent } from './SceneContent.js';
 import { TransitionFlourish } from './TransitionFlourish.js';
 import { DeathCinematic, type DeathCue } from './DeathCinematic.js';
 
+// Stable empty references — a selector must never return a fresh array/function
+// (Zustand v5 / useSyncExternalStore loops React #185 on an unstable snapshot).
+const NO_FEED: readonly never[] = [];
+const NO_SEATS: readonly never[] = [];
+
 /**
  * Bridges React state changes (mood, cues) into the imperative render loop.
  * While any animation is "live" we ask R3F to keep rendering; otherwise we let
@@ -64,12 +69,14 @@ let cueSeq = 1;
 
 export default function StageCanvas() {
   const phase = useStore((s) => s.game?.phase ?? null) as Phase | null;
-  const deathFeed = useStore((s) => s.game?.deathFeed ?? []);
+  const deathFeed = useStore((s) => s.game?.deathFeed ?? NO_FEED);
   const ownSeat = useStore((s) => s.own?.seat ?? null);
   const tier = useStore((s) => s.me?.stats?.tier ?? null);
-  const seatNameOf = useStore((s) => (seat: number) =>
-    s.game?.seats.find((x) => x.seat === seat)?.name ?? `Seat ${seat + 1}`,
-  );
+  // Select the stable seats array (never a fresh literal/function in a selector —
+  // that loops React #185 under Zustand v5) and derive the name lookup locally.
+  const seats = useStore((s) => s.game?.seats ?? NO_SEATS);
+  const seatNameOf = (seat: number) =>
+    seats.find((x) => x.seat === seat)?.name ?? `Seat ${seat + 1}`;
 
   const moodRef = useRef<SceneMood>(moodForPhase(phase));
   const activeUntil = useRef<number>(performance.now() + 1500);
