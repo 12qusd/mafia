@@ -852,3 +852,491 @@ label {
   text-overflow: ellipsis;
   max-width: 100%;
 }
+
+/* ===========================================================================
+ * PROGRESSION — tier badge, profile card, achievements (goals 1, 2, 3)
+ * ======================================================================== */
+
+/* Tier badge: a colored deco lozenge. The tier NAME is always shown alongside
+   the color, so this is never a color-only signal (colorblind rule). */
+.tier-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  padding: 2px 10px;
+  border-radius: 999px;
+  font-family: var(--font-display);
+  font-size: calc(12px * var(--scale));
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  border: 1px solid currentColor;
+  white-space: nowrap;
+}
+.tier-badge.tier-sm {
+  font-size: calc(10px * var(--scale));
+  padding: 1px 7px;
+}
+.tier-pip {
+  font-size: 0.8em;
+}
+.tier-drifter {
+  color: var(--c-text-dim);
+}
+.tier-made {
+  color: var(--c-verdigris);
+}
+.tier-capo {
+  color: var(--f-town);
+}
+.tier-boss {
+  color: var(--c-amber);
+}
+.tier-kingpin {
+  color: var(--c-brass);
+  box-shadow: 0 0 10px rgba(201, 164, 90, 0.35);
+}
+
+/* Profile card. */
+.profile-card .profile-head {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  flex-wrap: wrap;
+}
+.profile-name {
+  font-family: var(--font-display);
+  font-size: calc(26px * var(--scale));
+  color: var(--c-text);
+  letter-spacing: 0.04em;
+}
+.profile-stats {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(110px, 1fr));
+  gap: 10px;
+}
+.profile-stat {
+  border: 1px solid var(--c-line-soft);
+  border-radius: var(--radius);
+  background: var(--c-ink-2);
+  padding: 10px 12px;
+  text-align: center;
+}
+.profile-stat-hero {
+  border-color: var(--c-brass-dim);
+  background: linear-gradient(180deg, rgba(201, 164, 90, 0.12), var(--c-ink-2));
+}
+.profile-stat-val {
+  font-family: var(--font-display);
+  font-size: calc(22px * var(--scale));
+  color: var(--c-brass);
+}
+.profile-stat-label {
+  font-size: calc(10px * var(--scale));
+  text-transform: uppercase;
+  letter-spacing: 0.1em;
+  color: var(--c-text-dim);
+  margin-top: 2px;
+}
+
+/* Achievements showcase. */
+.achv-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(200px, 1fr));
+  gap: 8px;
+}
+.achv {
+  border: 1px solid var(--c-line-soft);
+  border-radius: var(--radius);
+  padding: 8px 10px;
+  background: var(--c-ink-2);
+}
+.achv-off {
+  opacity: 0.5;
+  filter: grayscale(0.5);
+}
+.achv-on {
+  border-color: var(--c-brass-dim);
+}
+.achv-row {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+.achv-medal {
+  color: var(--c-amber);
+  font-size: 1.1em;
+}
+.achv-name {
+  flex: 1;
+  font-weight: 600;
+  font-size: calc(13px * var(--scale));
+}
+.achv-pts {
+  color: var(--c-brass);
+  font-family: var(--font-display);
+  font-size: calc(12px * var(--scale));
+}
+.achv-desc {
+  color: var(--c-text-dim);
+  font-size: calc(11.5px * var(--scale));
+  margin-top: 3px;
+}
+
+/* Leaderboard podium + table. */
+.podium {
+  display: grid;
+  grid-template-columns: 1fr 1fr 1fr;
+  gap: 12px;
+  align-items: end;
+}
+@media (max-width: 720px) {
+  .podium {
+    grid-template-columns: 1fr;
+  }
+}
+.podium-spot {
+  border: 1px solid var(--c-line);
+  border-radius: var(--radius);
+  background: linear-gradient(180deg, var(--c-panel), var(--c-panel-2));
+  padding: 14px 12px;
+  text-align: center;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 4px;
+  position: relative;
+}
+/* Order/height the podium: 1st centered tallest, 2nd left, 3rd right. */
+.podium-1 {
+  order: 2;
+  border-color: var(--c-brass);
+  box-shadow: 0 0 16px rgba(201, 164, 90, 0.3);
+  padding-top: 22px;
+}
+.podium-2 {
+  order: 1;
+  border-color: #aab0b6;
+}
+.podium-3 {
+  order: 3;
+  border-color: #b07a4a;
+}
+.podium-1 .podium-rank {
+  color: var(--c-brass);
+}
+.podium-2 .podium-rank {
+  color: #c6ccd2;
+}
+.podium-3 .podium-rank {
+  color: #cf9a66;
+}
+.podium-rank {
+  font-size: 1.6em;
+}
+.podium-place {
+  font-family: var(--font-display);
+  font-size: calc(30px * var(--scale));
+  color: var(--c-text);
+  line-height: 1;
+}
+.podium-name {
+  font-family: var(--font-display);
+  font-size: calc(16px * var(--scale));
+  color: var(--c-text);
+}
+.podium-points {
+  color: var(--c-brass);
+  font-family: var(--font-display);
+}
+.podium-you {
+  outline: 1px solid var(--c-verdigris);
+}
+.leaderboard-table .lb-rank {
+  font-family: var(--font-display);
+  color: var(--c-brass);
+}
+.leaderboard-table .lb-you {
+  background: rgba(63, 125, 110, 0.12);
+}
+
+/* ===========================================================================
+ * POINTS CELEBRATION (goal 3) — staggered reveal, count-up, reduced-motion.
+ * ======================================================================== */
+.points-cele {
+  border: 1px solid var(--c-brass-dim);
+  border-radius: var(--radius);
+  background: linear-gradient(180deg, rgba(201, 164, 90, 0.08), var(--c-ink-2));
+  padding: 12px 14px;
+}
+.points-list {
+  list-style: none;
+  margin: 0 0 8px;
+  padding: 0;
+}
+.points-line {
+  display: flex;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 4px 0;
+  border-bottom: 1px solid var(--c-line-soft);
+  opacity: 0;
+  transform: translateY(6px);
+  animation: points-in 0.4s ease forwards;
+}
+.points-label {
+  color: var(--c-text);
+}
+.points-pts {
+  font-family: var(--font-display);
+  color: var(--c-verdigris);
+}
+.points-pts.neg {
+  color: var(--c-blood);
+}
+.points-total-row {
+  display: flex;
+  justify-content: space-between;
+  align-items: baseline;
+  margin-top: 8px;
+  padding-top: 6px;
+  border-top: 1px solid var(--c-brass-dim);
+}
+.points-total-label {
+  text-transform: uppercase;
+  letter-spacing: 0.12em;
+  color: var(--c-text-dim);
+  font-size: calc(12px * var(--scale));
+}
+.points-total {
+  font-family: var(--font-display);
+  font-size: calc(30px * var(--scale));
+  color: var(--c-brass);
+}
+.points-tier-row {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin-top: 8px;
+  flex-wrap: wrap;
+}
+.points-tierup {
+  color: var(--c-amber);
+  font-style: italic;
+}
+.points-achv {
+  margin-top: 10px;
+}
+.achv-reveal-grid {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  margin-top: 6px;
+}
+.achv-reveal {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 6px 10px;
+  border: 1px solid var(--c-brass-dim);
+  border-radius: var(--radius);
+  background: rgba(201, 164, 90, 0.1);
+  opacity: 0;
+  transform: scale(0.96);
+  animation: achv-pop 0.5s cubic-bezier(0.2, 0.9, 0.3, 1.2) forwards;
+}
+@keyframes points-in {
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+@keyframes achv-pop {
+  to {
+    opacity: 1;
+    transform: scale(1);
+  }
+}
+/* Reduced motion: show everything immediately, no transforms/animations. */
+.points-cele.no-motion .points-line,
+.points-cele.no-motion .achv-reveal {
+  opacity: 1;
+  transform: none;
+  animation: none;
+}
+@media (prefers-reduced-motion: reduce) {
+  .points-line,
+  .achv-reveal {
+    opacity: 1 !important;
+    transform: none !important;
+    animation: none !important;
+  }
+}
+
+/* ===========================================================================
+ * CUSTOM SETUP BUILDER (goal 4)
+ * ======================================================================== */
+.builder-faction-summary {
+  display: flex;
+  gap: 12px;
+  flex-wrap: wrap;
+  align-items: center;
+}
+.builder-slots {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+.builder-slot {
+  display: grid;
+  grid-template-columns: auto 150px 1fr auto;
+  gap: 8px;
+  align-items: center;
+  padding: 6px 8px;
+  border: 1px solid var(--c-line-soft);
+  border-radius: var(--radius);
+  background: var(--c-ink-2);
+}
+@media (max-width: 720px) {
+  .builder-slot {
+    grid-template-columns: auto 1fr;
+  }
+}
+.builder-slot-preview {
+  display: flex;
+  justify-content: flex-end;
+}
+.builder-pool-chip {
+  cursor: pointer;
+  background: var(--c-ink);
+  opacity: 0.5;
+  filter: grayscale(0.5);
+}
+.builder-pool-chip.on {
+  opacity: 1;
+  filter: none;
+  border-color: currentColor;
+  background: rgba(92, 143, 201, 0.12);
+}
+.builder-errors {
+  border-color: var(--c-blood-dim);
+}
+.builder-error-list {
+  margin: 0;
+  padding-left: 18px;
+}
+.builder-saved-row {
+  grid-template-columns: 1.4fr 0.8fr 2fr auto;
+}
+
+/* ===========================================================================
+ * ADMIN "HOUSE" PANEL (goal 8) — discreet, blood-accented, distinct from test.
+ * ======================================================================== */
+.admin-panel {
+  position: fixed;
+  left: 8px;
+  bottom: 8px;
+  width: min(420px, calc(100vw - 16px));
+  z-index: 49;
+  border-color: var(--c-blood-dim);
+  box-shadow: 0 8px 28px rgba(0, 0, 0, 0.6);
+}
+.admin-head {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 8px 10px;
+  border-bottom: 1px solid var(--c-line);
+}
+.admin-badge {
+  color: var(--c-blood);
+  border-color: var(--c-blood-dim);
+  font-weight: 700;
+  letter-spacing: 0.14em;
+}
+.admin-collapse {
+  margin-left: auto;
+}
+.admin-body {
+  padding: 10px;
+}
+.admin-actions {
+  flex-wrap: wrap;
+  gap: 6px;
+}
+.badge-stump {
+  color: var(--c-amber);
+  border-color: var(--c-brass-dim);
+}
+.seat.stump {
+  border-style: dashed;
+  border-color: var(--c-brass-dim);
+}
+
+/* ===========================================================================
+ * REPLAY VIEWER (goal 7)
+ * ======================================================================== */
+.replay-verdict {
+  font-weight: 700;
+  letter-spacing: 0.06em;
+}
+.replay-verified {
+  color: var(--c-verdigris);
+  border-color: var(--c-verdigris);
+}
+.replay-unverified {
+  color: var(--c-blood);
+  border-color: var(--c-blood-dim);
+}
+.replay-dead td {
+  opacity: 0.55;
+}
+.replay-phase {
+  display: flex;
+  justify-content: space-between;
+  align-items: baseline;
+  gap: 8px;
+}
+.replay-scrubber {
+  width: 100%;
+  accent-color: var(--c-brass);
+  padding: 0;
+}
+.replay-counts {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+.replay-seatgrid {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 5px;
+  margin-top: 6px;
+}
+.replay-seat {
+  display: inline-flex;
+  align-items: center;
+  gap: 3px;
+  min-width: 28px;
+  justify-content: center;
+  padding: 3px 6px;
+  border-radius: var(--radius);
+  border: 1px solid var(--c-line-soft);
+  background: var(--c-ink-2);
+  font-family: var(--font-display);
+  color: var(--c-verdigris);
+  font-size: calc(12px * var(--scale));
+}
+.replay-seat-dead {
+  color: var(--c-text-faint);
+  opacity: 0.6;
+  text-decoration: line-through;
+}
+.replay-transcript {
+  max-height: 360px;
+  overflow-y: auto;
+  background: var(--c-ink);
+  border: 1px solid var(--c-line-soft);
+  border-radius: var(--radius);
+  padding: 8px 10px;
+}

@@ -26,6 +26,7 @@ import { DeathFeed } from '../components/DeathFeed.js';
 import { GameOver } from '../components/GameOver.js';
 import { PrivateLog } from '../components/PrivateLog.js';
 import { DirectorGate } from '../components/DirectorPanel.js';
+import { AdminPanel } from '../components/AdminPanel.js';
 import { TestBadge } from '../components/common.js';
 import { sendChat, sendWhisper } from '../ws/actions.js';
 
@@ -36,6 +37,7 @@ export function GameScreen() {
   const chat = useStore((s) => s.chat);
   const connection = useStore((s) => s.connection);
   const testMode = useStore((s) => s.lobby?.testMode ?? false);
+  const isAdmin = useStore((s) => s.me?.isAdmin ?? false);
 
   const seatNameFor = useMemo(
     () => (seat: number) =>
@@ -127,6 +129,7 @@ export function GameScreen() {
           accusedSeat={game.accusedSeat}
           tallies={game.tallies}
           votesBySeat={game.votesBySeat}
+          stumpedSeats={game.stumpedSeats}
           alive={alive}
           spectator={spectator}
           onWhisper={(seat) => {
@@ -151,6 +154,7 @@ export function GameScreen() {
       <DeathFeed seatNameFor={seatNameFor} />
       <GameOver />
       <DirectorGate />
+      {isAdmin && <AdminPanel seats={game.seats} />}
     </>
   );
 }

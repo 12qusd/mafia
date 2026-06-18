@@ -16,10 +16,12 @@ function baseState(): StoreState {
     forceUpdateMin: null,
     userId: null,
     guestId: null,
+    me: null,
     lobby: null,
     game: null,
     own: null,
     gameOver: null,
+    pointsAward: null,
     chat: [],
     whisperMeta: [],
     privateLog: [],
@@ -282,5 +284,88 @@ describe('reduce: text sanitization (BUILD_SPEC §11.6)', () => {
       ts: 1,
     });
     expect(s.chat[0]?.text).toBe('hello');
+  });
+});
+
+describe('reduce: points_awarded (goal 3)', () => {
+  const stats = {
+    userId: 'u1',
+    username: 'Capone',
+    totalPoints: 110,
+    gamesPlayed: 3,
+    gamesWon: 2,
+    gamesSurvived: 1,
+    daysDeadWatched: 4,
+    achievements: ['first_win'],
+    tier: 'drifter',
+  };
+  const breakdown = {
+    awards: [
+      { code: 'played' as const, label: 'Played a full game', points: 10 },
+      { code: 'win' as const, label: 'Victory', points: 50 },
+    ],
+    total: 60,
+  };
+
+  it('stores the award for the current match', () => {
+    let s = baseState();
+    s = apply(s, { v: PROTOCOL_VERSION, type: 'points_awarded', matchId: 'm1', breakdown, stats, newAchievements: ['first_win'] });
+    expect(s.pointsAward?.matchId).toBe('m1');
+    expect(s.pointsAward?.breakdown.total).toBe(60);
+    expect(s.pointsAward?.newAchievements).toEqual(['first_win']);
+  });
+
+  it('refreshes the cached me.stats when the award is the local account', () => {
+    let s = baseState();
+    s.me = { id: 'u1', name: 'Capone', isGuest: false, isAdmin: false, stats: null };
+    s = apply(s, { v: PROTOCOL_VERSION, type: 'points_awarded', matchId: 'm1', breakdown, stats, newAchievements: [] });
+    expect(s.me?.stats?.totalPoints).toBe(110);
+  });
+
+  it('does not clobber me.stats for a different account', () => {
+    let s = baseState();
+    s.me = { id: 'other', name: 'X', isGuest: false, isAdmin: false, stats: null };
+    s = apply(s, { v: PROTOCOL_VERSION, type: 'points_awarded', matchId: 'm1', breakdown, stats, newAchievements: [] });
+    expect(s.me?.stats).toBeNull();
+  });
+
+  it('is cleared when a new game starts', () => {
+    let s = baseState();
+    s = apply(s, { v: PROTOCOL_VERSION, type: 'points_awarded', matchId: 'm1', breakdown, stats, newAchievements: [] });
+    s = apply(s, { v: PROTOCOL_VERSION, type: 'game_started', seats: [seat(0)], setupId: 'x', config: {} });
+    expect(s.pointsAward).toBeNull();
+  });
+});
+
+describe('reduce: seat_transform stump marking (goal 8)', () => {
+  function withGame(): StoreState {
+    let s = baseState();
+    s = apply(s, {
+      v: PROTOCOL_VERSION,
+      type: 'game_started',
+      seats: [seat(0), seat(1), seat(2)],
+      setupId: 'x',
+      config: {},
+    });
+    return s;
+  }
+
+  it('marks a seat stumped and unmarks it', () => {
+    let s = withGame();
+    s = apply(s, { v: PROTOCOL_VERSION, type: 'seat_transform', seat: 1, stumped: true });
+    expect(s.game?.stumpedSeats).toContain(1);
+    // Idempotent on a repeat.
+    s = apply(s, { v: PROTOCOL_VERSION, type: 'seat_transform', seat: 1, stumped: true });
+    expect(s.game?.stumpedSeats).toEqual([1]);
+    // Unstump removes it.
+    s = apply(s, { v: PROTOCOL_VERSION, type: 'seat_transform', seat: 1, stumped: false });
+    expect(s.game?.stumpedSeats).not.toContain(1);
+  });
+
+  it('never mutates the server-sent PublicSeat shape', () => {
+    let s = withGame();
+    s = apply(s, { v: PROTOCOL_VERSION, type: 'seat_transform', seat: 0, stumped: true });
+    // The PublicSeat objects carry no fabricated `stumped` field.
+    expect(s.game?.seats.every((seat) => !('stumped' in seat))).toBe(true);
   });
 });

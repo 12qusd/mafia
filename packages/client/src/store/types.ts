@@ -24,8 +24,34 @@ import type {
   DebugState,
   DebugTrace,
   DebugEvent,
+  PointsBreakdown,
+  UserStatsSummary,
 } from '@nocturne/shared';
 import type { ClockEstimate } from '../lib/clock.js';
+
+/**
+ * The signed-in account (or guest) as reported by `GET /api/me` (goal 4/8).
+ * Held in the store so the profile card, leaderboard link, and admin gate can
+ * read it. Server-sourced only — the client never fabricates `isAdmin`/`stats`.
+ */
+export interface MeState {
+  id: string;
+  name: string;
+  isGuest: boolean;
+  isAdmin: boolean;
+  stats: UserStatsSummary | null;
+}
+
+/**
+ * The most recent `points_awarded` frame for the *current* match (goal 3).
+ * Surfaced in the GameOver celebration. Cleared when a new game starts.
+ */
+export interface PointsAwardState {
+  matchId: string;
+  breakdown: PointsBreakdown;
+  stats: UserStatsSummary;
+  newAchievements: string[];
+}
 
 /** Connection lifecycle (BUILD_SPEC §8 reconnection). */
 export type ConnectionStatus =
@@ -126,6 +152,12 @@ export interface GameView {
   deathFeed: DeathFeedItem[];
   /** Whether this client is a spectator (read-only). */
   spectator: boolean;
+  /**
+   * Seats an admin has turned into non-voting "stumps" (goal 8, public via
+   * `seat_transform`). A parallel set keyed by seat so we never mutate the
+   * server-sent `PublicSeat` shape with client-fabricated fields.
+   */
+  stumpedSeats: number[];
 }
 
 /** A toast/error surfaced to the user. */
@@ -162,6 +194,8 @@ export interface StoreState {
   forceUpdateMin: number | null;
   userId: string | null;
   guestId: string | null;
+  /** Signed-in account/guest from `GET /api/me` (goal 4/8). Null until fetched. */
+  me: MeState | null;
 
   // --- Lobby --------------------------------------------------------------
   lobby: Lobby | null;
@@ -170,6 +204,8 @@ export interface StoreState {
   game: GameView | null;
   own: OwnState | null;
   gameOver: GameOverState | null;
+  /** Last `points_awarded` for the current match (goal 3); null until it arrives. */
+  pointsAward: PointsAwardState | null;
 
   // --- Chat & logs --------------------------------------------------------
   chat: ChatLine[];

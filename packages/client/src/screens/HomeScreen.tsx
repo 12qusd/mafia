@@ -16,9 +16,12 @@ import { useStore } from '../store/store.js';
 import { conn } from '../ws/connection.js';
 import { useLobbyNav } from '../components/useLobbyNav.js';
 import { DecoHead, Switch, TestBadge } from '../components/common.js';
+import { ProfilePanel } from '../components/ProfilePanel.js';
+import { SetupPicker } from '../components/SetupPicker.js';
 import { HOME } from '../lib/strings-extra.js';
 import { sanitizeInline } from '../lib/sanitize.js';
 import { loadGuestName, loadToken } from '../lib/storage.js';
+import { refreshMe } from '../lib/me.js';
 import * as api from '../lib/api.js';
 import { createLobby, joinLobby } from '../ws/actions.js';
 import type { LobbyListItem } from '../lib/api.js';
@@ -27,6 +30,7 @@ export function HomeScreen() {
   useLobbyNav();
   const guestId = useStore((s) => s.guestId);
   const userId = useStore((s) => s.userId);
+  const me = useStore((s) => s.me);
   const pushInfo = useStore((s) => s.pushInfo);
   const authed = !!(guestId || userId || loadToken());
 
@@ -36,6 +40,8 @@ export function HomeScreen() {
         <h1>{strings.UI.appName}</h1>
         <p>{HOME.heroSub}</p>
       </div>
+
+      {me && <ProfilePanel />}
 
       <div className="grid-2">
         <AuthCard />
@@ -72,6 +78,8 @@ function AuthCard() {
       // so the chosen name/account actually takes effect (otherwise the socket
       // stays bound to its initial auto-minted guest).
       conn.reauth();
+      // Pull the fresh account/stats so the profile card renders (goal 1).
+      void refreshMe();
     } catch {
       setError(HOME.authError);
     } finally {
@@ -207,28 +215,20 @@ function CreateLobbyCard() {
           onChange={(e) => setName(e.target.value)}
         />
       </div>
-      <div className="grid-2">
-        <div>
-          <label>{HOME.visibilityLabel}</label>
-          <select
-            value={effectiveVisibility}
-            disabled={testMode}
-            onChange={(e) => setVisibility(e.target.value as LobbyVisibility)}
-          >
-            <option value="private">{HOME.visibilityPrivate}</option>
-            <option value="public">{HOME.visibilityPublic}</option>
-          </select>
-        </div>
-        <div>
-          <label>{HOME.setupLabel}</label>
-          <select value={setupId} onChange={(e) => setSetupId(e.target.value)}>
-            {SETUPS.map((s) => (
-              <option key={s.id} value={s.id}>
-                {s.name}
-              </option>
-            ))}
-          </select>
-        </div>
+      <div>
+        <label>{HOME.visibilityLabel}</label>
+        <select
+          value={effectiveVisibility}
+          disabled={testMode}
+          onChange={(e) => setVisibility(e.target.value as LobbyVisibility)}
+        >
+          <option value="private">{HOME.visibilityPrivate}</option>
+          <option value="public">{HOME.visibilityPublic}</option>
+        </select>
+      </div>
+      <div>
+        <label>{HOME.setupLabel}</label>
+        <SetupPicker value={setupId} onChange={setSetupId} />
       </div>
       <div className="toggle">
         <span>

@@ -12,6 +12,7 @@ import {
   type VerdictValue,
   type ReportCategory,
   type TestBotPolicy,
+  type AdminAction,
 } from '@nocturne/shared';
 import { conn } from './connection.js';
 
@@ -86,6 +87,32 @@ export function sendDeathNote(text: string): void {
 
 export function reportPlayer(seat: number, category: ReportCategory, comment?: string): void {
   conn.send({ v: V, type: 'report_player', seat, category, ...(comment ? { comment } : {}) });
+}
+
+// ---------------------------------------------------------------------------
+// ADMIN god-powers (`admin_action`, goal 8). The server enforces
+// `identity.isAdmin` and logs every action; non-admins are rejected with an
+// `error` frame surfaced as a toast. `kill`/`stump` flow into the engine as
+// replayable events; points/ban/force-phase are handled server-side.
+// ---------------------------------------------------------------------------
+
+/** Send an admin god-power action. Omits absent optional fields cleanly. */
+export function adminAction(opts: {
+  action: AdminAction['action'];
+  targetSeat?: number;
+  points?: number;
+  durationMs?: number;
+  reason?: string;
+}): void {
+  conn.send({
+    v: V,
+    type: 'admin_action',
+    action: opts.action,
+    ...(opts.targetSeat !== undefined ? { targetSeat: opts.targetSeat } : {}),
+    ...(opts.points !== undefined ? { points: opts.points } : {}),
+    ...(opts.durationMs !== undefined ? { durationMs: opts.durationMs } : {}),
+    ...(opts.reason ? { reason: opts.reason } : {}),
+  });
 }
 
 // ---------------------------------------------------------------------------

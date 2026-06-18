@@ -7,7 +7,7 @@
 import { useMemo } from 'react';
 import { getRole, type PublicSeat, type Phase, REPORT_CATEGORIES } from '@nocturne/shared';
 import { useStore } from '../store/store.js';
-import { GAME } from '../lib/strings-extra.js';
+import { GAME, ADMIN } from '../lib/strings-extra.js';
 import { FactionTag, DecoHead } from './common.js';
 import { IconSkull } from './Icons.js';
 import { sanitizeInline } from '../lib/sanitize.js';
@@ -20,6 +20,7 @@ export function PlayerList({
   accusedSeat,
   tallies,
   votesBySeat,
+  stumpedSeats = [],
   alive,
   spectator,
   onWhisper,
@@ -30,6 +31,8 @@ export function PlayerList({
   accusedSeat: number | null;
   tallies: { seat: number; weight: number }[];
   votesBySeat: { seat: number; target: number | 'skip' }[];
+  /** Seats an admin turned into non-voting stumps (goal 8, public). */
+  stumpedSeats?: number[];
   alive: boolean;
   spectator: boolean;
   onWhisper: (seat: number) => void;
@@ -37,6 +40,7 @@ export function PlayerList({
   const vote = useStore((s) => s.own?.vote ?? null);
   const muted = useStore((s) => s.settings.mutedSeats);
   const toggleMute = useStore((s) => s.toggleMute);
+  const stumped = useMemo(() => new Set(stumpedSeats), [stumpedSeats]);
 
   const tallyBySeat = useMemo(() => {
     const m = new Map<number, number>();
@@ -58,12 +62,13 @@ export function PlayerList({
           const revealedRole = s.role ? getRole(s.role) : null;
           const weight = tallyBySeat.get(s.seat) ?? 0;
           const myVote = vote === s.seat;
+          const isStump = stumped.has(s.seat);
           return (
             <div
               key={s.seat}
               className={`seat ${s.alive ? '' : 'dead'} ${isAccused ? 'accused' : ''} ${
                 isSelf ? 'self' : ''
-              }`}
+              } ${isStump ? 'stump' : ''}`}
             >
               <span className="seat-num">{s.seat + 1}</span>
               <div style={{ minWidth: 0 }}>
@@ -78,6 +83,11 @@ export function PlayerList({
                   {!s.alive && <IconSkull size={13} />}
                 </div>
                 <div className="seat-badges">
+                  {isStump && (
+                    <span className="badge badge-stump" title={ADMIN.stumpTitle}>
+                      {ADMIN.stumpBadge}
+                    </span>
+                  )}
                   {!s.alive && revealedRole && (
                     <>
                       <span className="badge">{GAME.revealedAs(revealedRole.name)}</span>
@@ -102,7 +112,7 @@ export function PlayerList({
               </div>
               <div className="row" style={{ gap: 6 }}>
                 {voting && weight > 0 && <span className="seat-tally">{weight}</span>}
-                {canVote && s.alive && !isSelf && (
+                {canVote && s.alive && !isSelf && !isStump && (
                   <button
                     className={`btn btn-sm ${myVote ? 'btn-active' : ''}`}
                     onClick={() => sendVote(myVote ? null : s.seat)}

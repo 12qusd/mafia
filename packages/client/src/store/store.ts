@@ -11,7 +11,7 @@
 import { create } from 'zustand';
 import type { ServerMessage } from '@nocturne/shared';
 import { reduce, allocId, emptyDebug } from './reducer.js';
-import type { StoreState, ConnectionStatus } from './types.js';
+import type { StoreState, ConnectionStatus, MeState } from './types.js';
 import {
   INITIAL_CLOCK_ESTIMATE,
   updateEstimate,
@@ -29,6 +29,8 @@ interface StoreActions {
   ingest(msg: ServerMessage): void;
   /** Update connection lifecycle status. */
   setConnection(status: ConnectionStatus): void;
+  /** Store the signed-in account/guest from `GET /api/me` (null = signed out). */
+  setMe(me: MeState | null): void;
   /** Fold a ping/pong round-trip into the clock estimate. */
   addClockSample(sample: ClockSample): void;
   /** Dismiss the oldest queued dawn-death feed item. */
@@ -67,10 +69,12 @@ const initialState: StoreState = {
   forceUpdateMin: null,
   userId: null,
   guestId: null,
+  me: null,
   lobby: null,
   game: null,
   own: null,
   gameOver: null,
+  pointsAward: null,
   chat: [],
   whisperMeta: [],
   privateLog: [],
@@ -94,6 +98,10 @@ export const useStore = create<Store>((set, get) => ({
 
   setConnection(status) {
     set({ connection: status });
+  },
+
+  setMe(me) {
+    set({ me });
   },
 
   addClockSample(sample) {
@@ -120,6 +128,7 @@ export const useStore = create<Store>((set, get) => ({
       game: null,
       own: null,
       gameOver: null,
+      pointsAward: null,
       chat: [],
       whisperMeta: [],
       privateLog: [],

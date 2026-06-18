@@ -165,6 +165,137 @@ export const GAME = {
   unmute: 'Unmute',
 } as const;
 
+/** Profile card / account dashboard copy (goal 1). */
+export const PROFILE = {
+  heading: 'Your dossier',
+  guestHeading: 'A face without a name',
+  guestPrompt:
+    'You are playing as a guest — your wins vanish at dawn. Open an account to keep your record, climb the ranks, and earn your reputation.',
+  tier: 'Standing',
+  totalPoints: 'Reputation',
+  points: 'pts',
+  gamesPlayed: 'Games',
+  gamesWon: 'Wins',
+  winRate: 'Win rate',
+  survived: 'Survived',
+  achievements: 'Commendations',
+  achievementsUnlocked: (n: number, total: number) => `${n} of ${total} earned`,
+  locked: 'Locked',
+  signOut: 'Sign out',
+  viewLeaderboard: 'See the leaderboard',
+  noStats: 'No record yet — play a ranked game to start your dossier.',
+} as const;
+
+/** Leaderboard screen copy (goal 2). */
+export const LEADERBOARD = {
+  heading: 'The standings',
+  sub: 'Who owns this town.',
+  rank: 'Rank',
+  player: 'Name',
+  points: 'Reputation',
+  games: 'Games',
+  winRate: 'Win rate',
+  empty: 'No names on the board yet. Be the first to make a reputation.',
+  you: 'You',
+  loading: 'Counting the takings…',
+} as const;
+
+/** Game-over points celebration copy (goal 3). */
+export const POINTS = {
+  heading: 'The payout',
+  total: 'Total earned',
+  newAchievements: 'New commendations',
+  tierUp: (name: string) => `You made ${name}.`,
+  viewReplay: 'Watch the replay',
+} as const;
+
+/** Custom setup builder copy (goal 4). */
+export const BUILDER = {
+  heading: 'Build a table',
+  sub: 'Lay out the roles, name the house, and save it for your games.',
+  nameLabel: 'Setup name',
+  namePlaceholder: 'The Saint Valentine Special',
+  descLabel: 'Description',
+  descPlaceholder: 'A short note for the lobby picker…',
+  rangeLabel: 'Seats',
+  countLabel: (n: number) => `${n} seats`,
+  editingCount: (n: number) => `Editing the ${n}-seat layout`,
+  slot: 'Seat',
+  fixedRole: 'Fixed role',
+  category: 'Random pool',
+  randomTown: 'Random Town',
+  randomMafia: 'Random Mafia',
+  townPool: 'Town pool',
+  townPoolHint: 'Roles that "Random Town" slots may draw from.',
+  factionSummary: 'At this table',
+  save: 'Save setup',
+  saving: 'Saving…',
+  saved: 'Saved to your setups.',
+  errors: 'The house found problems:',
+  mySetups: 'Your setups',
+  noSetups: 'You have not saved any setups yet.',
+  delete: 'Delete',
+  deleted: 'Setup removed.',
+  signInPrompt: 'Sign in with a registered account to build and save custom setups.',
+  addSlot: 'Add seat',
+  removeSlot: 'Remove',
+  pickRole: 'Pick a role',
+} as const;
+
+/** Lobby setup picker copy (goal 5). */
+export const PICKER = {
+  groupFeatured: 'Featured',
+  groupStandard: 'Standard',
+  groupChaos: 'Chaos',
+  groupMine: 'My setups',
+  daily: (date: string) => `Today's pick · ${date}`,
+  chaosDaily: 'Daily chaos',
+  custom: 'Custom',
+} as const;
+
+/** Admin controls copy (goal 8). */
+export const ADMIN = {
+  title: 'The House',
+  subtitle: 'Admin god-powers',
+  target: 'Target seat',
+  noTarget: 'No seat',
+  kill: 'Kill',
+  stump: 'Stump',
+  forcePhase: 'Force phase',
+  grant: 'Grant points',
+  revoke: 'Revoke points',
+  tempBan: 'Temp-ban',
+  pointsLabel: 'Points',
+  durationLabel: 'Ban (hours)',
+  reasonLabel: 'Reason (optional)',
+  confirmKill: (label: string) => `Kill ${label}? This is unpreventable and reveals their role.`,
+  confirmBan: (label: string) => `Temp-ban ${label}? They will be removed from the table.`,
+  stumpBadge: 'Stump',
+  stumpTitle: 'Non-voting stump (admin)',
+  collapse: 'Collapse',
+  expand: 'Expand',
+} as const;
+
+/** Replay viewer copy (goal 7). */
+export const REPLAY = {
+  heading: 'The record',
+  verified: 'Verified',
+  unverified: 'Unverified',
+  fingerprint: 'Fingerprint',
+  roster: 'Final roster',
+  timeline: 'Timeline',
+  transcript: 'Transcript',
+  download: 'Download JSON',
+  back: 'Back to tables',
+  loading: 'Pulling the file from the vault…',
+  notFound: 'No such record, or you were not at that table.',
+  step: (i: number, n: number) => `Step ${i} of ${n}`,
+  living: 'Living',
+  dead: 'Dead',
+  noChat: 'No words were spoken on the record.',
+  reconstructError: 'This record could not be fully reconstructed.',
+} as const;
+
 /** Settings screen copy. */
 export const SETTINGS = {
   heading: 'Settings',

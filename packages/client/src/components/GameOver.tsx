@@ -4,10 +4,11 @@
  */
 
 import { getRole } from '@nocturne/shared';
-import { useNavigate } from 'react-router-dom';
+import { Link, useNavigate } from 'react-router-dom';
 import { useStore } from '../store/store.js';
 import { DecoHead, FactionTag } from './common.js';
-import { GAME, WINNER_LABEL, OUTCOME_LABEL } from '../lib/strings-extra.js';
+import { PointsCelebration } from './PointsCelebration.js';
+import { GAME, WINNER_LABEL, OUTCOME_LABEL, POINTS } from '../lib/strings-extra.js';
 import { sanitizeInline } from '../lib/sanitize.js';
 import { leaveLobby } from '../ws/actions.js';
 
@@ -16,8 +17,13 @@ export function GameOver() {
   const over = useStore((s) => s.gameOver);
   const seats = useStore((s) => s.game?.seats ?? []);
   const ownSeat = useStore((s) => s.own?.seat ?? null);
+  const pointsAward = useStore((s) => s.pointsAward);
   const resetGame = useStore((s) => s.resetGame);
   if (!over) return null;
+
+  // Surface the points celebration only when it belongs to THIS match (a stale
+  // award from a previous game must never bleed into the new game-over).
+  const award = pointsAward && pointsAward.matchId === over.matchId ? pointsAward : null;
 
   const nameFor = (seat: number) =>
     sanitizeInline(seats.find((s) => s.seat === seat)?.name ?? `#${seat + 1}`);
@@ -40,6 +46,8 @@ export function GameOver() {
             {GAME.yourResult}: {OUTCOME_LABEL[mine.outcome]} — you were the {getRole(mine.role).name}
           </div>
         )}
+
+        {award && <PointsCelebration award={award} />}
 
         <DecoHead>{GAME.roleReveal}</DecoHead>
         <table className="reveal-table">
@@ -74,6 +82,11 @@ export function GameOver() {
           <span className="faint">
             {GAME.seedLabel}: <code>{sanitizeInline(over.seed)}</code>
           </span>
+          {over.matchId && (
+            <Link className="linkbtn" to={`/replay/${encodeURIComponent(over.matchId)}`}>
+              {POINTS.viewReplay}
+            </Link>
+          )}
         </div>
 
         <div className="row">

@@ -3,7 +3,7 @@
  * shown as color + icon + label (colorblind requirement).
  */
 
-import { getRole, type Faction, type RoleId } from '@nocturne/shared';
+import { getRole, tierForPoints, type Faction, type RoleId } from '@nocturne/shared';
 import { FactionIcon } from './Icons.js';
 import { FACTION_LABEL } from '../lib/strings-extra.js';
 
@@ -42,6 +42,21 @@ export function TestBadge() {
   return (
     <span className="badge director-test-badge" title="Test mode: god view + audit, not ranked">
       TEST
+    </span>
+  );
+}
+
+/**
+ * Progression tier badge (goal 1/2). Color is driven by a per-tier class so the
+ * standing reads at a glance; the tier *name* is always shown alongside the
+ * color, so this is never a color-only signal.
+ */
+export function TierBadge({ totalPoints, size = 'md' }: { totalPoints: number; size?: 'sm' | 'md' }) {
+  const tier = tierForPoints(totalPoints);
+  return (
+    <span className={`tier-badge tier-${tier.key} ${size === 'sm' ? 'tier-sm' : ''}`} title={`${tier.name} · ${tier.minPoints}+ pts`}>
+      <span className="tier-pip" aria-hidden="true">◆</span>
+      {tier.name}
     </span>
   );
 }

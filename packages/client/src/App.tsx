@@ -5,10 +5,11 @@
  */
 
 import { useEffect } from 'react';
-import { Routes, Route, Navigate } from 'react-router-dom';
+import { Routes, Route, Navigate, Link } from 'react-router-dom';
 import { strings } from '@nocturne/shared';
 import { conn } from './ws/connection.js';
 import { useStore } from './store/store.js';
+import { refreshMe } from './lib/me.js';
 import { Toasts } from './components/Toasts.js';
 import { ForceUpdateModal } from './components/ForceUpdateModal.js';
 import { sceneForPhase } from './lib/scene.js';
@@ -17,14 +18,18 @@ import { JoinScreen } from './screens/JoinScreen.js';
 import { LobbyScreen } from './screens/LobbyScreen.js';
 import { GameScreen } from './screens/GameScreen.js';
 import { SettingsScreen } from './screens/SettingsScreen.js';
+import { LeaderboardScreen } from './screens/LeaderboardScreen.js';
+import { SetupsScreen } from './screens/SetupsScreen.js';
+import { ReplayScreen } from './screens/ReplayScreen.js';
 
 export function App() {
   const settings = useStore((s) => s.settings);
   const phase = useStore((s) => s.game?.phase ?? null);
 
-  // Open the connection once.
+  // Open the connection once, and bootstrap the signed-in identity (goal 4/8).
   useEffect(() => {
     conn.connect();
+    void refreshMe();
     return () => conn.disconnect();
   }, []);
 
@@ -45,12 +50,18 @@ export function App() {
         <div className="topbar">
           <span className="brand">{strings.UI.appName}</span>
           <nav className="row">
-            <a className="linkbtn" href="/">
+            <Link className="linkbtn" to="/">
               Tables
-            </a>
-            <a className="linkbtn" href="/settings">
+            </Link>
+            <Link className="linkbtn" to="/leaderboard">
+              Leaderboard
+            </Link>
+            <Link className="linkbtn" to="/setups">
+              Setups
+            </Link>
+            <Link className="linkbtn" to="/settings">
               Settings
-            </a>
+            </Link>
           </nav>
         </div>
         <Routes>
@@ -58,6 +69,9 @@ export function App() {
           <Route path="/join/:code" element={<JoinScreen />} />
           <Route path="/lobby/:id" element={<LobbyScreen />} />
           <Route path="/game" element={<GameScreen />} />
+          <Route path="/leaderboard" element={<LeaderboardScreen />} />
+          <Route path="/setups" element={<SetupsScreen />} />
+          <Route path="/replay/:matchId" element={<ReplayScreen />} />
           <Route path="/settings" element={<SettingsScreen />} />
           <Route path="*" element={<Navigate to="/" replace />} />
         </Routes>

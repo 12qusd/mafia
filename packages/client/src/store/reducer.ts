@@ -52,6 +52,7 @@ function emptyGame(setupId: string): GameView {
     lastVerdict: null,
     deathFeed: [],
     spectator: false,
+    stumpedSeats: [],
   };
 }
 
@@ -103,6 +104,7 @@ function applySnapshot(state: StoreState, snap: SeatSnapshot): Partial<StoreStat
     lastVerdict: null,
     deathFeed: [],
     spectator: false,
+    stumpedSeats: [],
   };
   const own: OwnState = {
     ...emptyOwn(snap.seat),
@@ -163,6 +165,7 @@ export function reduce(state: StoreState, msg: ServerMessage): Partial<StoreStat
       return {
         game,
         gameOver: null,
+        pointsAward: null,
         chat: [],
         whisperMeta: [],
         privateLog: [],
@@ -308,6 +311,38 @@ export function reduce(state: StoreState, msg: ServerMessage): Partial<StoreStat
         s.seat === msg.seat ? { ...s, connected: msg.connected, afk: msg.afk } : s,
       );
       return { game: { ...state.game, seats } };
+    }
+
+    case 'points_awarded': {
+      // Per-player post-match award (goal 3). Stored for the GameOver
+      // celebration. The summary is the wire-typed `UserStatsSummary`; if this
+      // is the local registered account, refresh the cached `me.stats` too so
+      // the home profile card updates without a round-trip.
+      const patch: Partial<StoreState> = {
+        pointsAward: {
+          matchId: msg.matchId,
+          breakdown: msg.breakdown,
+          stats: msg.stats,
+          newAchievements: msg.newAchievements,
+        },
+      };
+      if (state.me && state.me.id === msg.stats.userId) {
+        patch.me = { ...state.me, stats: msg.stats };
+      }
+      return patch;
+    }
+
+    case 'seat_transform': {
+      // Public stump marker (goal 8). Track in the parallel set; never mutate
+      // the server-sent PublicSeat shape.
+      if (!state.game) return {};
+      const cur = state.game.stumpedSeats;
+      const next = msg.stumped
+        ? cur.includes(msg.seat)
+          ? cur
+          : [...cur, msg.seat]
+        : cur.filter((s) => s !== msg.seat);
+      return { game: { ...state.game, stumpedSeats: next } };
     }
 
     case 'error': {
