@@ -140,6 +140,13 @@ function NightAction({
       </div>
     );
   }
+  // The Witch's `witch_control` is the one two-target night action: she seizes a
+  // PUPPET (`target`) and steers their move onto a VICTIM (`target2`). Every other
+  // role keeps the single-target picker below.
+  if (ability.id === 'witch_control') {
+    return <WitchControlAction own={own} seats={seats} ability={ability} />;
+  }
+
   const def = getRole(own.role);
   // Legal targets: living seats, excluding self unless the role may self-target.
   const allowSelf = def.targetScope === 'others_or_self' || def.targetScope === 'self';
@@ -185,6 +192,123 @@ function NightAction({
             {GAME.cancelAction}
           </button>
         </div>
+      ) : (
+        <span className="faint">{GAME.actionLocked}</span>
+      )}
+    </div>
+  );
+}
+
+/**
+ * Witch night action (`witch_control`): a two-target picker. The first picker
+ * chooses the PUPPET (whose hand she moves) and the second the VICTIM (where she
+ * points it). Both must be living seats other than herself; the puppet and the
+ * victim must differ (the engine is authoritative on legality — this only
+ * guides). The action is submitted only once BOTH are chosen, carrying
+ * `target = puppet` and `target2 = victim`.
+ */
+function WitchControlAction({
+  own,
+  seats,
+  ability,
+}: {
+  own: NonNullable<ReturnType<typeof useStore.getState>['own']>;
+  seats: PublicSeat[];
+  ability: AbilityInfo;
+}) {
+  const puppet = own.nightTarget;
+  const victim = own.nightTarget2;
+  // The Witch never controls herself; living seats only.
+  const living = seats.filter((s) => s.alive && s.seat !== own.seat);
+
+  function submit(p: number | null, v: number | null) {
+    // Persist locally first (pending UI state), then push to the server only
+    // once we have a complete pair (puppet + victim). A bare puppet is cancelled.
+    useStore.getState().setNightSelection(ability.id, p);
+    useStore.getState().setNightSelection2(v);
+    if (p !== null && v !== null) sendNightAction(ability.id, p, v);
+    else sendNightAction(ability.id, null);
+  }
+
+  function choosePuppet(seat: number) {
+    const next = puppet === seat ? null : seat;
+    // Dropping the puppet drops the victim too; re-picking the seat now held as
+    // victim is disallowed by clearing it.
+    submit(next, next === victim ? null : victim);
+  }
+  function chooseVictim(seat: number) {
+    const next = victim === seat ? null : seat;
+    submit(puppet, next);
+  }
+
+  const seatName = (seat: number | null) =>
+    sanitizeInline(seats.find((s) => s.seat === seat)?.name ?? '');
+
+  return (
+    <div className="panel panel-pad stack">
+      <div className="spread">
+        <strong>{GAME.nightAction}</strong>
+        <span className="muted">{ability.name}</span>
+      </div>
+
+      {/* Puppet: whose hand to move. */}
+      <div className="stack" style={{ gap: 4 }}>
+        <span className="faint">{GAME.witchPuppet}</span>
+        <div className="target-grid" role="group" aria-label={GAME.witchPuppet}>
+          {living.map((t) => {
+            const selected = puppet === t.seat;
+            return (
+              <button
+                key={t.seat}
+                className={`btn btn-sm target-opt ${selected ? 'btn-active' : ''}`}
+                onClick={() => choosePuppet(t.seat)}
+              >
+                {t.seat + 1} · {sanitizeInline(t.name)}
+              </button>
+            );
+          })}
+        </div>
+      </div>
+
+      {/* Victim: where to point it (a different living seat than the puppet). */}
+      <div className="stack" style={{ gap: 4 }}>
+        <span className="faint">{GAME.witchVictim}</span>
+        {puppet === null ? (
+          <span className="faint">{GAME.witchNeedPuppet}</span>
+        ) : (
+          <div className="target-grid" role="group" aria-label={GAME.witchVictim}>
+            {living
+              .filter((t) => t.seat !== puppet)
+              .map((t) => {
+                const selected = victim === t.seat;
+                return (
+                  <button
+                    key={t.seat}
+                    className={`btn btn-sm target-opt ${selected ? 'btn-active' : ''}`}
+                    onClick={() => chooseVictim(t.seat)}
+                  >
+                    {t.seat + 1} · {sanitizeInline(t.name)}
+                  </button>
+                );
+              })}
+          </div>
+        )}
+      </div>
+
+      {puppet !== null && victim !== null ? (
+        <div className="spread">
+          <span className="muted">
+            {GAME.witchPuppetSet(seatName(puppet))} {GAME.witchVictimSet(seatName(victim))}
+          </span>
+          <button
+            className="btn btn-sm btn-ghost"
+            onClick={() => submit(null, null)}
+          >
+            {GAME.cancelAction}
+          </button>
+        </div>
+      ) : puppet !== null ? (
+        <span className="faint">{GAME.witchVictimPending}</span>
       ) : (
         <span className="faint">{GAME.actionLocked}</span>
       )}

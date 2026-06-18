@@ -22,6 +22,7 @@ import { useEffect, useMemo, useState } from 'react';
 import {
   ALL_ROLES,
   FACTIONS,
+  SLOT_CATEGORIES,
   getRole,
   slotFaction,
   validateSetup,
@@ -31,6 +32,7 @@ import {
   type Faction,
   type RoleId,
   type SetupSlot,
+  type SlotCategory,
   type GameSetup,
 } from '@nocturne/shared';
 import { useStore } from '../store/store.js';
@@ -44,7 +46,14 @@ import type { CustomSetupRecord } from '../lib/api.js';
 /** A draft slot in the editor (fixed role or a category placeholder). */
 type DraftSlot =
   | { kind: 'fixed'; role: RoleId }
-  | { kind: 'category'; category: 'RANDOM_TOWN' | 'RANDOM_MAFIA' };
+  | { kind: 'category'; category: SlotCategory };
+
+/** Noir label for each random-pool category (RANDOM_TOWN / _MAFIA / _TRIAD). */
+const CATEGORY_LABEL: Record<SlotCategory, string> = {
+  RANDOM_TOWN: BUILDER.randomTown,
+  RANDOM_MAFIA: BUILDER.randomMafia,
+  RANDOM_TRIAD: BUILDER.randomTriad,
+};
 
 /** Sensible default for a new slot: a Random Town placeholder. */
 const DEFAULT_SLOT: DraftSlot = { kind: 'category', category: 'RANDOM_TOWN' };
@@ -437,12 +446,13 @@ function SlotEditor({
         <select
           value={slot.category}
           aria-label={`${BUILDER.slot} ${index + 1} category`}
-          onChange={(e) =>
-            onChange({ kind: 'category', category: e.target.value as 'RANDOM_TOWN' | 'RANDOM_MAFIA' })
-          }
+          onChange={(e) => onChange({ kind: 'category', category: e.target.value as SlotCategory })}
         >
-          <option value="RANDOM_TOWN">{BUILDER.randomTown}</option>
-          <option value="RANDOM_MAFIA">{BUILDER.randomMafia}</option>
+          {SLOT_CATEGORIES.map((c) => (
+            <option key={c} value={c}>
+              {CATEGORY_LABEL[c]}
+            </option>
+          ))}
         </select>
       )}
 
@@ -450,9 +460,11 @@ function SlotEditor({
         {slot.kind === 'fixed' ? (
           <RoleChip role={slot.role} />
         ) : (
-          <span className={`role-chip faction-${slot.category === 'RANDOM_TOWN' ? 'TOWN' : 'MAFIA'}`}>
-            <FactionIcon faction={slot.category === 'RANDOM_TOWN' ? 'TOWN' : 'MAFIA'} />
-            {slot.category === 'RANDOM_TOWN' ? BUILDER.randomTown : BUILDER.randomMafia}
+          // The placeholder reads as its guaranteed faction (slotFaction), so a
+          // RANDOM_TRIAD chip shows the Triad icon + label, never color alone.
+          <span className={`role-chip faction-${slotFaction(toSetupSlot(slot))}`}>
+            <FactionIcon faction={slotFaction(toSetupSlot(slot))} />
+            {CATEGORY_LABEL[slot.category]}
           </span>
         )}
       </span>

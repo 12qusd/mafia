@@ -47,6 +47,11 @@ interface StoreActions {
 
   // --- Optimistic own-state selections (confirmed by server acks) ---------
   setNightSelection(ability: string | null, target: number | null): void;
+  /**
+   * Set the local pending SECOND night target (Witch `witch_control` victim).
+   * Mirrors `setNightSelection`; purely local pending UI state (§13.2).
+   */
+  setNightSelection2(target2: number | null): void;
   setVote(target: number | 'skip' | null): void;
   setVerdict(value: 'guilty' | 'innocent' | 'abstain' | null): void;
   setLastWill(text: string): void;
@@ -143,7 +148,23 @@ export const useStore = create<Store>((set, get) => ({
   },
 
   setNightSelection(ability, target) {
-    set((s) => (s.own ? { own: { ...s.own, nightAbility: ability, nightTarget: target } } : {}));
+    set((s) =>
+      s.own
+        ? {
+            own: {
+              ...s.own,
+              nightAbility: ability,
+              nightTarget: target,
+              // Clearing the puppet (target = null) also drops a pending victim:
+              // a witch_control with no puppet carries no victim either.
+              ...(target === null ? { nightTarget2: null } : {}),
+            },
+          }
+        : {},
+    );
+  },
+  setNightSelection2(target2) {
+    set((s) => (s.own ? { own: { ...s.own, nightTarget2: target2 } } : {}));
   },
   setVote(target) {
     set((s) => (s.own ? { own: { ...s.own, vote: target } } : {}));

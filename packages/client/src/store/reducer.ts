@@ -68,6 +68,7 @@ function emptyOwn(seat: number): OwnState {
     faction: 'TOWN',
     abilities: [],
     nightTarget: null,
+    nightTarget2: null,
     nightAbility: null,
     jailTarget: null,
     revealed: false,
@@ -395,7 +396,7 @@ function clearPhaseSelections(own: OwnState, phase: Phase): OwnState {
   // phase clears the vote; entering a non-judgment phase clears the verdict.
   let next = own;
   if (phase === 'NIGHT') {
-    next = { ...next, nightTarget: null, nightAbility: null };
+    next = { ...next, nightTarget: null, nightTarget2: null, nightAbility: null };
   }
   if (phase !== 'DAY_VOTING') {
     next = { ...next, vote: null };

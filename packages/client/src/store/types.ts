@@ -118,6 +118,13 @@ export interface OwnState {
   mates?: number[];
   /** Currently submitted night-action target (null = none/cancelled). */
   nightTarget: number | null;
+  /**
+   * Optional SECOND night-action target (local pending UI state, §13.2). Used
+   * only by the Witch's `witch_control`: `nightTarget` is the PUPPET and
+   * `nightTarget2` is the VICTIM the puppet's action is steered onto. Null for
+   * every single-target ability.
+   */
+  nightTarget2: number | null;
   /** The ability id selected for the night action, if any. */
   nightAbility: string | null;
   /** Jailor's selected prisoner for the coming night. */
