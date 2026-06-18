@@ -626,3 +626,43 @@ Bot/sim/leak-detector decisions (§12.2/§12.3/§12.4).
 - **[bots] Accept both `classic_nocturne` (spec spelling) and `classic-nocturne`
   (the data id).** The CLIs normalize underscores→hyphens for all three shipped
   setups.
+
+---
+
+## Post-MVP buildout (points, replays, admin, custom setups, animations, roles)
+
+These extend beyond the MVP into BUILD_SPEC's deferred/Phase-B territory, per an
+explicit product goal to port more of the SC2Mafia experience. The MVP invariants
+hold throughout: the engine stays pure/deterministic; secrets travel only via
+addressed effects through the single ScopedTransport; the bots leak auditor gates
+every protocol change.
+
+### Points & achievements (goal 4)
+
+- **[points] Scoring is a pure function in `@nocturne/shared` (`types/points.ts`),
+  computed server-side at match end — never in the engine.** Keeping it out of
+  `apply`/`resolveNight` preserves replay determinism (a synthesis-flagged risk).
+  Weights: played 10, win 50, survived-to-end 25, loyalty 6/day-dead (cap 72),
+  plus achievement bonuses. (goal 4)
+- **[points] Guests (`guest:` identities) and TEST-mode games are excluded** from
+  stats/achievements/leaderboard so the ladder isn't polluted.
+- **[points] Progression tiers** (Drifter/Made/Capo/Boss/Kingpin) drive cosmetic
+  perks like points-keyed death animations later (goal 3).
+
+### Replay integrity (goal 9)
+
+- **[replay] `matches.fingerprint` = `sha256:<HMAC>` over a canonical (recursively
+  sorted-key) match core**, keyed by the server secret. Sorted keys make it stable
+  across Postgres JSONB round-trips; verify-on-read attaches an integrity verdict.
+- **[replay] Full chat is now persisted** (`Room.chatLog`) so replays/exports are
+  complete (previously `chat: []`). Export endpoint is participant/admin gated.
+
+### Admin god-powers (goal 8)
+
+- **[admin] In-game powers via one `admin_action` WS message**, gated on
+  `identity.isAdmin`, every action logged to `admin_audit`.
+- **[admin] kill & stump are new engine events** (`admin_kill`, `admin_stump`) so
+  they are logged and replayable; points/ban/force-phase are server-side only.
+- **[admin] A "stump" is `alive` but `stumped`: faction forced to TOWN, vote
+  weight 0, night/day actions rejected, removed from the mafia roster.** A public
+  leak-safe `seat_transform` frame announces it.

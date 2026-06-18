@@ -643,6 +643,11 @@ export class Room implements AudienceProvider {
     return this.seats[seat]?.name ?? null;
   }
 
+  /** Identity id bound to a seat, or null (admin god-powers, goal 8). */
+  identityForSeat(seat: SeatId): string | null {
+    return this.seats[seat]?.identityId ?? null;
+  }
+
   // --- TEST MODE controls & audit ------------------------------------------
 
   get isTestMode(): boolean {

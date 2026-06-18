@@ -61,6 +61,13 @@ export interface SeatState {
   /** Whether this seat has explicitly left the game (queued suicide). */
   leaving: boolean;
 
+  /**
+   * Admin turned this seat into a non-voting, town-aligned "stump" (goal 8).
+   * Stumped seats keep `alive=true` but cannot vote, act at night, or use day
+   * abilities; their faction is forced to TOWN for win conditions.
+   */
+  stumped: boolean;
+
   /** Why the seat died (set when alive→dead), for the trace and reveal. */
   deathCause: DeathCause | null;
   /** Day number the seat died (0 = alive). */

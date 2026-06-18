@@ -87,9 +87,21 @@ export class MessageHandlers {
         return;
       case 'test_control':
         return this.onTestControl(conn, msg);
+      case 'admin_action':
+        return this.onAdminAction(conn, msg);
       default:
         replyError(conn, 'unknown_type');
     }
+  }
+
+  // --- Admin god-powers (in-game; admin only, goal 8) ----------------------
+
+  private async onAdminAction(
+    conn: Connection,
+    msg: Extract<ClientMessage, { type: 'admin_action' }>,
+  ): Promise<void> {
+    const err = await this.ctx.manager.adminControl(conn, msg);
+    if (err) replyError(conn, err as ErrorCode);
   }
 
   // --- TEST MODE control (host of a test lobby only) -----------------------

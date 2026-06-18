@@ -15,10 +15,16 @@ import { z } from 'zod';
 // --------------------------------------------------------------------------
 
 /** Stable identifiers for why points were granted (persisted in point_log). */
-export type PointReason = 'played' | 'win' | 'survived_to_end' | 'loyalty_dead' | 'achievement';
+export type PointReason =
+  | 'played'
+  | 'win'
+  | 'survived_to_end'
+  | 'loyalty_dead'
+  | 'achievement'
+  | 'admin';
 
 export const PointAwardSchema = z.object({
-  code: z.enum(['played', 'win', 'survived_to_end', 'loyalty_dead', 'achievement']),
+  code: z.enum(['played', 'win', 'survived_to_end', 'loyalty_dead', 'achievement', 'admin']),
   /** Human-facing label (original copy, noir register). */
   label: z.string(),
   points: z.number().int(),

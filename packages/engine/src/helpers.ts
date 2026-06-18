@@ -38,8 +38,9 @@ export function livingMafiaSeats(state: GameState): SeatState[] {
   return state.seats.filter((s) => s.alive && s.faction === 'MAFIA');
 }
 
-/** Seat vote weight (Mayor 3 after reveal, else 1). */
+/** Seat vote weight (Mayor 3 after reveal, else 1; a stump cannot vote → 0). */
 export function voteWeight(seat: SeatState): number {
+  if (seat.stumped) return 0;
   return seat.mayorRevealed ? 3 : 1;
 }
 

@@ -508,6 +508,7 @@ function seatView(st: SeatState): EngineSeatView {
     // gracefully to null here. The real engine supplies these.
     deathDay: null,
     deathCause: null,
+    stumped: false,
   };
 }
 

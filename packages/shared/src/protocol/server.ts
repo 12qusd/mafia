@@ -163,6 +163,14 @@ export const SeatStatusSchema = envelope('seat_status', {
   afk: z.boolean(),
 });
 
+// seat_transform {seat, stumped}  // public; admin turned a seat into a stump
+// (goal 8). Leak-safe: carries no secret — being a non-voting town stump is
+// public knowledge.
+export const SeatTransformSchema = envelope('seat_transform', {
+  seat: SeatIdSchema,
+  stumped: z.boolean(),
+});
+
 // error {code, detail?}
 export const ErrorSchema = envelope('error', {
   code: ErrorCodeSchema,
@@ -204,6 +212,7 @@ export const ServerMessageSchema = z.union([
   GameOverSchema,
   PointsAwardedSchema,
   SeatStatusSchema,
+  SeatTransformSchema,
   ErrorSchema,
   PongSchema,
   ForceUpdateSchema,
@@ -232,6 +241,7 @@ export type DayAbilityAck = z.infer<typeof DayAbilityAckSchema>;
 export type GameOver = z.infer<typeof GameOverSchema>;
 export type PointsAwarded = z.infer<typeof PointsAwardedSchema>;
 export type SeatStatus = z.infer<typeof SeatStatusSchema>;
+export type SeatTransform = z.infer<typeof SeatTransformSchema>;
 export type ServerError = z.infer<typeof ErrorSchema>;
 export type Pong = z.infer<typeof PongSchema>;
 export type ForceUpdate = z.infer<typeof ForceUpdateSchema>;

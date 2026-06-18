@@ -25,6 +25,8 @@ import { Lobby, resolveConfig } from './lobby.js';
 import { Room, type ScheduleFn } from '../room/room.js';
 import { fingerprintMatch } from '../audit/fingerprint.js';
 import { awardMatchPoints } from '../points/award.js';
+import { buildUserStatsSummary } from '../points/stats.js';
+import type { AdminAction } from '@nocturne/shared';
 
 export interface ManagerDeps {
   engine: Engine;
@@ -222,6 +224,119 @@ export class LobbyManager {
         return 'not_in_game';
       default:
         return 'bad_message';
+    }
+  }
+
+  // --- Admin god-powers (in-game; admin only, goal 8) ----------------------
+
+  /**
+   * Handle an in-game `admin_action`. Requires the connection's identity to be
+   * an admin. kill/stump go to the engine as logged, replayable events;
+   * points/ban/force-phase are applied server-side. Every action is logged to
+   * admin_audit. Returns an error code or null.
+   */
+  async adminControl(conn: Connection, msg: AdminAction): Promise<string | null> {
+    const identityId = conn.identityId;
+    if (!identityId) return 'not_authenticated';
+    if (!conn.identity?.isAdmin) return 'forbidden';
+    const room = this.roomOf(conn);
+    if (!room) return 'not_in_game';
+    const now = this.deps.clock?.() ?? Date.now();
+    const store = this.deps.store;
+    const audit = (detail: unknown): void => {
+      void store.logAdminAction(identityId, `admin_${msg.action}`, detail);
+    };
+
+    switch (msg.action) {
+      case 'force_phase':
+        room.endPhaseNow();
+        audit({ room: room.id });
+        return null;
+      case 'kill': {
+        if (msg.targetSeat === undefined) return 'illegal_target';
+        room.applyEvent({ type: 'admin_kill', seat: msg.targetSeat, ts: now });
+        audit({ room: room.id, seat: msg.targetSeat, reason: msg.reason });
+        return null;
+      }
+      case 'stump': {
+        if (msg.targetSeat === undefined) return 'illegal_target';
+        room.applyEvent({ type: 'admin_stump', seat: msg.targetSeat, ts: now });
+        audit({ room: room.id, seat: msg.targetSeat, reason: msg.reason });
+        return null;
+      }
+      case 'grant_points':
+      case 'revoke_points': {
+        if (msg.targetSeat === undefined) return 'illegal_target';
+        const userId = room.identityForSeat(msg.targetSeat);
+        if (!userId || userId.startsWith('guest:')) return 'illegal_target';
+        const amount = (msg.points ?? 0) * (msg.action === 'grant_points' ? 1 : -1);
+        await this.adminAdjustPoints(room, msg.targetSeat, userId, amount, identityId, now);
+        return null;
+      }
+      case 'temp_ban': {
+        if (msg.targetSeat === undefined) return 'illegal_target';
+        const userId = room.identityForSeat(msg.targetSeat);
+        if (!userId || userId.startsWith('guest:')) return 'illegal_target';
+        const dur = msg.durationMs ?? 60 * 60 * 1000;
+        await store.applySanction({
+          userId,
+          type: 'temp_ban',
+          reason: msg.reason ?? 'in-game admin ban',
+          reportId: null,
+          issuedBy: identityId,
+          expiresAt: now + dur,
+        });
+        room.markLeaving(userId);
+        audit({ room: room.id, seat: msg.targetSeat, userId, durationMs: dur, reason: msg.reason });
+        return null;
+      }
+      default:
+        return 'bad_message';
+    }
+  }
+
+  private async adminAdjustPoints(
+    room: Room,
+    seat: number,
+    userId: string,
+    amount: number,
+    adminId: string,
+    now: number,
+  ): Promise<void> {
+    if (amount !== 0) {
+      await this.deps.store.addToUserStats(
+        userId,
+        { points: amount, gamesPlayed: 0, gamesWon: 0, gamesSurvived: 0, daysDeadWatched: 0 },
+        now,
+      );
+      await this.deps.store.recordPoints(userId, [
+        { matchId: null, reason: 'admin', detail: adminId, points: amount },
+      ]);
+    }
+    await this.deps.store.logAdminAction(
+      adminId,
+      amount >= 0 ? 'admin_grant_points' : 'admin_revoke_points',
+      { seat, userId, amount },
+    );
+    const summary = await buildUserStatsSummary(this.deps.store, userId);
+    if (summary) {
+      room.sendToSeat(seat, {
+        v: 1,
+        type: 'points_awarded',
+        matchId: 'admin',
+        breakdown: {
+          awards: [
+            {
+              code: 'admin',
+              label: amount >= 0 ? 'Admin granted points' : 'Admin revoked points',
+              points: amount,
+            },
+          ],
+          total: amount,
+        },
+        stats: summary,
+        newAchievements: [],
+      });
     }
   }
 

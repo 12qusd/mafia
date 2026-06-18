@@ -273,6 +273,7 @@ export const DEATH_CAUSE_LABEL: Record<DeathCause, string> = {
   jester_grief: 'Jester grief',
   lynch: 'Lynch',
   leave: 'Left',
+  admin: 'Admin',
 };
 
 /** Faction display names (machine key → noir label). */

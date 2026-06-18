@@ -155,6 +155,7 @@ export function init(setup: GameSetup, seed: string, opts: InitOptions = {}): Ga
       mayorRevealed: false,
       exeTarget: null,
       leaving: false,
+      stumped: false,
       deathCause: null,
       deathDay: null,
     };

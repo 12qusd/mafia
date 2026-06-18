@@ -90,6 +90,8 @@ export interface EngineSeatView {
   deathDay: number | null;
   /** Cause of death, or null if alive. */
   deathCause: string | null;
+  /** Admin turned this seat into a non-voting town stump (goal 8). */
+  stumped: boolean;
 }
 
 /** Read-only helpers the server derives from engine state. */
@@ -173,6 +175,7 @@ interface RealSeat {
   mayorRevealed: boolean;
   deathDay: number | null;
   deathCause: string | null;
+  stumped: boolean;
 }
 interface RealState {
   phase: Phase;
@@ -234,6 +237,7 @@ function buildRealEngine(mod: RealEngineModule): Engine {
         mayorRevealed: x.mayorRevealed,
         deathDay: x.deathDay ?? null,
         deathCause: x.deathCause ?? null,
+        stumped: x.stumped ?? false,
       })),
     yourRole: (state, seat) => {
       const s = rs(state).seats[seat];

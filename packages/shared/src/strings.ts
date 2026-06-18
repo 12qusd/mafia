@@ -93,6 +93,8 @@ export function deathLine(cause: DeathCause, seatLabel: string, roleName: string
       return `${seatLabel} dropped at the end of the town's rope. They were the ${roleName}.`;
     case 'leave':
       return `${seatLabel} walked out into the dark and never came back. They were the ${roleName}.`;
+    case 'admin':
+      return `${seatLabel} was struck from the game by the hand of the house. They were the ${roleName}.`;
     default: {
       // Exhaustiveness guard.
       const _never: never = cause;

@@ -107,6 +107,26 @@ export interface SeatAfkEvent extends Stamped {
   afk: boolean;
 }
 
+/**
+ * Admin god-power: immediately kill a seat (policing, goal 8). Unpreventable,
+ * reveals the role like any death, and runs a win check. Logged & replayable —
+ * the determinism of the night sequence is unaffected (admin kills happen
+ * outside resolveNight).
+ */
+export interface AdminKillEvent extends Stamped {
+  type: 'admin_kill';
+  seat: SeatId;
+}
+
+/**
+ * Admin god-power: turn a seat into a non-voting, town-aligned "stump" (goal 8).
+ * The seat stays alive but loses its vote, night action and faction agency.
+ */
+export interface AdminStumpEvent extends Stamped {
+  type: 'admin_stump';
+  seat: SeatId;
+}
+
 export type GameEvent =
   | VoteEvent
   | VerdictEvent
@@ -120,4 +140,6 @@ export type GameEvent =
   | SeatDisconnectedEvent
   | SeatReconnectedEvent
   | SeatLeftEvent
-  | SeatAfkEvent;
+  | SeatAfkEvent
+  | AdminKillEvent
+  | AdminStumpEvent;

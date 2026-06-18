@@ -125,9 +125,73 @@ export function apply(prev: GameState, event: GameEvent): ApplyResult {
     case 'phase_end':
       advancePhase(state, event.ts, effects);
       return { state, effects };
+    case 'admin_kill':
+      handleAdminKill(state, event.seat, event.ts, effects);
+      return { state, effects };
+    case 'admin_stump':
+      handleAdminStump(state, event.seat, event.ts, effects);
+      return { state, effects };
     default:
       return { state, effects };
   }
+}
+
+// ---------------------------------------------------------------------------
+// Admin god-powers (policing, goal 8) — logged & replayable; outside resolveNight
+// so the deterministic night sequence is unaffected.
+// ---------------------------------------------------------------------------
+
+function handleAdminKill(state: GameState, seat: SeatId, now: GameTick, effects: Effect[]): void {
+  const s = state.seats[seat];
+  if (!s || !s.alive) return;
+  s.alive = false;
+  s.revealed = true;
+  s.deathCause = 'admin';
+  s.deathDay = state.dayNumber;
+  state.traces.push({ step: 'death', seat, role: s.role, cause: 'admin' });
+  // Detach the seat from any in-flight game machinery.
+  state.mafiaSeats = state.mafiaSeats.filter((m) => m !== seat);
+  state.nightIntents = state.nightIntents.filter((i) => i.seat !== seat);
+  state.nomination.votes = state.nomination.votes.filter((v) => v.seat !== seat);
+  if (state.trial) state.trial.verdicts = state.trial.verdicts.filter((v) => v.seat !== seat);
+  if (state.jailTarget === seat) state.jailTarget = null;
+
+  // Public reveal (legal — this IS a death reveal).
+  effects.push(
+    toPublic({
+      type: 'death_announce',
+      seat,
+      role: s.role,
+      ...(state.config.lastWillsEnabled && s.lastWill ? { lastWill: s.lastWill } : {}),
+      cause: 'admin',
+    }),
+  );
+  if (state.phase === 'DAY_VOTING') emitVoteUpdate(state, effects);
+
+  // A god-kill can end the game (e.g. removing the last mafioso).
+  const win = checkWin(state) ?? checkStalemate(state);
+  if (win) endGame(state, win, now, effects);
+}
+
+function handleAdminStump(state: GameState, seat: SeatId, now: GameTick, effects: Effect[]): void {
+  const s = state.seats[seat];
+  if (!s || !s.alive || s.stumped) return;
+  s.stumped = true;
+  s.faction = 'TOWN'; // town-aligned for win conditions
+  // Strip all agency.
+  state.mafiaSeats = state.mafiaSeats.filter((m) => m !== seat);
+  state.nightIntents = state.nightIntents.filter((i) => i.seat !== seat);
+  state.nomination.votes = state.nomination.votes.filter((v) => v.seat !== seat);
+  if (state.trial) state.trial.verdicts = state.trial.verdicts.filter((v) => v.seat !== seat);
+  if (state.jailTarget === seat) state.jailTarget = null;
+
+  // Public, leak-safe signal (being a stump is public knowledge).
+  effects.push(toPublic({ type: 'seat_transform', seat, stumped: true }));
+  if (state.phase === 'DAY_VOTING') emitVoteUpdate(state, effects);
+
+  // Neutralizing an evil seat can end the game.
+  const win = checkWin(state) ?? checkStalemate(state);
+  if (win) endGame(state, win, now, effects);
 }
 
 // ---------------------------------------------------------------------------
@@ -269,7 +333,7 @@ function handleVote(
 ): void {
   if (state.phase !== 'DAY_VOTING') return;
   const s = seatOf(state, seat);
-  if (!s.alive) return;
+  if (!s.alive || s.stumped) return; // a stump cannot vote (goal 8)
 
   // Update/retract vote.
   state.nomination.votes = state.nomination.votes.filter((v) => v.seat !== seat);
@@ -378,7 +442,7 @@ function handleNightAction(
 ): void {
   if (state.phase !== 'NIGHT') return;
   const s = seatOf(state, seat);
-  if (!s.alive) return;
+  if (!s.alive || s.stumped) return; // a stump has no night action (goal 8)
 
   // Remove any prior intent for this seat (last submission wins).
   state.nightIntents = state.nightIntents.filter((i) => i.seat !== seat);
@@ -401,7 +465,7 @@ function handleDayAbility(
   effects: Effect[],
 ): void {
   const s = seatOf(state, seat);
-  if (!s.alive) return;
+  if (!s.alive || s.stumped) return; // a stump has no day ability (goal 8)
 
   if (ability === 'jail') {
     // Jailor selects a prisoner during day phases (not Day 0).

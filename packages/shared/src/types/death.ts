@@ -23,6 +23,7 @@ export const DEATH_CAUSES = [
   'jester_grief',
   'lynch',
   'leave',
+  'admin',
 ] as const;
 
 export const DeathCauseSchema = z.enum(DEATH_CAUSES);

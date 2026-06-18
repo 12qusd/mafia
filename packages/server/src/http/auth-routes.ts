@@ -9,6 +9,7 @@ import type { FastifyInstance } from 'fastify';
 import { z } from 'zod';
 import { DISPLAY_NAME_MAX } from '@nocturne/shared';
 import type { GatewayContext } from '../ws/context.js';
+import { buildUserStatsSummary } from '../points/stats.js';
 
 const COOKIE = 'nocturne_session';
 
@@ -75,11 +76,17 @@ export function registerAuthRoutes(app: FastifyInstance, ctx: GatewayContext): v
     const token = readToken(req);
     const identity = await ctx.identity.resolveToken(token);
     if (!identity) return reply.code(401).send({ error: 'not_authenticated' });
+    // Registered users get their progression stats inline (goal 4).
+    const stats =
+      !identity.isGuest && ctx.store.persistent
+        ? await buildUserStatsSummary(ctx.store, identity.id)
+        : null;
     return reply.send({
       id: identity.id,
       name: identity.name,
       isGuest: identity.isGuest,
       isAdmin: identity.isAdmin,
+      stats,
     });
   });
 

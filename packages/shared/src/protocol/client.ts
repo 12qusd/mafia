@@ -112,6 +112,18 @@ export const ReportPlayerSchema = envelope('report_player', {
   comment: ReportCommentSchema.optional(),
 });
 
+// admin_action {action, targetSeat?, points?, durationMs?, reason?}  // admin only
+// In-game god powers (goal 8). The server enforces identity.isAdmin and logs
+// every action to admin_audit; the engine receives only kill/stump as logged,
+// replayable events. Points/ban/force-phase are handled server-side.
+export const AdminActionSchema = envelope('admin_action', {
+  action: z.enum(['kill', 'stump', 'force_phase', 'grant_points', 'revoke_points', 'temp_ban']),
+  targetSeat: SeatIdSchema.optional(),
+  points: z.number().int().min(0).max(100000).optional(),
+  durationMs: z.number().int().min(0).max(30 * 24 * 60 * 60 * 1000).optional(),
+  reason: z.string().max(200).optional(),
+});
+
 // ping {t}
 export const PingSchema = envelope('ping', {
   t: z.number(),
@@ -141,6 +153,7 @@ export const ClientMessageSchema = z.union([
   LastWillSchema,
   DeathNoteSchema,
   ReportPlayerSchema,
+  AdminActionSchema,
   PingSchema,
   TestControlSchema,
 ]);
@@ -164,5 +177,6 @@ export type DayAbility = z.infer<typeof DayAbilitySchema>;
 export type LastWill = z.infer<typeof LastWillSchema>;
 export type DeathNote = z.infer<typeof DeathNoteSchema>;
 export type ReportPlayer = z.infer<typeof ReportPlayerSchema>;
+export type AdminAction = z.infer<typeof AdminActionSchema>;
 export type Ping = z.infer<typeof PingSchema>;
 export type { TestControl } from './debug.js';
