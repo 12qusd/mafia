@@ -77,6 +77,7 @@ export async function buildApp(cfg: ServerConfig): Promise<BuiltApp> {
     nameOf,
     testModeEnv: cfg.testModeEnv,
     bots: botManager,
+    fingerprintSecret: cfg.sessionSecret,
   });
 
   const ctx: GatewayContext = { cfg, store, identity, manager, moderation, telemetry, nameOf };

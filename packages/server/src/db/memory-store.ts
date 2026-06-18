@@ -15,6 +15,11 @@ import type {
   SanctionRow,
   ActiveSanctions,
   MatchRecord,
+  MatchReplay,
+  UserStatsRow,
+  LeaderboardEntry,
+  PointAwardRecord,
+  StatsDelta,
 } from './types.js';
 
 export class MemoryStore implements Store {
@@ -23,6 +28,9 @@ export class MemoryStore implements Store {
   private readonly mutes = new Map<string, Set<string>>();
   private readonly reports: ReportRow[] = [];
   private readonly sanctions: SanctionRow[] = [];
+  /** In-memory points/achievements (process-lifetime only; guests excluded). */
+  private readonly stats = new Map<string, UserStatsRow>();
+  private readonly achievementsByUser = new Map<string, Set<string>>();
 
   constructor() {
     log.warn('NO_DB mode: running guests-only with no persistence (§10).');
@@ -117,6 +125,72 @@ export class MemoryStore implements Store {
 
   async writeMatch(_record: MatchRecord): Promise<void> {
     // Dropped in NO_DB mode.
+  }
+  async getMatchReplay(_matchId: string): Promise<MatchReplay | null> {
+    return null; // matches are not persisted in NO_DB mode.
+  }
+  async getMatchParticipants(_matchId: string): Promise<string[]> {
+    return [];
+  }
+
+  async addToUserStats(userId: string, delta: StatsDelta, at: number): Promise<void> {
+    const cur = this.stats.get(userId) ?? {
+      userId,
+      totalPoints: 0,
+      gamesPlayed: 0,
+      gamesWon: 0,
+      gamesSurvived: 0,
+      daysDeadWatched: 0,
+      lastMatchAt: null,
+    };
+    this.stats.set(userId, {
+      userId,
+      totalPoints: cur.totalPoints + delta.points,
+      gamesPlayed: cur.gamesPlayed + delta.gamesPlayed,
+      gamesWon: cur.gamesWon + delta.gamesWon,
+      gamesSurvived: cur.gamesSurvived + delta.gamesSurvived,
+      daysDeadWatched: cur.daysDeadWatched + delta.daysDeadWatched,
+      lastMatchAt: at,
+    });
+  }
+  async recordPoints(_userId: string, _awards: PointAwardRecord[]): Promise<void> {
+    // Ledger not retained in NO_DB mode.
+  }
+  async unlockAchievements(
+    userId: string,
+    items: { key: string; points: number }[],
+  ): Promise<string[]> {
+    let set = this.achievementsByUser.get(userId);
+    if (!set) {
+      set = new Set();
+      this.achievementsByUser.set(userId, set);
+    }
+    const newly: string[] = [];
+    for (const it of items) {
+      if (!set.has(it.key)) {
+        set.add(it.key);
+        newly.push(it.key);
+      }
+    }
+    return newly;
+  }
+  async getUserStats(userId: string): Promise<UserStatsRow | null> {
+    return this.stats.get(userId) ?? null;
+  }
+  async getUserAchievements(userId: string): Promise<string[]> {
+    return [...(this.achievementsByUser.get(userId) ?? [])];
+  }
+  async getLeaderboard(limit: number): Promise<LeaderboardEntry[]> {
+    return [...this.stats.values()]
+      .sort((a, b) => b.totalPoints - a.totalPoints)
+      .slice(0, Math.max(1, Math.min(limit, 500)))
+      .map((s) => ({
+        userId: s.userId,
+        username: s.userId,
+        totalPoints: s.totalPoints,
+        gamesPlayed: s.gamesPlayed,
+        gamesWon: s.gamesWon,
+      }));
   }
   async upsertDailyRollup(): Promise<void> {}
 

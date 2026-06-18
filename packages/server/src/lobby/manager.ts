@@ -23,6 +23,8 @@ import { newId, newInviteCode, newSeed } from '../ids.js';
 import { log } from '../log.js';
 import { Lobby, resolveConfig } from './lobby.js';
 import { Room, type ScheduleFn } from '../room/room.js';
+import { fingerprintMatch } from '../audit/fingerprint.js';
+import { awardMatchPoints } from '../points/award.js';
 
 export interface ManagerDeps {
   engine: Engine;
@@ -46,6 +48,8 @@ export interface ManagerDeps {
   testModeEnv?: boolean;
   /** BotManager hook (TEST MODE bot backfill), wired by app.ts. */
   bots?: BotManager;
+  /** HMAC key for replay-integrity fingerprints (§9). */
+  fingerprintSecret: string;
 }
 
 export class LobbyManager {
@@ -320,10 +324,29 @@ export class LobbyManager {
     this.deps.telemetry.matchCompleted();
     // TEST MODE: tear down any backfill bots for this room (auto-cleanup).
     this.deps.bots?.cleanup(room.id);
-    // Persist match at end (§10).
+    // Persist match at end (§10) with a replay-integrity fingerprint (§9).
     try {
       const matchId = newId();
       const rec = room.matchRecord(matchId, this.deps.serverBuild);
+      const events = room.actionLog.map((e) => ({ seq: e.seq, phase: e.phase, event: e.event }));
+      const chat = room.chatLog.map((c) => ({
+        seq: c.seq,
+        channel: c.channel,
+        senderSeat: c.senderSeat,
+        body: c.body,
+      }));
+      const fingerprint = fingerprintMatch(
+        {
+          id: matchId,
+          setupId: room.setupId,
+          seed: room.seed,
+          outcome: 'completed',
+          players: rec.players,
+          events,
+          chat,
+        },
+        this.deps.fingerprintSecret,
+      );
       await this.deps.store.writeMatch({
         id: matchId,
         setupId: room.setupId,
@@ -333,10 +356,23 @@ export class LobbyManager {
         endedAt: Date.now(),
         outcome: 'completed',
         serverBuild: this.deps.serverBuild,
+        fingerprint,
         players: rec.players,
-        events: room.actionLog.map((e) => ({ seq: e.seq, phase: e.phase, event: e.event })),
-        chat: [],
+        events,
+        chat,
       });
+      // Award points & achievements to registered players (goal 4). Guests and
+      // TEST-mode games are excluded inside awardMatchPoints. The engine stays
+      // pure — all scoring is computed here, server-side.
+      if (!room.isTestMode) {
+        await awardMatchPoints({
+          store: this.deps.store,
+          room,
+          matchId,
+          players: rec.players,
+          finalDay: rec.finalDay,
+        });
+      }
     } catch (err) {
       log.error('failed to persist match', { err: String(err) });
     }

@@ -13,6 +13,12 @@ import type {
   SanctionRow,
   ActiveSanctions,
   MatchRecord,
+  MatchReplay,
+  MatchPlayerRecord,
+  UserStatsRow,
+  LeaderboardEntry,
+  PointAwardRecord,
+  StatsDelta,
 } from './types.js';
 
 interface PgUser {
@@ -244,8 +250,8 @@ export class PgStore implements Store {
     try {
       await client.query('BEGIN');
       await client.query(
-        `INSERT INTO matches (id, setup_id, config, seed, started_at, ended_at, outcome, server_build)
-         VALUES ($1, $2, $3, $4, to_timestamp($5/1000.0), to_timestamp($6/1000.0), $7, $8)`,
+        `INSERT INTO matches (id, setup_id, config, seed, started_at, ended_at, outcome, server_build, fingerprint)
+         VALUES ($1, $2, $3, $4, to_timestamp($5/1000.0), to_timestamp($6/1000.0), $7, $8, $9)`,
         [
           record.id,
           record.setupId,
@@ -255,13 +261,14 @@ export class PgStore implements Store {
           record.endedAt,
           record.outcome,
           record.serverBuild,
+          record.fingerprint,
         ],
       );
       for (const p of record.players) {
         await client.query(
-          `INSERT INTO match_players (match_id, user_or_guest_id, seat, role, faction, outcome, survived)
-           VALUES ($1, $2, $3, $4, $5, $6, $7)`,
-          [record.id, p.userOrGuestId, p.seat, p.role, p.faction, p.outcome, p.survived],
+          `INSERT INTO match_players (match_id, user_or_guest_id, seat, role, faction, outcome, survived, death_day)
+           VALUES ($1, $2, $3, $4, $5, $6, $7, $8)`,
+          [record.id, p.userOrGuestId, p.seat, p.role, p.faction, p.outcome, p.survived, p.deathDay],
         );
       }
       for (const e of record.events) {
@@ -283,6 +290,195 @@ export class PgStore implements Store {
     } finally {
       client.release();
     }
+  }
+
+  async getMatchReplay(matchId: string): Promise<MatchReplay | null> {
+    const m = await this.pool.query<{
+      id: string;
+      setup_id: string;
+      config: unknown;
+      seed: string;
+      started_at: Date;
+      ended_at: Date | null;
+      outcome: string | null;
+      server_build: string;
+      fingerprint: string | null;
+    }>(
+      `SELECT id, setup_id, config, seed, started_at, ended_at, outcome, server_build, fingerprint
+       FROM matches WHERE id = $1`,
+      [matchId],
+    );
+    const row = m.rows[0];
+    if (!row) return null;
+    const players = await this.pool.query<{
+      user_or_guest_id: string;
+      seat: number;
+      role: string;
+      faction: string;
+      outcome: string;
+      survived: boolean;
+      death_day: number | null;
+    }>(
+      `SELECT user_or_guest_id, seat, role, faction, outcome, survived, death_day
+       FROM match_players WHERE match_id = $1 ORDER BY seat`,
+      [matchId],
+    );
+    const events = await this.pool.query<{ seq: number; phase: string; event: unknown }>(
+      `SELECT seq, phase, event FROM match_events WHERE match_id = $1 ORDER BY seq`,
+      [matchId],
+    );
+    const chat = await this.pool.query<{
+      seq: number;
+      channel: string;
+      sender_seat: number | null;
+      body: string;
+    }>(
+      `SELECT seq, channel, sender_seat, body FROM chat_messages WHERE match_id = $1 ORDER BY seq`,
+      [matchId],
+    );
+    return {
+      id: row.id,
+      setupId: row.setup_id,
+      config: row.config,
+      seed: row.seed,
+      startedAt: row.started_at.getTime(),
+      endedAt: row.ended_at ? row.ended_at.getTime() : null,
+      outcome: row.outcome,
+      serverBuild: row.server_build,
+      fingerprint: row.fingerprint,
+      players: players.rows.map(
+        (p): MatchPlayerRecord => ({
+          userOrGuestId: p.user_or_guest_id,
+          seat: p.seat,
+          role: p.role,
+          faction: p.faction,
+          outcome: p.outcome,
+          survived: p.survived,
+          deathDay: p.death_day,
+        }),
+      ),
+      events: events.rows.map((e) => ({ seq: e.seq, phase: e.phase, event: e.event })),
+      chat: chat.rows.map((c) => ({
+        seq: c.seq,
+        channel: c.channel,
+        senderSeat: c.sender_seat,
+        body: c.body,
+      })),
+    };
+  }
+
+  async getMatchParticipants(matchId: string): Promise<string[]> {
+    const { rows } = await this.pool.query<{ user_or_guest_id: string }>(
+      `SELECT user_or_guest_id FROM match_players WHERE match_id = $1`,
+      [matchId],
+    );
+    return rows.map((r) => r.user_or_guest_id);
+  }
+
+  async addToUserStats(userId: string, delta: StatsDelta, at: number): Promise<void> {
+    await this.pool.query(
+      `INSERT INTO user_stats
+         (user_id, total_points, games_played, games_won, games_survived, days_dead_watched, last_match_at)
+       VALUES ($1, $2, $3, $4, $5, $6, to_timestamp($7/1000.0))
+       ON CONFLICT (user_id) DO UPDATE SET
+         total_points      = user_stats.total_points + EXCLUDED.total_points,
+         games_played      = user_stats.games_played + EXCLUDED.games_played,
+         games_won         = user_stats.games_won + EXCLUDED.games_won,
+         games_survived    = user_stats.games_survived + EXCLUDED.games_survived,
+         days_dead_watched = user_stats.days_dead_watched + EXCLUDED.days_dead_watched,
+         last_match_at     = EXCLUDED.last_match_at`,
+      [
+        userId,
+        delta.points,
+        delta.gamesPlayed,
+        delta.gamesWon,
+        delta.gamesSurvived,
+        delta.daysDeadWatched,
+        at,
+      ],
+    );
+  }
+
+  async recordPoints(userId: string, awards: PointAwardRecord[]): Promise<void> {
+    for (const a of awards) {
+      await this.pool.query(
+        `INSERT INTO point_log (id, user_id, match_id, reason, detail, points)
+         VALUES ($1, $2, $3, $4, $5, $6)`,
+        [newId(), userId, a.matchId, a.reason, a.detail, a.points],
+      );
+    }
+  }
+
+  async unlockAchievements(
+    userId: string,
+    items: { key: string; points: number }[],
+  ): Promise<string[]> {
+    const newly: string[] = [];
+    for (const it of items) {
+      const res = await this.pool.query(
+        `INSERT INTO achievements (user_id, achievement, points_awarded)
+         VALUES ($1, $2, $3) ON CONFLICT (user_id, achievement) DO NOTHING`,
+        [userId, it.key, it.points],
+      );
+      if (res.rowCount && res.rowCount > 0) newly.push(it.key);
+    }
+    return newly;
+  }
+
+  async getUserStats(userId: string): Promise<UserStatsRow | null> {
+    const { rows } = await this.pool.query<{
+      total_points: string;
+      games_played: number;
+      games_won: number;
+      games_survived: number;
+      days_dead_watched: number;
+      last_match_at: Date | null;
+    }>(
+      `SELECT total_points, games_played, games_won, games_survived, days_dead_watched, last_match_at
+       FROM user_stats WHERE user_id = $1`,
+      [userId],
+    );
+    const r = rows[0];
+    if (!r) return null;
+    return {
+      userId,
+      totalPoints: Number(r.total_points),
+      gamesPlayed: r.games_played,
+      gamesWon: r.games_won,
+      gamesSurvived: r.games_survived,
+      daysDeadWatched: r.days_dead_watched,
+      lastMatchAt: r.last_match_at ? r.last_match_at.getTime() : null,
+    };
+  }
+
+  async getUserAchievements(userId: string): Promise<string[]> {
+    const { rows } = await this.pool.query<{ achievement: string }>(
+      `SELECT achievement FROM achievements WHERE user_id = $1 ORDER BY unlocked_at`,
+      [userId],
+    );
+    return rows.map((r) => r.achievement);
+  }
+
+  async getLeaderboard(limit: number): Promise<LeaderboardEntry[]> {
+    const { rows } = await this.pool.query<{
+      user_id: string;
+      username: string;
+      total_points: string;
+      games_played: number;
+      games_won: number;
+    }>(
+      `SELECT s.user_id, u.username, s.total_points, s.games_played, s.games_won
+       FROM user_stats s JOIN users u ON u.id = s.user_id
+       ORDER BY s.total_points DESC LIMIT $1`,
+      [Math.max(1, Math.min(limit, 500))],
+    );
+    return rows.map((r) => ({
+      userId: r.user_id,
+      username: r.username,
+      totalPoints: Number(r.total_points),
+      gamesPlayed: r.games_played,
+      gamesWon: r.games_won,
+    }));
   }
 
   async upsertDailyRollup(day: string, fields: Record<string, number>): Promise<void> {

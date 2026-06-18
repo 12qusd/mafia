@@ -42,8 +42,13 @@ CREATE TABLE IF NOT EXISTS matches (
   started_at   timestamptz NOT NULL,
   ended_at     timestamptz NULL,
   outcome      text NULL,
-  server_build text NOT NULL
+  server_build text NOT NULL,
+  -- Replay integrity fingerprint (§9): HMAC-SHA256 over the canonical match
+  -- record (setup, seed, players, ordered event log). Verified on replay read.
+  fingerprint  text NULL
 );
+-- Idempotent column add for databases created before the fingerprint column.
+ALTER TABLE matches ADD COLUMN IF NOT EXISTS fingerprint text;
 
 CREATE TABLE IF NOT EXISTS match_players (
   match_id        uuid NOT NULL REFERENCES matches(id) ON DELETE CASCADE,
@@ -53,9 +58,11 @@ CREATE TABLE IF NOT EXISTS match_players (
   faction         text NOT NULL,
   outcome         text NOT NULL,   -- win | loss | draw | left
   survived        boolean NOT NULL,
+  death_day       int NULL,        -- 1-based in-game day of death, null if survived
   PRIMARY KEY (match_id, seat)
 );
 CREATE INDEX IF NOT EXISTS match_players_user_idx ON match_players(user_or_guest_id);
+ALTER TABLE match_players ADD COLUMN IF NOT EXISTS death_day int;
 
 CREATE TABLE IF NOT EXISTS match_events (
   match_id uuid NOT NULL REFERENCES matches(id) ON DELETE CASCADE,
@@ -64,6 +71,44 @@ CREATE TABLE IF NOT EXISTS match_events (
   event    jsonb NOT NULL,
   PRIMARY KEY (match_id, seq)
 );
+
+-- --------------------------------------------------------------------------
+-- Points, achievements & progression (goal: points system) — written at
+-- match end alongside the match row; never in the per-message hot path.
+-- Guests and TEST-mode games are excluded by the server before writing.
+-- --------------------------------------------------------------------------
+
+CREATE TABLE IF NOT EXISTS user_stats (
+  user_id           uuid PRIMARY KEY REFERENCES users(id) ON DELETE CASCADE,
+  total_points      bigint NOT NULL DEFAULT 0,
+  games_played      int NOT NULL DEFAULT 0,
+  games_won         int NOT NULL DEFAULT 0,
+  games_survived    int NOT NULL DEFAULT 0,
+  -- Sum of in-game days spent dead-but-watching (loyalty signal, §4).
+  days_dead_watched int NOT NULL DEFAULT 0,
+  last_match_at     timestamptz NULL
+);
+CREATE INDEX IF NOT EXISTS user_stats_points_idx ON user_stats(total_points DESC);
+
+CREATE TABLE IF NOT EXISTS achievements (
+  user_id        uuid NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+  achievement    text NOT NULL,
+  points_awarded int NOT NULL DEFAULT 0,
+  unlocked_at    timestamptz NOT NULL DEFAULT now(),
+  PRIMARY KEY (user_id, achievement)
+);
+
+-- Append-only ledger of every point award (audit + profile timeline).
+CREATE TABLE IF NOT EXISTS point_log (
+  id         uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+  user_id    uuid NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+  match_id   uuid NULL,
+  reason     text NOT NULL,   -- played | win | survived_to_end | loyalty_dead | achievement
+  detail     text NULL,       -- achievement key, etc.
+  points     int NOT NULL,
+  created_at timestamptz NOT NULL DEFAULT now()
+);
+CREATE INDEX IF NOT EXISTS point_log_user_idx ON point_log(user_id);
 
 -- --------------------------------------------------------------------------
 -- Chat (§10) — partitioned weekly; retention via DROP PARTITION (90d)

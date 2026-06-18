@@ -13,6 +13,7 @@ import { VerdictValueSchema, TrialOutcomeSchema } from './enums.js';
 import { ErrorCodeSchema } from './errors.js';
 import { PrivateResultPayloadSchema } from './private_result.js';
 import { DebugStateSchema, DebugTraceSchema, DebugEventSchema } from './debug.js';
+import { PointsBreakdownSchema, UserStatsSummarySchema } from '../types/points.js';
 
 /**
  * Server → client messages (BUILD_SPEC §9.2, complete MVP catalog). Each is an
@@ -143,6 +144,18 @@ export const GameOverSchema = envelope('game_over', {
   matchId: z.string(),
 });
 
+// points_awarded {breakdown, stats}  // per-recipient; only their own points (§5)
+// Sent after game_over to each seated, registered (non-guest) player in a
+// non-TEST match. Points are computed by the server (the engine stays pure).
+export const PointsAwardedSchema = envelope('points_awarded', {
+  matchId: z.string(),
+  breakdown: PointsBreakdownSchema,
+  /** The player's updated lifetime stats after this match's award. */
+  stats: UserStatsSummarySchema,
+  /** Achievement keys newly unlocked this match (subset of breakdown). */
+  newAchievements: z.array(z.string()),
+});
+
 // seat_status {seat, connected, afk}
 export const SeatStatusSchema = envelope('seat_status', {
   seat: SeatIdSchema,
@@ -189,6 +202,7 @@ export const ServerMessageSchema = z.union([
   PrivateResultSchema,
   DayAbilityAckSchema,
   GameOverSchema,
+  PointsAwardedSchema,
   SeatStatusSchema,
   ErrorSchema,
   PongSchema,
@@ -216,6 +230,7 @@ export type DeathAnnounce = z.infer<typeof DeathAnnounceSchema>;
 export type PrivateResult = z.infer<typeof PrivateResultSchema>;
 export type DayAbilityAck = z.infer<typeof DayAbilityAckSchema>;
 export type GameOver = z.infer<typeof GameOverSchema>;
+export type PointsAwarded = z.infer<typeof PointsAwardedSchema>;
 export type SeatStatus = z.infer<typeof SeatStatusSchema>;
 export type ServerError = z.infer<typeof ErrorSchema>;
 export type Pong = z.infer<typeof PongSchema>;

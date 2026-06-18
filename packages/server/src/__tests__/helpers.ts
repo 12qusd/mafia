@@ -118,6 +118,7 @@ export function buildTestContext(opts: { clock?: FakeClock; testModeEnv?: boolea
     telemetry,
     serverBuild: 'test',
     nameOf,
+    fingerprintSecret: 'test-fingerprint-secret',
     ...(opts.testModeEnv ? { testModeEnv: true } : {}),
     ...(opts.bots ? { bots: opts.bots as never } : {}),
     ...(opts.clock ? { schedule: opts.clock.schedule, clock: opts.clock.clock } : {}),

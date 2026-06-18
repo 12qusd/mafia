@@ -41,6 +41,17 @@ export interface ReportRow {
   status: string;
 }
 
+export interface MatchPlayerRecord {
+  userOrGuestId: string;
+  seat: number;
+  role: string;
+  faction: string;
+  outcome: string;
+  survived: boolean;
+  /** 1-based in-game day the seat died, or null if they survived (§4). */
+  deathDay: number | null;
+}
+
 export interface MatchRecord {
   id: string;
   setupId: string;
@@ -50,16 +61,65 @@ export interface MatchRecord {
   endedAt: number;
   outcome: string;
   serverBuild: string;
-  players: {
-    userOrGuestId: string;
-    seat: number;
-    role: string;
-    faction: string;
-    outcome: string;
-    survived: boolean;
-  }[];
+  /** HMAC-SHA256 over the canonical record; replay-integrity proof (§9). */
+  fingerprint: string;
+  players: MatchPlayerRecord[];
   events: { seq: number; phase: string; event: unknown }[];
   chat: { seq: number; channel: string; senderSeat: number | null; body: string }[];
+}
+
+/** A persisted match read back for replay/export (§9). */
+export interface MatchReplay {
+  id: string;
+  setupId: string;
+  config: unknown;
+  seed: string;
+  startedAt: number;
+  endedAt: number | null;
+  outcome: string | null;
+  serverBuild: string;
+  fingerprint: string | null;
+  players: MatchPlayerRecord[];
+  events: { seq: number; phase: string; event: unknown }[];
+  chat: { seq: number; channel: string; senderSeat: number | null; body: string }[];
+}
+
+// --------------------------------------------------------------------------
+// Points & achievements (goal: points system)
+// --------------------------------------------------------------------------
+
+export interface UserStatsRow {
+  userId: string;
+  totalPoints: number;
+  gamesPlayed: number;
+  gamesWon: number;
+  gamesSurvived: number;
+  daysDeadWatched: number;
+  lastMatchAt: number | null;
+}
+
+export interface LeaderboardEntry {
+  userId: string;
+  username: string;
+  totalPoints: number;
+  gamesPlayed: number;
+  gamesWon: number;
+}
+
+export interface PointAwardRecord {
+  matchId: string | null;
+  reason: string;
+  detail: string | null;
+  points: number;
+}
+
+/** Per-match increments applied to a user's lifetime stats. */
+export interface StatsDelta {
+  points: number;
+  gamesPlayed: number;
+  gamesWon: number;
+  gamesSurvived: number;
+  daysDeadWatched: number;
 }
 
 /** Active-sanction summary used at login / lobby-join (§10, §11). */
@@ -100,6 +160,27 @@ export interface Store {
 
   // Match persistence (§10) — bulk write at match end.
   writeMatch(record: MatchRecord): Promise<void>;
+  /** Read a persisted match back for replay/export (§9). Null if absent. */
+  getMatchReplay(matchId: string): Promise<MatchReplay | null>;
+  /** User ids that participated in a match (replay-access authorization, §9). */
+  getMatchParticipants(matchId: string): Promise<string[]>;
+
+  // Points & achievements (goal: points system) — written at match end.
+  /** Apply per-match stat increments and refresh last_match_at. */
+  addToUserStats(userId: string, delta: StatsDelta, at: number): Promise<void>;
+  /** Append point-award ledger rows. */
+  recordPoints(userId: string, awards: PointAwardRecord[]): Promise<void>;
+  /**
+   * Insert achievement rows the user does not already hold; returns the keys
+   * that were newly unlocked (so the server only awards their points once).
+   */
+  unlockAchievements(
+    userId: string,
+    items: { key: string; points: number }[],
+  ): Promise<string[]>;
+  getUserStats(userId: string): Promise<UserStatsRow | null>;
+  getUserAchievements(userId: string): Promise<string[]>;
+  getLeaderboard(limit: number): Promise<LeaderboardEntry[]>;
 
   // Telemetry rollup (§15)
   upsertDailyRollup(day: string, fields: Record<string, number>): Promise<void>;

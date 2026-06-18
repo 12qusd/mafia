@@ -504,6 +504,10 @@ function seatView(st: SeatState): EngineSeatView {
     lastWill: '',
     deathNote: '',
     mayorRevealed: st.mayorRevealed,
+    // The fallback engine does not track death timing; points scaling degrades
+    // gracefully to null here. The real engine supplies these.
+    deathDay: null,
+    deathCause: null,
   };
 }
 

@@ -90,6 +90,12 @@ export class Room implements AudienceProvider {
   /** Ordered action log for persistence/replay (§4.3). */
   readonly actionLog: { seq: number; phase: string; event: unknown }[] = [];
   private seq = 0;
+  /** Full ordered chat log for replay persistence (§9, §10). Uncapped within a
+   * match; written once at match end. The masked `from` ('Jailor') becomes a
+   * null sender_seat. */
+  readonly chatLog: { seq: number; channel: string; senderSeat: number | null; body: string }[] =
+    [];
+  private chatSeq = 0;
   onGameOver: ((room: Room) => void) | null = null;
 
   // --- TEST MODE god-view (gated; §5 still law for normal games) ------------
@@ -448,6 +454,13 @@ export class Room implements AudienceProvider {
     if (type === 'chat_message') {
       const m = effect.msg as unknown as ChatRecord & { channel: ChatChannel };
       this.appendChat(m.channel, { channel: m.channel, from: m.from, text: m.text, ts: m.ts });
+      // Full ordered log for replay persistence (§9). Masked 'Jailor' → null seat.
+      this.chatLog.push({
+        seq: this.chatSeq++,
+        channel: m.channel,
+        senderSeat: typeof m.from === 'number' ? m.from : null,
+        body: m.text,
+      });
     }
     this.transport.dispatchEffect(effect);
   }
@@ -570,12 +583,27 @@ export class Room implements AudienceProvider {
   endedOutcome = 'abandoned';
 
   matchRecord(_matchId: string, _serverBuild: string): {
-    players: { userOrGuestId: string; seat: number; role: string; faction: string; outcome: string; survived: boolean }[];
+    players: {
+      userOrGuestId: string;
+      seat: number;
+      role: string;
+      faction: string;
+      outcome: string;
+      survived: boolean;
+      deathDay: number | null;
+    }[];
+    /** Final in-game day the match reached (for loyalty/days-dead scoring §4). */
+    finalDay: number;
   } {
     const views = this.engine.seats(this.state);
     const aliveBySeat = new Map(views.map((s) => [s.seat, s.alive]));
+    const deathDayBySeat = new Map(views.map((s) => [s.seat, s.deathDay]));
     const over = this.engine.gameOver(this.state);
     const outcomeBySeat = new Map((over?.results ?? []).map((r) => [r.seat, r.outcome]));
+    let finalDay = this.dayNumber;
+    for (const dd of deathDayBySeat.values()) {
+      if (dd !== null && dd > finalDay) finalDay = dd;
+    }
     const players = this.seats
       .filter((s): s is SeatBinding => !!s)
       .map((s) => ({
@@ -585,8 +613,9 @@ export class Room implements AudienceProvider {
         faction: s.faction ?? 'TOWN',
         outcome: s.leaving ? 'left' : (outcomeBySeat.get(s.seat) ?? 'loss'),
         survived: aliveBySeat.get(s.seat) ?? false,
+        deathDay: deathDayBySeat.get(s.seat) ?? null,
       }));
-    return { players };
+    return { players, finalDay };
   }
 
   get isOver(): boolean {
@@ -601,6 +630,17 @@ export class Room implements AudienceProvider {
     return this.seats
       .filter((s): s is SeatBinding => !!s)
       .map((s) => ({ identityId: s.identityId, name: s.name }));
+  }
+
+  /** Send a server message to one seat's socket (e.g. post-game points_awarded,
+   * §5: individually addressed). Routes through the single transport send path. */
+  sendToSeat(seat: SeatId, msg: ServerMessage): void {
+    this.transport.sendTo([seat], msg);
+  }
+
+  /** Display name bound to a seat, or null. */
+  nameForSeat(seat: SeatId): string | null {
+    return this.seats[seat]?.name ?? null;
   }
 
   // --- TEST MODE controls & audit ------------------------------------------

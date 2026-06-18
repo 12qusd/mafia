@@ -86,6 +86,10 @@ export interface EngineSeatView {
   lastWill: string;
   deathNote: string;
   mayorRevealed: boolean;
+  /** 1-based in-game day the seat died, or null if alive (points scaling §4). */
+  deathDay: number | null;
+  /** Cause of death, or null if alive. */
+  deathCause: string | null;
 }
 
 /** Read-only helpers the server derives from engine state. */
@@ -167,6 +171,8 @@ interface RealSeat {
   lastWill: string;
   deathNote: string;
   mayorRevealed: boolean;
+  deathDay: number | null;
+  deathCause: string | null;
 }
 interface RealState {
   phase: Phase;
@@ -226,6 +232,8 @@ function buildRealEngine(mod: RealEngineModule): Engine {
         lastWill: x.lastWill,
         deathNote: x.deathNote,
         mayorRevealed: x.mayorRevealed,
+        deathDay: x.deathDay ?? null,
+        deathCause: x.deathCause ?? null,
       })),
     yourRole: (state, seat) => {
       const s = rs(state).seats[seat];

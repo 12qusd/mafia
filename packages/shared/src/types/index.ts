@@ -13,3 +13,4 @@ export * from './seat.js';
 export * from './setup.js';
 export * from './lobby.js';
 export * from './defaults.js';
+export * from './points.js';
