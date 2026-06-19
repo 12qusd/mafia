@@ -52,9 +52,12 @@ function auditEffect(cap: Capture): string[] {
   // via toSeat([actor]). The §5 addressing IS the entitlement, mirroring your_role.
   // (tracker_result / spy_result carry only seat ids — never roles — so they are
   // not role carriers and need no whitelist here.)
+  // coroner_result (batch F) likewise carries a role — of an ALREADY-revealed dead
+  // seat — to the Coroner alone; the §5 addressing IS the entitlement, like
+  // your_role / consigliere_result. (trapper_result carries only a seat id.)
   if (
     effect.msg.type === 'private_result' &&
-    ['consigliere_result', 'janitor_result', 'remember_result'].includes(
+    ['consigliere_result', 'janitor_result', 'remember_result', 'coroner_result'].includes(
       (effect.msg as { kind?: string }).kind ?? '',
     )
   ) {

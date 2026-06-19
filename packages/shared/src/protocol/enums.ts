@@ -68,6 +68,16 @@ export type TrialOutcome = z.infer<typeof TrialOutcomeSchema>;
  *                         seat's identity or role (not even the Cult Leader's), so
  *                         it is as leak-trivial as `turned`/`roleblocked`. The
  *                         seat's own new alignment is its own to know.
+ * - coroner_result      — the autopsied DEAD seat's exact role + the seats that
+ *                         visited them the night they died (Town Coroner; batch F).
+ *                         The role is of an ALREADY-revealed dead seat, so it leaks
+ *                         nothing new; still addressed to the Coroner ALONE and
+ *                         whitelisted as a per-seat role carrier (like
+ *                         `consigliere_result`). Visitors are seat ids only.
+ * - trapper_result      — the seat of a caller the Trapper's snare caught at its
+ *                         ward (Town Trapper; batch F). Carries ONLY a seat id —
+ *                         NO role strings — so it is leak-trivial (like the
+ *                         Lookout's visitor list, but a single seat).
  */
 export const PRIVATE_RESULT_KINDS = [
   'sheriff_result',
@@ -91,6 +101,8 @@ export const PRIVATE_RESULT_KINDS = [
   'turned',
   'vampire_hunter_result',
   'recruited',
+  'coroner_result',
+  'trapper_result',
 ] as const;
 export const PrivateResultKindSchema = z.enum(PRIVATE_RESULT_KINDS);
 export type PrivateResultKind = z.infer<typeof PrivateResultKindSchema>;

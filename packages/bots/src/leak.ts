@@ -220,6 +220,12 @@ function mentionsRoleForOtherSeat(msg: ServerMessage, role: string): boolean {
   // Amnesiac remember result (batch B): carries the amnesiac's OWN new role,
   // addressed to the amnesiac alone — exactly like your_role for self.
   if (msg.type === 'private_result' && msg.kind === 'remember_result') return false;
+  // Coroner autopsy result (batch F): carries an ALREADY-revealed DEAD seat's role,
+  // addressed to the Coroner alone. The role was made public at the seat's
+  // death_announce, so it leaks nothing new; whitelisted like consigliere_result.
+  // (The autopsied seat is in the `revealed` set by the time this frame arrives, so
+  // the deep scan would clear it anyway — this whitelist makes the intent explicit.)
+  if (msg.type === 'private_result' && msg.kind === 'coroner_result') return false;
   return collectRoleStrings(msg).has(role);
 }
 
@@ -292,4 +298,13 @@ const KNOWN_ROLES = new Set<string>([
   // recruited seat's pre-reveal role appeared at an unentitled observer).
   'CULT_LEADER',
   'CULTIST',
+  // --- Role-expansion batch F (distinct-mechanic Town roles) ---
+  // TRANSPORTER / TRAPPER carry no role strings in any result (transport rewrites
+  // targets; the trapper_result carries only a seat). CORONER's autopsy carries a
+  // role string for an already-revealed dead seat (whitelisted above). Registered
+  // so the cross-capture deep scan catches any accidental broadcast of these role
+  // ids before legal reveal.
+  'TRANSPORTER',
+  'CORONER',
+  'TRAPPER',
 ]);

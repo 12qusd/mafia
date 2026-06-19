@@ -89,6 +89,10 @@ const FACTION_OF: Record<RoleId, GameState['seats'][number]['faction']> = {
   // --- Cult conversion faction ---
   CULT_LEADER: 'CULT',
   CULTIST: 'CULT',
+  // --- Role-expansion batch F ---
+  TRANSPORTER: 'TOWN',
+  CORONER: 'TOWN',
+  TRAPPER: 'TOWN',
 };
 
 const USES: Partial<Record<RoleId, { uses: number; self: number }>> = {
@@ -140,6 +144,7 @@ export function makeGame(roles: RoleId[], seed = 'seed'): GameState {
       stumped: false,
       deathCause: null,
       deathDay: null,
+      deathVisitors: [],
     };
   });
   state.mafiaSeats = state.seats.filter((s) => s.faction === 'MAFIA').map((s) => s.seat);

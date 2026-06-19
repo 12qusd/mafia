@@ -163,6 +163,8 @@ export const PRIVATE_RESULT_TEXT: Record<PrivateResultKind, string> = {
   vampire_hunter_result: '', // resolved via vampireHunterResultLine (needs the verdict)
   recruited:
     'A whisper at your door, a sign you cannot unsee, and something in you answers. You have been drawn into the Cult — you walk with the faithful from this night on.',
+  coroner_result: '', // resolved via coronerResultLine (needs the dead role + visitors)
+  trapper_result: '', // resolved via trapperResultLine (needs the caught seat)
 };
 
 /** Sheriff result line (BUILD_SPEC §6.6). */
@@ -241,6 +243,32 @@ export function vampireHunterResultLine(targetLabel: string, isVampire: boolean)
   return isVampire
     ? `You studied ${targetLabel} by lamplight — no pulse, no breath fogging the glass. ${targetLabel} is a vampire.`
     : `You studied ${targetLabel} and found a living, breathing soul. ${targetLabel} is no vampire.`;
+}
+
+/**
+ * Coroner autopsy result line (batch F). The caller supplies the dead seat's
+ * label, its role name, and the labels of the seats that visited it the night it
+ * died. The role is of an already-revealed dead seat, so this restates a known
+ * fact; the visitor list is the new intelligence.
+ */
+export function coronerResultLine(
+  targetLabel: string,
+  roleName: string,
+  visitorLabels: string[],
+): string {
+  const who =
+    visitorLabels.length === 0
+      ? 'No one came calling on them that final night.'
+      : `Hands at the body that night: ${visitorLabels.join(', ')}.`;
+  return `You opened up ${targetLabel} on the slab — they were the ${roleName}. ${who}`;
+}
+
+/**
+ * Trapper result line (batch F). The caller supplies the ward label and the
+ * caught caller's label. Carries only seat labels — never a role.
+ */
+export function trapperResultLine(targetLabel: string, caughtLabel: string): string {
+  return `Your snare at ${targetLabel}'s door snapped shut on a prowler in the dark — you got a good look: ${caughtLabel}.`;
 }
 
 /** Error-code → human message (BUILD_SPEC §9). */

@@ -8,6 +8,7 @@ import {
   RECKONING,
   LONG_NIGHT,
   FAITHFUL,
+  COLD_CASES,
   SETUPS,
   getSetup,
   factionCountsAt,
@@ -136,8 +137,8 @@ describe('Classic Nocturne unique-role constraint (§6.10)', () => {
 });
 
 describe('setup registry', () => {
-  it('ships the curated setups (3 MVP + batch-A/D showcases + Tong War + Reckoning + Long Night + Faithful)', () => {
-    expect(SETUPS).toHaveLength(9);
+  it('ships the curated setups (3 MVP + batch-A/D showcases + Tong War + Reckoning + Long Night + Faithful + Cold Cases)', () => {
+    expect(SETUPS).toHaveLength(10);
   });
 
   it('getSetup resolves by id', () => {
@@ -149,6 +150,7 @@ describe('setup registry', () => {
     expect(getSetup('reckoning')).toBe(RECKONING);
     expect(getSetup('the-long-night')).toBe(LONG_NIGHT);
     expect(getSetup('the-faithful')).toBe(FAITHFUL);
+    expect(getSetup('cold-cases')).toBe(COLD_CASES);
     expect(getSetup('nope')).toBeUndefined();
   });
 

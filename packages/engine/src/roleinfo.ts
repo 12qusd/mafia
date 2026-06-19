@@ -112,6 +112,13 @@ export function roleToNightAbility(role: RoleId): NightAbility | null {
     case 'CULT_LEADER':
       return 'recruit';
     // CULTIST has no night ability (only the Leader recruits).
+    // --- Role-expansion batch F ---
+    case 'TRANSPORTER':
+      return 'transport';
+    case 'CORONER':
+      return 'autopsy';
+    case 'TRAPPER':
+      return 'trap';
     // JAILOR's execution uses 'kill_jailor', but only after a jailing — handled
     // by the server when the jailor presses "execute".
     case 'JAILOR':
@@ -187,6 +194,15 @@ export function abilityInfoFor(seat: SeatState): AbilityInfo[] {
       out.push({ id: 'recruit', name: 'Recruit', timing: 'night', usesRemaining: null });
       break;
     // CULTIST has no night ability (only the Cult Leader recruits).
+    case 'TRANSPORTER':
+      out.push({ id: 'transport', name: 'Transport', timing: 'night', usesRemaining: null });
+      break;
+    case 'CORONER':
+      out.push({ id: 'autopsy', name: 'Autopsy', timing: 'night', usesRemaining: null });
+      break;
+    case 'TRAPPER':
+      out.push({ id: 'trap', name: 'Set trap', timing: 'night', usesRemaining: null });
+      break;
     case 'DOCTOR':
       out.push({ id: 'protect', name: 'Heal', timing: 'night', usesRemaining: null });
       break;

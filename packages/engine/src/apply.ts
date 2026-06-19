@@ -493,15 +493,17 @@ function handleNightAction(
     return; // cancel
   }
   // Witch control (batch E) needs BOTH a puppet (target) and a victim (target2);
-  // a control submission missing either is a no-op cancellation.
-  if (ability === 'witch_control' && (target === null || target2 === null)) {
-    return; // cancel — control requires both targets
+  // the Transporter (batch F) likewise needs BOTH seats to swap. A two-target
+  // submission missing either is a no-op cancellation.
+  const twoTarget = ability === 'witch_control' || ability === 'transport';
+  if (twoTarget && (target === null || target2 === null)) {
+    return; // cancel — a two-target ability requires both targets
   }
   state.nightIntents.push({
     seat,
     ability,
     target,
-    ...(ability === 'witch_control' ? { target2 } : {}),
+    ...(twoTarget ? { target2 } : {}),
   });
   state.nightIntents.sort((a, b) => a.seat - b.seat);
 }

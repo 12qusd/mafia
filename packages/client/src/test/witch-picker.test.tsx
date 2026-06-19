@@ -150,3 +150,66 @@ describe('Witch two-target night picker (gap 1)', () => {
     expect(last).toEqual({ v: V, type: 'night_action', ability: 'witch_control', target: null });
   });
 });
+
+const TRANSPORT_ABILITY: AbilityInfo = { id: 'transport', name: 'Transport', timing: 'night', usesRemaining: null };
+// Seats: 0 = the Transporter (never targetable), 1 = House A, 2 = House B.
+const TP_SEATS = [seat(0, true, 'Driver'), seat(1, true, 'HouseA'), seat(2, true, 'HouseB')];
+
+/** The first-house picker group. */
+function firstGrid() {
+  return within(screen.getByRole('group', { name: GAME.transportFirst }));
+}
+/** The second-house picker group. */
+function secondGrid() {
+  return within(screen.getByRole('group', { name: GAME.transportSecond }));
+}
+
+describe('Transporter two-target night picker (batch F)', () => {
+  let sent: unknown[];
+  beforeEach(() => {
+    sent = [];
+    vi.spyOn(conn, 'send').mockImplementation((msg) => {
+      expect(() => ClientMessageSchema.parse(msg)).not.toThrow();
+      sent.push(msg);
+    });
+    useStore.getState().resetAll();
+  });
+  afterEach(() => {
+    cleanup();
+    vi.restoreAllMocks();
+  });
+
+  it('reuses the generalized two-target picker with Transporter labels + submits target + target2', () => {
+    useStore.setState({ own: ownFor('TRANSPORTER', 'TOWN', TRANSPORT_ABILITY) });
+    render(<OwnPanel seats={TP_SEATS} phase="NIGHT" />);
+
+    // Transporter-appropriate labels (NOT the Witch's).
+    expect(screen.getByText(GAME.transportFirst)).toBeInTheDocument();
+    expect(screen.getByText(GAME.transportSecond)).toBeInTheDocument();
+    expect(screen.queryByText(GAME.witchPuppet)).not.toBeInTheDocument();
+
+    // Until a first house is picked, the second picker is gated.
+    expect(screen.getByText(GAME.transportNeedFirst)).toBeInTheDocument();
+
+    fireEvent.click(firstGrid().getByText(/2 · HouseA/));
+    expect(useStore.getState().own?.nightTarget).toBe(1);
+    expect(useStore.getState().own?.nightTarget2).toBeNull();
+
+    fireEvent.click(secondGrid().getByText(/3 · HouseB/));
+    expect(useStore.getState().own?.nightTarget).toBe(1);
+    expect(useStore.getState().own?.nightTarget2).toBe(2);
+
+    const last = sent[sent.length - 1];
+    expect(last).toEqual({ v: V, type: 'night_action', ability: 'transport', target: 1, target2: 2 });
+  });
+
+  it('never offers the Transporter itself and excludes the first house from the second list', () => {
+    useStore.setState({ own: ownFor('TRANSPORTER', 'TOWN', TRANSPORT_ABILITY) });
+    render(<OwnPanel seats={TP_SEATS} phase="NIGHT" />);
+    expect(firstGrid().queryByText(/1 · Driver/)).not.toBeInTheDocument();
+    fireEvent.click(firstGrid().getByText(/2 · HouseA/));
+    expect(secondGrid().getByText(/3 · HouseB/)).toBeInTheDocument();
+    expect(secondGrid().queryByText(/2 · HouseA/)).not.toBeInTheDocument();
+    expect(secondGrid().queryByText(/1 · Driver/)).not.toBeInTheDocument();
+  });
+});

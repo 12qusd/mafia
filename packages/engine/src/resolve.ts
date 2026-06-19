@@ -163,6 +163,79 @@ export function resolveNight(state: GameState): ResolveResult {
     effects.push(toSeat(puppet, { type: 'private_result', kind: 'controlled' }));
   }
 
+  // -------------------------------------------------------------------------
+  // Step 0.6: TRANSPORT (batch F) — runs AFTER Witch control, BEFORE jail /
+  // roleblock / kills, mirroring where the Witch's redirect is applied.
+  // -------------------------------------------------------------------------
+  // Each living Transporter SWAPS two seats (a, b): every action/visit aimed at a
+  // is redirected onto b and vice-versa. A Doctor healing a actually heals b; a
+  // kill on a lands on b; a watcher of a watches b. The two swapped seats still act
+  // normally on their OWN turn — transport only rewrites actions TARGETING them.
+  //
+  // INTERACTION WITH THE WITCH: the Witch's control resolved FIRST (above), so by
+  // the time we swap, a controlled puppet's intent already points at the Witch's
+  // victim; the transport then redirects that (and every other) target through the
+  // swap exactly like any other action. (Recorded order: Witch control → Transport.)
+  //
+  // DETERMINISM: a fixed swap, no randomness. Transporters resolve in ascending
+  // seat order; each builds a fresh single-swap remap and applies it to EVERY
+  // intent's `target`/`target2` (including those a previous, lower-seat Transporter
+  // already rewrote — so two Transporters compose as sequential swaps). A swap is a
+  // NO-OP (swapped:false) when a===b, an endpoint is a self/dead seat, or an
+  // endpoint was already moved by a lower-seat Transporter this night (each seat may
+  // be a swap endpoint at most once, keeping the composition a clean permutation).
+  const transportedSeats = new Set<SeatId>(); // seats already used as a swap endpoint
+  const transporterPairs: { transporter: SeatId; a: SeatId; b: SeatId }[] = [];
+  for (const i of [...intentBySeat.values()].sort((x, y) => x.seat - y.seat)) {
+    if (i.ability !== 'transport') continue;
+    if (seatOf(state, i.seat).role !== 'TRANSPORTER') continue;
+    const a = i.target;
+    const b = i.target2 ?? null;
+    const valid =
+      a !== null &&
+      b !== null &&
+      a !== b &&
+      a !== i.seat &&
+      b !== i.seat &&
+      seatOf(state, a).alive &&
+      seatOf(state, b).alive &&
+      !transportedSeats.has(a) &&
+      !transportedSeats.has(b);
+    if (!valid) {
+      traces.push({ step: 'transport', transporter: i.seat, a: a ?? i.seat, b: b ?? i.seat, swapped: false });
+      continue;
+    }
+    transportedSeats.add(a);
+    transportedSeats.add(b);
+    transporterPairs.push({ transporter: i.seat, a, b });
+    // Apply this single swap to EVERY intent's target/target2 (composes with any
+    // earlier Transporter's already-applied swap). The Transporter's OWN transport
+    // intent is left untouched (it names the houses to switch; it is not itself a
+    // redirectable action), as are the control rows whose target2 is a steer victim.
+    const swap = (seat: SeatId | null | undefined): SeatId | null | undefined =>
+      seat === a ? b : seat === b ? a : seat;
+    for (const j of intentBySeat.values()) {
+      if (j.ability === 'transport') continue; // do not rewrite a Transporter's own swap pair
+      j.target = swap(j.target) as SeatId | null;
+      if (j.target2 !== undefined && j.ability !== 'witch_control') {
+        j.target2 = swap(j.target2) as SeatId | null;
+      }
+    }
+    traces.push({ step: 'transport', transporter: i.seat, a, b, swapped: true });
+  }
+  // The Transporter VISITS both houses it switched (a Lookout/Veteran/Crusader/
+  // Ambusher/Coroner sees the call). Each visit edge is itself routed through any
+  // OTHER Transporter's swap that ran after it — but to keep this bounded and
+  // deterministic we record the visit against the FINAL (post-all-swaps) identity
+  // of each endpoint, which is simply a/b (a later Transporter cannot reuse an
+  // endpoint already taken, by the once-per-endpoint rule above). These extra visit
+  // edges are threaded into the visitor computations below.
+  const extraVisits: { actor: SeatId; target: SeatId }[] = [];
+  for (const p of transporterPairs) {
+    extraVisits.push({ actor: p.transporter, target: p.a });
+    extraVisits.push({ actor: p.transporter, target: p.b });
+  }
+
   // Werewolf (batch D): on a NON-full-moon night the beast sleeps. Drop any
   // `rampage` intent so the Werewolf neither visits (a Lookout sees nothing) nor
   // kills tonight — it simply stayed home. The rampage trace is still recorded in
@@ -362,6 +435,21 @@ export function resolveNight(state: GameState): ResolveResult {
         traces.push({ step: 'protect', doctor: i.seat, target: i.target, kind: 'doctor' });
         traces.push({ step: 'shield', angel: i.seat, charge: i.target });
       }
+    } else if (i.ability === 'trap' && i.target !== null && i.target !== i.seat) {
+      // Trapper (batch F): arm a one-night trap at the ward. Mechanically it grants
+      // the SAME one-attack basic shield as a doctor heal (lowest-seat protector
+      // wins if two shield the same seat; a revealed Mayor cannot be shielded). The
+      // separate "name a caught caller" half is resolved in the investigation step.
+      // Distinct from the Crusader: the Trapper PROTECTS + INFORMS but does NOT
+      // KILL the caller it catches.
+      if (
+        seatOf(state, i.seat).role === 'TRAPPER' &&
+        !seatOf(state, i.target).mayorRevealed &&
+        !doctorShield.has(i.target)
+      ) {
+        doctorShield.set(i.target, i.seat);
+        traces.push({ step: 'protect', doctor: i.seat, target: i.target, kind: 'doctor' });
+      }
     }
   }
   // Keep each ward's bodyguard queue deterministic (lowest seat intercepts first).
@@ -479,26 +567,36 @@ export function resolveNight(state: GameState): ResolveResult {
   // performer, a doctor, a sheriff, etc. all count; self-targets and
   // non-visiting actions (control, jail, vest, alert) do not. The counter is a
   // basic attack — a night-immune visitor (Godfather / Serial Killer) survives.
-  const veteranVisitors = new Map<SeatId, SeatId[]>(); // veteran → visitor list
+  const veteranVisitors = new Map<SeatId, Set<SeatId>>(); // veteran → visitor set
   if (alerting.size > 0) {
     for (const i of intentBySeat.values()) {
       if (i.target === null) continue;
       if (!alerting.has(i.target)) continue;
       if (i.seat === i.target) continue; // a self-target is not a visit
       if (!actorVisits(seatOf(state, i.seat), i)) continue;
-      const list = veteranVisitors.get(i.target) ?? [];
-      list.push(i.seat);
-      veteranVisitors.set(i.target, list);
+      const set = veteranVisitors.get(i.target) ?? new Set<SeatId>();
+      set.add(i.seat);
+      veteranVisitors.set(i.target, set);
     }
-    for (const [vet, visitors] of veteranVisitors) {
-      visitors.sort((a, b) => a - b);
+    // Transporter (batch F): a Transporter that switched a house with an alerting
+    // Veteran VISITS that Veteran, and so is mauled like any other caller.
+    for (const v of extraVisits) {
+      if (!alerting.has(v.target)) continue;
+      if (v.actor === v.target) continue;
+      const set = veteranVisitors.get(v.target) ?? new Set<SeatId>();
+      set.add(v.actor);
+      veteranVisitors.set(v.target, set);
+    }
+    for (const [vet, visitorSet] of veteranVisitors) {
+      const visitors = [...visitorSet].sort((a, b) => a - b);
       for (const v of visitors) {
         kills.push({ source: 'veteran', attacker: vet, target: v });
       }
     }
     // Record one alert trace per alerting Veteran (with its visitor list), sorted.
     for (const vet of [...alerting].sort((a, b) => a - b)) {
-      traces.push({ step: 'alert', veteran: vet, visitors: (veteranVisitors.get(vet) ?? []).slice() });
+      const list = [...(veteranVisitors.get(vet) ?? new Set<SeatId>())].sort((a, b) => a - b);
+      traces.push({ step: 'alert', veteran: vet, visitors: list });
     }
   }
 
@@ -511,7 +609,7 @@ export function resolveNight(state: GameState): ResolveResult {
   for (const i of [...intentBySeat.values()].sort((a, b) => a.seat - b.seat)) {
     if (i.ability !== 'crusade' || i.target === null || i.target === i.seat) continue;
     const ward = i.target;
-    const visitor = lowestVisitorTo(state, intentBySeat, ward, [i.seat, ward]);
+    const visitor = lowestVisitorTo(state, intentBySeat, ward, [i.seat, ward], extraVisits);
     if (visitor !== null) {
       kills.push({ source: 'crusader', attacker: i.seat, target: visitor });
     }
@@ -527,7 +625,7 @@ export function resolveNight(state: GameState): ResolveResult {
   // them. Resolved in deterministic Ambusher-seat order.
   for (const i of [...intentBySeat.values()].sort((a, b) => a.seat - b.seat)) {
     if (i.ability !== 'ambush' || i.target === null) continue;
-    const visitor = lowestVisitorTo(state, intentBySeat, i.target, [i.seat]);
+    const visitor = lowestVisitorTo(state, intentBySeat, i.target, [i.seat], extraVisits);
     if (visitor !== null) {
       kills.push({ source: 'ambush', attacker: i.seat, target: visitor });
     }
@@ -551,7 +649,7 @@ export function resolveNight(state: GameState): ResolveResult {
         victims.push(i.target);
       }
       // Everyone who visited the Werewolf this night (post-block intents).
-      for (const v of visitorsTo(state, intentBySeat, i.seat, [i.seat])) {
+      for (const v of visitorsTo(state, intentBySeat, i.seat, [i.seat], extraVisits)) {
         if (!victims.includes(v)) victims.push(v);
       }
       victims.sort((a, b) => a - b);
@@ -576,7 +674,7 @@ export function resolveNight(state: GameState): ResolveResult {
     const house = i.target;
     const victims: SeatId[] = [];
     if (seatOf(state, house).alive) victims.push(house);
-    for (const v of visitorsTo(state, intentBySeat, house, [i.seat, house])) {
+    for (const v of visitorsTo(state, intentBySeat, house, [i.seat, house], extraVisits)) {
       if (!victims.includes(v)) victims.push(v);
     }
     victims.sort((a, b) => a - b);
@@ -603,7 +701,7 @@ export function resolveNight(state: GameState): ResolveResult {
     if (seatOf(state, i.target).alive) victims.push(i.target);
     if (powerful) {
       // A powered-up Juggernaut also mauls every other visitor to the victim's house.
-      for (const v of visitorsTo(state, intentBySeat, i.target, [i.seat, i.target])) {
+      for (const v of visitorsTo(state, intentBySeat, i.target, [i.seat, i.target], extraVisits)) {
         if (!victims.includes(v)) victims.push(v);
       }
     }
@@ -878,6 +976,17 @@ export function resolveNight(state: GameState): ResolveResult {
     vlist.push(i.target);
     visitedByActor.set(i.seat, vlist);
   }
+  // Transporter (batch F): fold its two visit edges into BOTH visit indices, so a
+  // Lookout/Tracker/Coroner sees the Transporter at the houses it switched. Guarded
+  // against duplicates (a Transporter never also has a single-target intent here).
+  for (const v of extraVisits) {
+    const list = visitorsByTarget.get(v.target) ?? [];
+    if (!list.includes(v.actor)) list.push(v.actor);
+    visitorsByTarget.set(v.target, list);
+    const vlist = visitedByActor.get(v.actor) ?? [];
+    if (!vlist.includes(v.target)) vlist.push(v.target);
+    visitedByActor.set(v.actor, vlist);
+  }
 
   // Spy (batch B): the set of seats the MAFIA visited this night. Reuses the same
   // visit set; a seat counts iff a living MAFIA-faction actor visited it (Godfather
@@ -932,6 +1041,52 @@ export function resolveNight(state: GameState): ResolveResult {
     if (i.ability !== 'spy') continue;
     traces.push({ step: 'investigate', kind: 'spy', investigator: i.seat, seats: mafiaVisitedSorted.slice() });
     effects.push(toSeat(i.seat, { type: 'private_result', kind: 'spy_result', seats: mafiaVisitedSorted.slice() }));
+  }
+
+  // Coroner (batch F): each Coroner that opened a DEAD seat learns that seat's
+  // exact (apparent) ROLE and the sorted seats that visited it the NIGHT IT DIED
+  // (read back from the frozen `deathVisitors`, recorded at that seat's death). The
+  // role is of an already-publicly-revealed corpse, so it leaks nothing new; the
+  // result is addressed to the Coroner alone and whitelisted as a per-seat role
+  // carrier. A living / cleaned-and-secret target is no valid corpse — read fails.
+  for (const i of [...intentBySeat.values()].sort((a, b) => a.seat - b.seat)) {
+    if (i.ability !== 'autopsy' || i.target === null) continue;
+    if (seatOf(state, i.seat).role !== 'CORONER') continue;
+    const tgt = seatOf(state, i.target);
+    // A valid corpse: dead AND publicly revealed (a Janitor-cleaned body keeps its
+    // secret — nothing on the slab to read). The role read is the APPARENT role,
+    // matching every other reveal (a Disguiser's borrowed face).
+    const valid = !tgt.alive && tgt.revealed;
+    if (!valid) {
+      traces.push({ step: 'autopsy', coroner: i.seat, target: i.target, role: null, visitors: [], read: false });
+      continue;
+    }
+    const role = apparentRoleOf(tgt);
+    const visitors = tgt.deathVisitors.slice().sort((a, b) => a - b);
+    traces.push({ step: 'autopsy', coroner: i.seat, target: i.target, role, visitors, read: true });
+    effects.push(
+      toSeat(i.seat, { type: 'private_result', kind: 'coroner_result', target: i.target, role, visitors }),
+    );
+  }
+
+  // Trapper (batch F): each Trapper's snare at its ward catches the LOWEST-seat
+  // caller at that door this night (excluding the ward and the Trapper itself —
+  // the same visitor set the Crusader strikes, including the Transporter's extra
+  // visit edges). It does NOT kill — it only names the caught seat to the Trapper.
+  // `sprung` records whether the trap's shield actually absorbed an attack tonight.
+  // Carries ONLY a seat id (leak-trivial). Resolved in deterministic seat order.
+  for (const i of [...intentBySeat.values()].sort((a, b) => a.seat - b.seat)) {
+    if (i.ability !== 'trap' || i.target === null || i.target === i.seat) continue;
+    if (seatOf(state, i.seat).role !== 'TRAPPER') continue;
+    const ward = i.target;
+    const caught = lowestVisitorTo(state, intentBySeat, ward, [i.seat, ward], extraVisits);
+    // The trap "sprang" iff the ward's shield (set in step 3 to this Trapper) was
+    // the one that absorbed an attack — i.e. the ward was healed by this seat.
+    const sprung = healedTargets.has(ward) && doctorShield.get(ward) === i.seat;
+    traces.push({ step: 'trap', trapper: i.seat, ward, caught, sprung });
+    if (caught !== null) {
+      effects.push(toSeat(i.seat, { type: 'private_result', kind: 'trapper_result', target: ward, caught }));
+    }
   }
 
   // Psychic (batch C): each Psychic receives a vision — a sorted list of living
@@ -991,6 +1146,14 @@ export function resolveNight(state: GameState): ResolveResult {
     s.revealed = true;
     s.deathCause = cause;
     s.deathDay = state.dayNumber;
+    // Coroner (batch F): FREEZE the seats that visited this seat tonight, for a
+    // later autopsy. Taken from this night's visit graph (the same set the Lookout
+    // sees), excluding self. Recorded once, at death — a later night cannot rewrite
+    // it (the seat is dead and submits no intents; the field is only set here).
+    s.deathVisitors = (visitorsByTarget.get(seat) ?? [])
+      .filter((v) => v !== seat)
+      .slice()
+      .sort((a, b) => a - b);
     const forge = forgedWillByTarget.get(seat);
     // Janitor cleaning: only the MAFIA faction kill is sanitizable. A cleaned body
     // hides BOTH role and will publicly; a forged will on a cleaned body is moot.
@@ -1488,6 +1651,7 @@ function lowestVisitorTo(
   intents: Map<SeatId, NightIntent>,
   target: SeatId,
   exclude: readonly SeatId[],
+  extraVisits: readonly { actor: SeatId; target: SeatId }[] = [],
 ): SeatId | null {
   const excluded = new Set<SeatId>(exclude);
   let best: SeatId | null = null;
@@ -1497,6 +1661,13 @@ function lowestVisitorTo(
     if (excluded.has(i.seat)) continue;
     if (!actorVisits(seatOf(state, i.seat), i)) continue;
     if (best === null || i.seat < best) best = i.seat;
+  }
+  // Transporter (batch F) extra visit edges (it visits both houses it swapped).
+  for (const v of extraVisits) {
+    if (v.target !== target) continue;
+    if (excluded.has(v.actor)) continue;
+    if (!seatOf(state, v.actor).alive) continue;
+    if (best === null || v.actor < best) best = v.actor;
   }
   return best;
 }
@@ -1512,18 +1683,26 @@ function visitorsTo(
   intents: Map<SeatId, NightIntent>,
   target: SeatId,
   exclude: readonly SeatId[],
+  extraVisits: readonly { actor: SeatId; target: SeatId }[] = [],
 ): SeatId[] {
   const excluded = new Set<SeatId>(exclude);
-  const out: SeatId[] = [];
+  const out = new Set<SeatId>();
   for (const i of intents.values()) {
     if (i.target !== target) continue;
     if (i.seat === i.target) continue; // a self-target is not a visit
     if (excluded.has(i.seat)) continue;
     if (!actorVisits(seatOf(state, i.seat), i)) continue;
     if (!seatOf(state, i.seat).alive) continue;
-    out.push(i.seat);
+    out.add(i.seat);
   }
-  return out.sort((a, b) => a - b);
+  // Transporter (batch F) extra visit edges (it visits both houses it swapped).
+  for (const v of extraVisits) {
+    if (v.target !== target) continue;
+    if (excluded.has(v.actor)) continue;
+    if (!seatOf(state, v.actor).alive) continue;
+    out.add(v.actor);
+  }
+  return [...out].sort((a, b) => a - b);
 }
 
 /**
@@ -1601,6 +1780,15 @@ function actorVisits(_actor: SeatState, intent: NightIntent): boolean {
     case 'retribute':
       // Retributionist (batch E): the revive is resolved in the promotion step, not
       // as a street visit — a graveside vigil, not a call on a living house.
+      return false;
+    // Batch F: the Trapper visits the ward it rigs (a Lookout/Veteran sees it). The
+    // Transporter's two visits are recorded separately via `extraVisits` (it has two
+    // houses, not one), so its own `transport` row contributes no single-target
+    // visit here. The Coroner reads a grave, not a living house — no street visit.
+    case 'trap':
+      return true;
+    case 'transport':
+    case 'autopsy':
       return false;
     default:
       return false;

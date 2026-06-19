@@ -60,6 +60,16 @@ function renderPayload(p: PrivateResultPayload, label: (seat: number) => string)
     case 'vampire_hunter_result':
       // Vampire faction: the Hunter's yes/no read on a studied target (no role).
       return strings.vampireHunterResultLine(label(p.target), p.isVampire);
+    case 'coroner_result':
+      // Batch F: the autopsied DEAD seat's role (already public) + its visitors.
+      return strings.coronerResultLine(
+        label(p.target),
+        getRole(p.role).name,
+        p.visitors.map(label),
+      );
+    case 'trapper_result':
+      // Batch F: the seat the Trapper's snare caught at its ward (a seat, no role).
+      return strings.trapperResultLine(label(p.target), label(p.caught));
     case 'roleblocked':
     case 'controlled':
     case 'block_failed':

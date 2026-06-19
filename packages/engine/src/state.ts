@@ -117,6 +117,14 @@ export interface SeatState {
   deathCause: DeathCause | null;
   /** Day number the seat died (0 = alive). */
   deathDay: number | null;
+  /**
+   * Coroner (batch F): the sorted seats that VISITED this seat the night it died
+   * (set once, at the resolution that killed it, from that night's visit graph).
+   * The Coroner's autopsy reads this back. Empty for a living seat, or for a death
+   * with no recorded visitors (e.g. a day lynch — no night visit graph). Frozen at
+   * death so a later night's traffic does not rewrite it.
+   */
+  deathVisitors: SeatId[];
 }
 
 // ---------------------------------------------------------------------------
@@ -131,9 +139,12 @@ export interface NightIntent {
   /** Target seat, or null for self/none. */
   target: SeatId | null;
   /**
-   * Optional SECOND target (batch E, Witch). The `witch_control` ability carries
-   * the PUPPET in `target` and the VICTIM (where the puppet's action is steered)
-   * in `target2`. Every other ability ignores it. Undefined = no second target.
+   * Optional SECOND target. Used by the two-target abilities:
+   *  - `witch_control` (batch E): the PUPPET in `target`, the VICTIM in `target2`.
+   *  - `transport` (batch F): the FIRST seat to swap in `target`, the SECOND in
+   *    `target2`. The Transporter swaps the two — everything aimed at one is
+   *    redirected onto the other.
+   * Every other ability ignores it. Undefined = no second target.
    */
   target2?: SeatId | null;
 }
@@ -183,6 +194,10 @@ export type NightAbility =
   | 'vampire_check' // Vampire Hunter: study a target, learn vampire/not; passively stakes a biting vampire
   // --- Cult conversion faction (fourth evil faction) ---
   | 'recruit' // Cult Leader: a visiting conversion attempt (draws the target into the Cult)
+  // --- Role-expansion batch F (distinct-mechanic Town roles) ---
+  | 'transport' // Transporter: swap two seats (target + target2) — everything aimed at one is redirected onto the other
+  | 'autopsy' // Coroner: read a DEAD seat's role + the seats that visited it the night it died
+  | 'trap' // Trapper: arm a trap at a ward — shield one basic attack + name a caught visitor's seat (does not kill)
   | 'kill_vigilante'
   | 'kill_mafia'
   | 'kill_serial'
@@ -264,6 +279,18 @@ export type ResolutionTrace =
   // into the Cult; false ⇒ the recruit failed (immune/already-cult/non-convertible/
   // unreachable/the Leader died this night/the one-night cooldown was in effect).
   | { step: 'recruit'; leader: SeatId; target: SeatId; recruited: boolean }
+  // --- Role-expansion batch F ---
+  // The Transporter swapped two seats: everything aimed at `a` was redirected onto
+  // `b` and vice-versa. `swapped` false ⇒ a degenerate submission (a===b / a self-
+  // target / a dead endpoint / a seat already swapped by a lower-seat Transporter).
+  | { step: 'transport'; transporter: SeatId; a: SeatId; b: SeatId; swapped: boolean }
+  // The Coroner's autopsy: the dead `target`'s role + the seats that visited it the
+  // night it died. `read` false ⇒ the target was not a valid corpse to open.
+  | { step: 'autopsy'; coroner: SeatId; target: SeatId; role: RoleId | null; visitors: SeatId[]; read: boolean }
+  // The Trapper's snare at `ward`: `caught` is the seat it snapped shut on (the
+  // lowest-seat hostile visitor), or null if nothing was caught. `sprung` ⇒ the
+  // ward was actually shielded from an attack this night.
+  | { step: 'trap'; trapper: SeatId; ward: SeatId; caught: SeatId | null; sprung: boolean }
   | { step: 'promotion'; kind: 'guardian_to_survivor'; seat: SeatId }
   | { step: 'promotion'; kind: 'plaguebearer_to_pestilence'; seat: SeatId }
   // The Vampire Hunter retires to a Vigilante once no vampires remain (role change).

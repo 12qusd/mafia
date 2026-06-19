@@ -50,6 +50,9 @@ import { VAMPIRE } from './vampire.js';
 import { VAMPIRE_HUNTER } from './vampire_hunter.js';
 import { CULT_LEADER } from './cult_leader.js';
 import { CULTIST } from './cultist.js';
+import { TRANSPORTER } from './transporter.js';
+import { CORONER } from './coroner.js';
+import { TRAPPER } from './trapper.js';
 
 export type { RoleDefinition } from './types.js';
 export type { NightActionKind, DayActionKind, TargetScope, AbilityUses } from './types.js';
@@ -104,6 +107,9 @@ export {
   VAMPIRE_HUNTER,
   CULT_LEADER,
   CULTIST,
+  TRANSPORTER,
+  CORONER,
+  TRAPPER,
 };
 
 /** Registry of every role definition, keyed by id (BUILD_SPEC §6.5). */
@@ -157,6 +163,9 @@ export const ROLES: Readonly<Record<RoleId, RoleDefinition>> = {
   VAMPIRE_HUNTER,
   CULT_LEADER,
   CULTIST,
+  TRANSPORTER,
+  CORONER,
+  TRAPPER,
 };
 
 /** Look up a role definition by id. */
@@ -175,12 +184,12 @@ export const ALL_ROLES: readonly RoleDefinition[] = Object.values(ROLES);
 export const INVESTIGATOR_CLASS_TABLE: Readonly<Record<InvestigatorClass, readonly RoleId[]>> = {
   R1: ['CITIZEN', 'SURVIVOR', 'EXECUTIONER', 'AMNESIAC', 'GUARDIAN_ANGEL', 'CULT_LEADER', 'CULTIST'],
   R2: ['SHERIFF', 'JAILOR', 'BLACKMAILER', 'TRACKER', 'RETRIBUTIONIST', 'VAMPIRE_HUNTER'],
-  R3: ['INVESTIGATOR', 'JESTER', 'CONSIGLIERE', 'SPY', 'PSYCHIC'],
+  R3: ['INVESTIGATOR', 'JESTER', 'CONSIGLIERE', 'SPY', 'PSYCHIC', 'CORONER'],
   R4: ['DOCTOR', 'SERIAL_KILLER', 'MEDIUM', 'MASS_MURDERER', 'PLAGUEBEARER', 'PESTILENCE', 'VAMPIRE'],
   R5: ['ESCORT', 'CONSORT', 'JANITOR', 'HYPNOTIST', 'VANGUARD'],
   R6: ['VIGILANTE', 'MAFIOSO', 'VETERAN', 'CRUSADER', 'WEREWOLF', 'JUGGERNAUT', 'ENFORCER', 'PIRATE'],
-  R7: ['GODFATHER', 'MAYOR', 'BODYGUARD', 'ARSONIST', 'DRAGON_HEAD'],
-  R8: ['FRAMER', 'LOOKOUT', 'FORGER', 'DISGUISER', 'AMBUSHER', 'WITCH'],
+  R7: ['GODFATHER', 'MAYOR', 'BODYGUARD', 'ARSONIST', 'DRAGON_HEAD', 'TRAPPER'],
+  R8: ['FRAMER', 'LOOKOUT', 'FORGER', 'DISGUISER', 'AMBUSHER', 'WITCH', 'TRANSPORTER'],
 };
 
 /**

@@ -434,3 +434,59 @@ export const FAITHFUL: GameSetup = {
     '15': FAITHFUL_15,
   },
 };
+
+/**
+ * "Cold Cases" — a 15-player showcase of the batch-F distinct-mechanic Town roles.
+ * A Transporter swaps two houses each night, carrying a killer's knife onto an
+ * empty bed or a doctor's hand onto a dying friend; a Coroner reads the dead on the
+ * slab to learn what they were and who came calling the night they fell; and a
+ * Trapper rigs snares that spare a ward one blow and hand it a caller's name — but
+ * never a kill. The Mafia fields a Janitor and a Framer to fog the bodies the
+ * Coroner would read, while a Serial Killer and a Jester play their own angles.
+ *
+ * Town (8): Transporter, Coroner, Trapper, Jailor, Sheriff, Doctor, Lookout,
+ *           Vigilante.
+ * Mafia (3): Godfather, Janitor, + one RANDOM_MAFIA.
+ * Neutral (4): Serial Killer, Jester, Executioner, Survivor.
+ *
+ * Exercises the full batch-F path: the `transport` two-target swap + its kill/visit
+ * redirect, the `autopsy` read (the `coroner_result` role carrier) against the
+ * Janitor/Framer fog, and the `trap` protect-and-name (the leak-trivial
+ * `trapper_result`). Added to the leakcheck + sim CLI SETUP_MAPs.
+ */
+const COLD_CASES_15: SetupSlot[] = [
+  // Town
+  F('TRANSPORTER'),
+  F('CORONER'),
+  F('TRAPPER'),
+  F('JAILOR'),
+  F('SHERIFF'),
+  F('DOCTOR'),
+  F('LOOKOUT'),
+  F('VIGILANTE'),
+  // Mafia
+  F('GODFATHER'),
+  F('JANITOR'),
+  RANDOM_MAFIA,
+  // Neutral
+  F('SERIAL_KILLER'),
+  F('JESTER'),
+  F('EXECUTIONER'),
+  F('SURVIVOR'),
+];
+
+export const COLD_CASES: GameSetup = {
+  id: 'cold-cases',
+  name: 'Cold Cases',
+  description:
+    'A 15-player showcase of the strangest honest trades in town. A Transporter quietly swaps ' +
+    'two houses each night, a Coroner reads the dead for the truth they kept in life, and a ' +
+    'Trapper rigs snares that shield a friend and name a prowler — while a Mafia Janitor scrubs ' +
+    'the very bodies the Coroner would open.',
+  minPlayers: 15,
+  maxPlayers: 15,
+  townPool: ['CITIZEN', 'DOCTOR', 'SHERIFF', 'LOOKOUT', 'VIGILANTE', 'TRANSPORTER', 'CORONER', 'TRAPPER'],
+  slotsByPlayerCount: {
+    '15': COLD_CASES_15,
+  },
+};

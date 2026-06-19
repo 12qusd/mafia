@@ -1658,3 +1658,113 @@ special case:
   `recruited` note in your private log"). The bot policy needs no cult awareness:
   only the (unique) Cult Leader recruits, via the generic single-target `recruit`
   ability the policy already drives.
+
+---
+
+## Role expansion — Transporter / Coroner / Trapper (batch F)
+
+Three distinct-mechanic TOWN roles. All shipped (none skipped). Original noir copy;
+generic names (Transporter/Coroner/Trapper). DETERMINISM + the info-leak invariant
+held: engine determinism property test green; classic leak sweep 0/200; the new
+"Cold Cases" curated setup leak sweep 0 leaks across 60 games (15p, all completed).
+
+### Transporter (the "bus driver")
+- TOWN support, `transport` NightAbility, uses the existing optional `target2`
+  field (plumbed in apply.ts alongside the Witch — generalized the witch-only
+  two-target guard to `witch_control || transport`). InvestigatorClass R8; Sheriff
+  not_suspicious; not unique.
+- MECHANIC: choose two seats (a,b) and SWAP them — every action/visit aimed at a is
+  redirected onto b and vice-versa (a kill on a lands on b; a Doctor healing a heals
+  b; a watcher of a watches b). The two swapped seats still act normally on their
+  OWN turn — transport only rewrites actions TARGETING them.
+- PIPELINE STEP: a new "Step 0.6", immediately AFTER the Witch control step (Step
+  0.5) and BEFORE jail/roleblock/kills — mirroring where the Witch's redirect is
+  applied. RECORDED ORDER vs the Witch: Witch control resolves FIRST (the puppet's
+  intent already points at the Witch's victim), THEN the Transport swap rewrites
+  that (and every other) target. Golden confirms: a Witch-steered Sheriff onto seat
+  4, then a Transporter swapping 4↔5, lands the investigation on seat 5; the `witch`
+  trace precedes the `transport` trace.
+- DETERMINISM: a FIXED swap, no randomness. Transporters resolve in ascending seat
+  order; each applies its single swap to EVERY intent's target/target2, so multiple
+  Transporters compose as sequential swaps. Each seat may be a swap endpoint at most
+  once per night (lower-seat Transporter wins) → the composition is a clean
+  permutation. NO-OP (`swapped:false`) on a===b, a self/dead endpoint, or an
+  endpoint already taken by a lower-seat Transporter.
+- VISITS: the Transporter visits BOTH houses it switched. Because one intent cannot
+  carry two visit edges, the two edges are recorded in an `extraVisits` list that is
+  threaded into ALL visitor consumers (lowestVisitorTo/visitorsTo gained an optional
+  param; the Veteran loop, the step-6 visitorsByTarget/visitedByActor maps, and the
+  Coroner/Trapper reads all fold it in). `actorVisits('transport')` returns false
+  (its single `target` would otherwise double-count) and the swap loop skips
+  rewriting a Transporter's own swap-pair intent.
+- New ResolutionTrace `transport`. NO new private_result (the Transporter learns
+  nothing — pure redirect), so NO leak surface added.
+- Golden: kill-on-A-lands-on-B PASSES; plus heal-redirect, visit-redirect,
+  visits-both, degenerate-no-op, Witch-interaction, and a determinism check.
+
+### Coroner (autopsy the dead)
+- TOWN investigative, `autopsy` NightAbility. InvestigatorClass R3; Sheriff
+  not_suspicious; not unique.
+- MECHANIC: each night open ONE DEAD seat → learn its exact (apparent) ROLE and the
+  sorted seats that VISITED it the night it died. A living / Janitor-cleaned-secret
+  target is no valid corpse (`read:false`, no result).
+- New SeatState field `deathVisitors` (frozen at death in Step 7 from that night's
+  visit graph, excluding self; never rewritten). New ResolutionTrace `autopsy`.
+- New private_result `coroner_result` (target, role, visitors). It carries a role
+  STRING — but of an ALREADY-publicly-revealed dead seat (its death_announce already
+  leaked it), so it leaks nothing new. Whitelisted in BOTH auditors as a per-seat
+  role carrier (bots/leak.ts `mentionsRoleForOtherSeat` + engine leak.test.ts), like
+  consigliere_result/janitor_result. The cross-capture deep scan would clear it
+  anyway (the autopsied seat is in the `revealed` set by then); the whitelist makes
+  intent explicit.
+
+### Trapper (snare that shields + names, never kills)
+- TOWN protective, `trap` NightAbility. InvestigatorClass R7; Sheriff
+  not_suspicious; not unique.
+- MECHANIC: a single-night armed trap at a ward. It (1) PROTECTS the ward from one
+  basic attack — mechanically the SAME one-attack shield as a Doctor heal, set in
+  Step 3 (lowest-seat protector wins; a revealed Mayor can't be shielded), and (2)
+  in Step 6 names the LOWEST-seat caller at the ward (the same visitor set the
+  Crusader strikes, incl. the Transporter's extra edges), excluding the ward + the
+  Trapper.
+- DISTINCT FROM CRUSADER (recorded): the Crusader KILLS the caller it catches (a
+  basic Town attack, death cause `crusader`); the Trapper does NOT kill — it only
+  PROTECTS + INFORMS. The caught caller stays alive. Golden asserts the caught
+  Mafioso is ALIVE after the trap reports it.
+- New ResolutionTrace `trap` (ward, caught, sprung). New private_result
+  `trapper_result` (target ward, caught seat) — carries ONLY seat ids, NO role
+  strings, so it is leak-trivial (no whitelist needed).
+
+### Surfaces touched
+- RoleIds TRANSPORTER/CORONER/TRAPPER (+ role defs, original copy, index registry).
+  INVESTIGATOR_CLASS_TABLE: CORONER→R3, TRAPPER→R7, TRANSPORTER→R8 (+ roles.test.ts
+  SPEC_TABLE mirrored). Sheriff: all not_suspicious. None unique.
+- NightAbility `transport`/`autopsy`/`trap`; roleToNightAbility + abilityInfoFor
+  (Transport / Autopsy / Set trap cards). apply.ts: two-target plumbing generalized
+  to also accept `transport`. SeatState `deathVisitors` (init.ts + harness seed +
+  structuredClone deep-copies it).
+- PrivateResultKind coroner_result/trapper_result (+ zod payloads, strings
+  coronerResultLine/trapperResultLine, strings.test dynamic list, client PrivateLog
+  rendering).
+- Client OwnPanel: the Witch two-target picker generalized into `TwoTargetAction`
+  (takes a `labels` set); `transport` routes to it with Transporter labels (GAME
+  transportFirst/Second/…). Witch picker behavior unchanged; +client picker test.
+- Curated setup "Cold Cases" (cold-cases, 15p: Transporter+Coroner+Trapper fixed +
+  Mafia w/ Janitor + SK/Jester/Exe/Survivor). Registered in SETUPS, leakcheck +
+  sim CLI SETUP_MAPs, setups.test (count 9→10). The three roles also added to its
+  townPool.
+- leak.ts KNOWN_ROLES += TRANSPORTER/CORONER/TRAPPER; coroner_result whitelisted.
+  bots policy drives `transport` as a two-target action (mirror of witch_control);
+  autopsy/trap use the generic single-target picker (autopsy on a living seat is a
+  harmless no-op in the sweep — the dead are not targetable by the policy).
+
+### Notes / rough edges
+- Cold Cases games run ~3x slower per game than other 15p curated setups (~2.4s vs
+  ~0.9s) — NOT a non-termination bug (step counts ~28–66, identical range to
+  reckoning; all 60 sweep games completed). The cost is per-resolveNight/audit work
+  on boards where the Transporter+Trapper keep more town alive longer (more intents
+  + more audited frames per night). A long default-200 leak sweep on cold-cases
+  therefore takes minutes; the gate was run at 60 games (0 leaks) per spec.
+- The Coroner reads the APPARENT role (a Disguiser's borrowed face), matching every
+  other reveal; a Janitor-cleaned (secret) body is not autopsy-able (nothing on the
+  slab) — consistent with its public reveal carrying no role.

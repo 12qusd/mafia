@@ -67,6 +67,8 @@ function normalizeSetup(id: string): string {
     faithful: 'the-faithful',
     the_faithful: 'the-faithful',
     'the-faithful': 'the-faithful',
+    cold_cases: 'cold-cases',
+    'cold-cases': 'cold-cases',
   };
   return map[id] ?? id;
 }

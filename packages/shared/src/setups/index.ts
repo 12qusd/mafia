@@ -1,9 +1,9 @@
 import type { GameSetup } from '../types/setup.js';
 import { CLASSIC_NOCTURNE } from './classic.js';
-import { CROSS_EXAMINATION, GUNSMOKE, SMOKE_AND_MIRRORS, FULL_MOON, TONG_WAR, RECKONING, LONG_NIGHT, FAITHFUL } from './curated.js';
+import { CROSS_EXAMINATION, GUNSMOKE, SMOKE_AND_MIRRORS, FULL_MOON, TONG_WAR, RECKONING, LONG_NIGHT, FAITHFUL, COLD_CASES } from './curated.js';
 
 export { CLASSIC_NOCTURNE } from './classic.js';
-export { CROSS_EXAMINATION, GUNSMOKE, SMOKE_AND_MIRRORS, FULL_MOON, TONG_WAR, RECKONING, LONG_NIGHT, FAITHFUL } from './curated.js';
+export { CROSS_EXAMINATION, GUNSMOKE, SMOKE_AND_MIRRORS, FULL_MOON, TONG_WAR, RECKONING, LONG_NIGHT, FAITHFUL, COLD_CASES } from './curated.js';
 export { slotFaction, factionCounts, factionCountsAt, slotCountAt } from './compose.js';
 export { validateSetup, type ValidationResult } from './validate.js';
 export { chaosSetup } from './chaos.js';
@@ -20,6 +20,7 @@ export const SETUPS: readonly GameSetup[] = [
   RECKONING,
   LONG_NIGHT,
   FAITHFUL,
+  COLD_CASES,
 ];
 
 /** Setups keyed by id. */

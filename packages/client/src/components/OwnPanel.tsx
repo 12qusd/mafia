@@ -140,11 +140,30 @@ function NightAction({
       </div>
     );
   }
-  // The Witch's `witch_control` is the one two-target night action: she seizes a
-  // PUPPET (`target`) and steers their move onto a VICTIM (`target2`). Every other
-  // role keeps the single-target picker below.
-  if (ability.id === 'witch_control') {
-    return <WitchControlAction own={own} seats={seats} ability={ability} />;
+  // Two-target night actions share one picker (first target = `target`, second =
+  // `target2`). The Witch's `witch_control` seizes a PUPPET and steers it onto a
+  // VICTIM; the Transporter's `transport` swaps two HOUSES. Only the labels differ.
+  // Every other role keeps the single-target picker below.
+  if (ability.id === 'witch_control' || ability.id === 'transport') {
+    const labels =
+      ability.id === 'transport'
+        ? {
+            first: GAME.transportFirst,
+            second: GAME.transportSecond,
+            firstSet: GAME.transportFirstSet,
+            secondSet: GAME.transportSecondSet,
+            secondPending: GAME.transportSecondPending,
+            needFirst: GAME.transportNeedFirst,
+          }
+        : {
+            first: GAME.witchPuppet,
+            second: GAME.witchVictim,
+            firstSet: GAME.witchPuppetSet,
+            secondSet: GAME.witchVictimSet,
+            secondPending: GAME.witchVictimPending,
+            needFirst: GAME.witchNeedPuppet,
+          };
+    return <TwoTargetAction own={own} seats={seats} ability={ability} labels={labels} />;
   }
 
   const def = getRole(own.role);
@@ -199,26 +218,40 @@ function NightAction({
   );
 }
 
+/** Label set for the generic two-target picker (Witch control / Transporter swap). */
+interface TwoTargetLabels {
+  first: string;
+  second: string;
+  firstSet: (label: string) => string;
+  secondSet: (label: string) => string;
+  secondPending: string;
+  needFirst: string;
+}
+
 /**
- * Witch night action (`witch_control`): a two-target picker. The first picker
- * chooses the PUPPET (whose hand she moves) and the second the VICTIM (where she
- * points it). Both must be living seats other than herself; the puppet and the
- * victim must differ (the engine is authoritative on legality — this only
- * guides). The action is submitted only once BOTH are chosen, carrying
- * `target = puppet` and `target2 = victim`.
+ * Generic two-target night action: a picker for the two abilities that carry a
+ * `target` AND a `target2`. The first picker chooses the FIRST target and the
+ * second the SECOND; both must be living seats other than the actor, and the two
+ * must differ (the engine is authoritative on legality — this only guides). The
+ * action is submitted only once BOTH are chosen, carrying `target` + `target2`.
+ *
+ * Used by the Witch (`witch_control`: puppet → victim) and the Transporter
+ * (`transport`: house ↔ house). Only the `labels` differ.
  */
-function WitchControlAction({
+function TwoTargetAction({
   own,
   seats,
   ability,
+  labels,
 }: {
   own: NonNullable<ReturnType<typeof useStore.getState>['own']>;
   seats: PublicSeat[];
   ability: AbilityInfo;
+  labels: TwoTargetLabels;
 }) {
   const puppet = own.nightTarget;
   const victim = own.nightTarget2;
-  // The Witch never controls herself; living seats only.
+  // The actor never targets itself; living seats only.
   const living = seats.filter((s) => s.alive && s.seat !== own.seat);
 
   function submit(p: number | null, v: number | null) {
@@ -251,10 +284,10 @@ function WitchControlAction({
         <span className="muted">{ability.name}</span>
       </div>
 
-      {/* Puppet: whose hand to move. */}
+      {/* First target. */}
       <div className="stack" style={{ gap: 4 }}>
-        <span className="faint">{GAME.witchPuppet}</span>
-        <div className="target-grid" role="group" aria-label={GAME.witchPuppet}>
+        <span className="faint">{labels.first}</span>
+        <div className="target-grid" role="group" aria-label={labels.first}>
           {living.map((t) => {
             const selected = puppet === t.seat;
             return (
@@ -270,13 +303,13 @@ function WitchControlAction({
         </div>
       </div>
 
-      {/* Victim: where to point it (a different living seat than the puppet). */}
+      {/* Second target (a different living seat than the first). */}
       <div className="stack" style={{ gap: 4 }}>
-        <span className="faint">{GAME.witchVictim}</span>
+        <span className="faint">{labels.second}</span>
         {puppet === null ? (
-          <span className="faint">{GAME.witchNeedPuppet}</span>
+          <span className="faint">{labels.needFirst}</span>
         ) : (
-          <div className="target-grid" role="group" aria-label={GAME.witchVictim}>
+          <div className="target-grid" role="group" aria-label={labels.second}>
             {living
               .filter((t) => t.seat !== puppet)
               .map((t) => {
@@ -298,7 +331,7 @@ function WitchControlAction({
       {puppet !== null && victim !== null ? (
         <div className="spread">
           <span className="muted">
-            {GAME.witchPuppetSet(seatName(puppet))} {GAME.witchVictimSet(seatName(victim))}
+            {labels.firstSet(seatName(puppet))} {labels.secondSet(seatName(victim))}
           </span>
           <button
             className="btn btn-sm btn-ghost"
@@ -308,7 +341,7 @@ function WitchControlAction({
           </button>
         </div>
       ) : puppet !== null ? (
-        <span className="faint">{GAME.witchVictimPending}</span>
+        <span className="faint">{labels.secondPending}</span>
       ) : (
         <span className="faint">{GAME.actionLocked}</span>
       )}

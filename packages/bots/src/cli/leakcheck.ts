@@ -37,6 +37,8 @@ const SETUP_MAP: Record<string, string> = {
   faithful: 'the-faithful',
   the_faithful: 'the-faithful',
   'the-faithful': 'the-faithful',
+  cold_cases: 'cold-cases',
+  'cold-cases': 'cold-cases',
 };
 
 function main(): void {

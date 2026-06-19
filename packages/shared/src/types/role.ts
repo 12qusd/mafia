@@ -66,6 +66,10 @@ export const ROLE_IDS = [
   // --- Cult conversion faction (fourth evil faction) ---
   'CULT_LEADER', // Cult: the unique converter — recruits one victim per night (one-night cooldown); recruitment stops if it dies
   'CULTIST', // Cult: the converted body of the faction; swells the parity count but cannot itself recruit
+  // --- Role-expansion batch F (distinct-mechanic Town roles) ---
+  'TRANSPORTER', // Town support: swaps two seats, redirecting everything aimed at one onto the other (the "bus driver")
+  'CORONER', // Town investigative: autopsies a dead player — learns their role + who visited them the night they died
+  'TRAPPER', // Town protective: arms a trap at a target — shields one basic attack AND names a caught visitor's seat (does not kill)
 ] as const;
 
 export const RoleIdSchema = z.enum(ROLE_IDS);

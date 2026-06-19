@@ -179,6 +179,7 @@ export function init(setup: GameSetup, seed: string, opts: InitOptions = {}): Ga
       stumped: false,
       deathCause: null,
       deathDay: null,
+      deathVisitors: [],
     };
   });
 

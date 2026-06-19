@@ -143,6 +143,32 @@ export const VampireHunterResultPayload = z.object({
  */
 export const RecruitedPayload = z.object({ kind: z.literal('recruited') });
 
+/**
+ * Coroner autopsy result (batch F). The Coroner learns a DEAD seat's exact role
+ * and the seats that visited them the night they died. The role string is of an
+ * already-publicly-revealed dead seat (its death_announce revealed it), so it
+ * leaks nothing new; nonetheless the engine addresses it ONLY to the Coroner, so
+ * the leak auditors whitelist it as a legitimate per-seat role carrier (alongside
+ * consigliere_result / janitor_result). `visitors` are seat ids only.
+ */
+export const CoronerResultPayload = z.object({
+  kind: z.literal('coroner_result'),
+  target: SeatIdSchema,
+  role: RoleIdSchema,
+  visitors: z.array(SeatIdSchema),
+});
+
+/**
+ * Trapper result (batch F). The seat of a caller the Trapper's snare caught at
+ * its ward this night. Carries ONLY a seat id — NO role strings — so it is
+ * leak-trivial (like a single-seat Lookout read). Delivered to the Trapper alone.
+ */
+export const TrapperResultPayload = z.object({
+  kind: z.literal('trapper_result'),
+  target: SeatIdSchema,
+  caught: SeatIdSchema,
+});
+
 /** Discriminated union of all private-result payloads (without envelope). */
 export const PrivateResultPayloadSchema = z.discriminatedUnion('kind', [
   SheriffResultPayload,
@@ -166,5 +192,7 @@ export const PrivateResultPayloadSchema = z.discriminatedUnion('kind', [
   TurnedPayload,
   VampireHunterResultPayload,
   RecruitedPayload,
+  CoronerResultPayload,
+  TrapperResultPayload,
 ]);
 export type PrivateResultPayload = z.infer<typeof PrivateResultPayloadSchema>;

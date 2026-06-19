@@ -122,6 +122,15 @@ export const GAME = {
   witchVictimSet: (label: string) => `Pointed at ${label}.`,
   witchVictimPending: 'Now choose where to point their hand.',
   witchNeedPuppet: 'First choose a hand to move.',
+  // Transporter (transport) two-target picker: the two houses to switch. Anyone
+  // calling on one finds the other. Both must be living seats other than the
+  // Transporter, and the two must differ.
+  transportFirst: 'Swap this house…',
+  transportSecond: '…with this house',
+  transportFirstSet: (label: string) => `Switching ${label}…`,
+  transportSecondSet: (label: string) => `…with ${label}.`,
+  transportSecondPending: 'Now choose the house to switch them with.',
+  transportNeedFirst: 'First choose a house to switch.',
   jailSelect: 'Choose who to jail tonight',
   jailConfirm: 'Jail',
   jailSet: (label: string) => `${label} will be hauled to the cell tonight.`,
