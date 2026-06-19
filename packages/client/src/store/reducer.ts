@@ -67,6 +67,7 @@ function emptyOwn(seat: number): OwnState {
     role: 'CITIZEN',
     faction: 'TOWN',
     abilities: [],
+    assignedTarget: null,
     nightTarget: null,
     nightTarget2: null,
     nightAbility: null,
@@ -170,18 +171,36 @@ export function reduce(state: StoreState, msg: ServerMessage): Partial<StoreStat
         chat: [],
         whisperMeta: [],
         privateLog: [],
+        jailedThisNight: false,
+        seancePending: false,
+        silencedToday: false,
         debug: emptyDebug(),
       };
     }
 
     case 'your_role': {
+      // `your_role` is also RE-EMITTED mid-game on a role MUTATION (e.g. a
+      // Guardian Angel whose charge dies becomes a Survivor, a Mafioso promoted
+      // to Godfather, an Amnesiac who remembers). We must fully replace the
+      // role/faction/abilities and the bound `assignedTarget` from the resent
+      // frame, and drop stale pending night selections that referenced the OLD
+      // ability set (the new card may have entirely different abilities).
       const prev = state.own ?? emptyOwn(0);
+      const roleChanged = prev.role !== msg.role;
+      // Strip the OLD roster: a mutated role may no longer be in an informed
+      // faction, so a resend without `mates` must DROP the previous mates.
+      const { mates: _drop, ...base } = prev;
+      void _drop;
       const own: OwnState = {
-        ...prev,
+        ...base,
         role: msg.role,
         faction: msg.faction,
         abilities: msg.abilities,
+        assignedTarget: msg.assignedTarget ?? null,
         ...(msg.mates ? { mates: msg.mates } : {}),
+        ...(roleChanged
+          ? { nightAbility: null, nightTarget: null, nightTarget2: null }
+          : {}),
       };
       return { own };
     }
@@ -203,7 +222,17 @@ export function reduce(state: StoreState, msg: ServerMessage): Partial<StoreStat
             ? state.game.accusedSeat
             : null,
       };
-      return own ? { game, own } : { game };
+      const patch: Partial<StoreState> = own ? { game, own } : { game };
+      // Chat-context flags (§6.4): the prisoner/séance tabs are NIGHT-scoped, so
+      // they clear the moment we leave NIGHT. The blackmail silence is applied at
+      // night for the FOLLOWING day, so it clears when a new NIGHT begins.
+      if (msg.phase !== 'NIGHT') {
+        patch.jailedThisNight = false;
+        patch.seancePending = false;
+      } else {
+        patch.silencedToday = false;
+      }
+      return patch;
     }
 
     case 'chat_message': {
@@ -277,10 +306,25 @@ export function reduce(state: StoreState, msg: ServerMessage): Partial<StoreStat
         payload,
         dayNumber: state.game?.dayNumber ?? 0,
       };
-      return { privateLog: [...state.privateLog, entry] };
+      const patch: Partial<StoreState> = {
+        privateLog: [...state.privateLog, entry],
+      };
+      // Chat-context flags (§6.4): a `jailed` result means THIS seat is tonight's
+      // prisoner (jail tab); a `blackmailed` result silences this seat in the
+      // following day chat (day-chat input disabled). Both are cleared by the
+      // phase machine (jailed on leaving NIGHT, silenced on entering NIGHT).
+      if (payload.kind === 'jailed') patch.jailedThisNight = true;
+      if (payload.kind === 'blackmailed') patch.silencedToday = true;
+      return patch;
     }
 
     case 'day_ability_ack': {
+      // Séance ack: the engine confirms a living Medium opened a séance for the
+      // coming night (apply.ts handleDayAbility). Grant the `dead` chat tab for
+      // that NIGHT; cleared when the phase leaves NIGHT. This needs no `own`.
+      if (msg.ability === 'seance') {
+        return { seancePending: true };
+      }
       if (!state.own) return {};
       // Acknowledge jailor jail-select / mayor reveal.
       if (msg.ability === 'jail') {

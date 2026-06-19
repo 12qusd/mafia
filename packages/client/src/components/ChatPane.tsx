@@ -6,12 +6,13 @@
  */
 
 import { useEffect, useMemo, useRef, useState } from 'react';
-import { type ChatChannel } from '@nocturne/shared';
+import { type ChatChannel, JAILOR_CHAT_ALIAS } from '@nocturne/shared';
 import { useStore } from '../store/store.js';
 import { GAME } from '../lib/strings-extra.js';
 import { parseChatInput, whisperPrefix } from '../lib/whisper.js';
 import { maskProfanity } from '../lib/profanity.js';
 import { sanitizeInline } from '../lib/sanitize.js';
+import type { MuteReason } from '../lib/channels.js';
 
 const CHANNEL_LABEL: Record<ChatChannel, string> = {
   lobby: GAME.channelLobby,
@@ -35,15 +36,54 @@ export interface ChatPaneProps {
   seatNameFor: (seat: number) => string;
   /** Total seat count for whisper target validation (game only). */
   seatCount?: number;
-  /** Whether the local seat may type at all. */
+  /**
+   * Coarse gate: whether the local seat may type at all (used by the lobby,
+   * which has a single channel). In-game, prefer `canSpeakInChannel` for the
+   * per-tab decision; this stays as the fallback when that prop is absent.
+   */
   canSpeak: boolean;
+  /**
+   * Per-channel speak gate (game only). When provided, the active tab's value
+   * decides whether the input is enabled, so switching tabs re-evaluates the
+   * voice (e.g. a living seat may speak in `day` but not in `dead`).
+   */
+  canSpeakInChannel?: (channel: ChatChannel) => boolean;
+  /**
+   * Why the local seat cannot speak in a channel (game only) — selects the
+   * disabled-input copy. Returns null when the seat CAN speak there.
+   */
+  muteReasonFor?: (channel: ChatChannel) => MuteReason | null;
   /** Whisper-meta events to interleave in the day channel (game only). */
   showWhisperMeta?: boolean;
 }
 
+/** Context-aware copy for a disabled chat input (BUILD_SPEC §13.1). */
+function mutedPlaceholder(reason: MuteReason): string {
+  switch (reason) {
+    case 'spectator':
+      return GAME.chatMutedSpectator;
+    case 'silenced':
+      return GAME.chatSilenced;
+    case 'dead':
+      return GAME.chatDeadOnly;
+    case 'phase':
+    default:
+      return GAME.chatMutedPhase;
+  }
+}
+
 export function ChatPane(props: ChatPaneProps) {
-  const { channels, activeDefault, onSend, onWhisper, seatNameFor, seatCount = 0, canSpeak } =
-    props;
+  const {
+    channels,
+    activeDefault,
+    onSend,
+    onWhisper,
+    seatNameFor,
+    seatCount = 0,
+    canSpeak,
+    canSpeakInChannel,
+    muteReasonFor,
+  } = props;
   const allChat = useStore((s) => s.chat);
   const whisperMeta = useStore((s) => s.whisperMeta);
   const settings = useStore((s) => s.settings);
@@ -62,6 +102,12 @@ export function ChatPane(props: ChatPaneProps) {
     const filtered = allChat.filter((l) => l.channel === active);
     return filtered;
   }, [allChat, active]);
+
+  // Voice for the CURRENT tab: prefer the per-channel gate (game), falling back
+  // to the coarse `canSpeak` (lobby). The placeholder reflects the real reason.
+  const activeCanSpeak = canSpeakInChannel ? canSpeakInChannel(active) : canSpeak;
+  const mutedReason = muteReasonFor ? muteReasonFor(active) : canSpeak ? null : 'spectator';
+  const mutedText = mutedReason ? mutedPlaceholder(mutedReason) : GAME.chatMutedSpectator;
 
   // Auto-scroll to newest.
   useEffect(() => {
@@ -123,7 +169,9 @@ export function ChatPane(props: ChatPaneProps) {
         {lines.length === 0 && <div className="faint">…</div>}
         {lines.map((l) => {
           const fromLabel =
-            l.from === 'Jailor' ? 'Jailor' : sanitizeInline(seatNameFor(l.from));
+            l.from === JAILOR_CHAT_ALIAS
+              ? JAILOR_CHAT_ALIAS
+              : sanitizeInline(seatNameFor(l.from));
           const isWhisper = l.channel === 'whisper';
           return (
             <div className={`chat-line ${isWhisper ? 'chat-whisper' : ''}`} key={l.id}>
@@ -171,15 +219,25 @@ export function ChatPane(props: ChatPaneProps) {
         <input
           className="grow"
           value={text}
-          disabled={!canSpeak}
+          disabled={!activeCanSpeak}
           maxLength={256}
-          placeholder={canSpeak ? GAME.chatPlaceholder : GAME.chatMutedSpectator}
+          placeholder={
+            activeCanSpeak
+              ? active === 'dead'
+                ? GAME.chatPlaceholderDead
+                : GAME.chatPlaceholder
+              : mutedText
+          }
           onChange={(e) => setText(e.target.value)}
           onKeyDown={(e) => {
             if (e.key === 'Enter') submit();
           }}
         />
-        <button className="btn" disabled={!canSpeak || text.trim().length === 0} onClick={submit}>
+        <button
+          className="btn"
+          disabled={!activeCanSpeak || text.trim().length === 0}
+          onClick={submit}
+        >
           Send
         </button>
       </div>

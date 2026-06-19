@@ -61,6 +61,19 @@ export function OwnPanel({
         <div className="role-desc" style={{ marginTop: 0 }}>
           {def.winHint}
         </div>
+        {/* gap A11: an Executioner's MARK / Guardian Angel's CHARGE — the seat
+            this role is privately bound to. Shown prominently on the card. */}
+        {own.assignedTarget !== null && (
+          <div className="ability-row">
+            <span className="muted">
+              {own.role === 'EXECUTIONER'
+                ? GAME.yourMark(boundLabel(seats, own.assignedTarget))
+                : own.role === 'GUARDIAN_ANGEL'
+                  ? GAME.yourCharge(boundLabel(seats, own.assignedTarget))
+                  : GAME.boundTo(boundLabel(seats, own.assignedTarget))}
+            </span>
+          </div>
+        )}
         {own.mates && own.mates.length > 0 && (
           <div className="ability-row">
             <span className="muted">{GAME.mates}</span>
@@ -120,11 +133,27 @@ function AbilityRow({ ability }: { ability: AbilityInfo }) {
   );
 }
 
-function nightAbilityFor(own: ReturnType<typeof useStore.getState>['own']): AbilityInfo | null {
-  if (!own) return null;
-  return own.abilities.find((a) => a.timing === 'night') ?? null;
+/**
+ * Self-toggle night abilities that the engine ACTIVATES on a `null`-target
+ * submission (it does NOT treat their null as a cancel). Mirrors the allow-list
+ * in `engine/src/apply.ts#handleNightAction`. For these, `sendNightAction(id,
+ * null)` arms the toggle for the night; there is NO un-toggle frame (a second
+ * null would merely re-arm), so standing down means submitting a DIFFERENT
+ * ability or simply leaving it armed.
+ */
+const SELF_TOGGLE_IDS = new Set(['vest', 'alert', 'spy', 'ignite', 'divine']);
+
+/** A bound-target (mark/charge) seat's display label. */
+function boundLabel(seats: PublicSeat[], seat: number): string {
+  return `${seat + 1} · ${sanitizeInline(seats.find((s) => s.seat === seat)?.name ?? `#${seat + 1}`)}`;
 }
 
+/**
+ * Night-action area. Iterates the seat's REAL night abilities (gaps A1/A10: a
+ * role may have MORE than one — e.g. the Arsonist's `douse` picker + `ignite`
+ * toggle) and renders the correct control PER ability from its `targetDomain`
+ * and id. Replaces the old single-ability `nightAbilityFor` + living-only grid.
+ */
 function NightAction({
   own,
   seats,
@@ -132,21 +161,31 @@ function NightAction({
   own: NonNullable<ReturnType<typeof useStore.getState>['own']>;
   seats: PublicSeat[];
 }) {
-  const ability = nightAbilityFor(own);
-  if (!ability) {
+  const nightAbilities = own.abilities.filter((a) => a.timing === 'night');
+  if (nightAbilities.length === 0) {
     return (
       <div className="panel panel-pad">
         <span className="muted">{GAME.noNightAction}</span>
       </div>
     );
   }
+
+  // gap A2/C4: the Jailor never gets a free target grid at night. Their only
+  // night move is to execute (or spare) the prisoner jailed during the day.
+  if (own.role === 'JAILOR') {
+    const exec = nightAbilities.find((a) => a.id === 'kill_jailor') ?? null;
+    return <JailorCell own={own} seats={seats} exec={exec} />;
+  }
+
   // Two-target night actions share one picker (first target = `target`, second =
   // `target2`). The Witch's `witch_control` seizes a PUPPET and steers it onto a
   // VICTIM; the Transporter's `transport` swaps two HOUSES. Only the labels differ.
-  // Every other role keeps the single-target picker below.
-  if (ability.id === 'witch_control' || ability.id === 'transport') {
+  const twoTarget = nightAbilities.find(
+    (a) => a.id === 'witch_control' || a.id === 'transport',
+  );
+  if (twoTarget) {
     const labels =
-      ability.id === 'transport'
+      twoTarget.id === 'transport'
         ? {
             first: GAME.transportFirst,
             second: GAME.transportSecond,
@@ -163,31 +202,127 @@ function NightAction({
             secondPending: GAME.witchVictimPending,
             needFirst: GAME.witchNeedPuppet,
           };
-    return <TwoTargetAction own={own} seats={seats} ability={ability} labels={labels} />;
+    return <TwoTargetAction own={own} seats={seats} ability={twoTarget} labels={labels} />;
   }
 
-  const def = getRole(own.role);
-  // Legal targets: living seats, excluding self unless the role may self-target.
-  const allowSelf = def.targetScope === 'others_or_self' || def.targetScope === 'self';
-  const selfOnly = def.targetScope === 'self';
-  const targets = seats.filter(
-    (s) => s.alive && (selfOnly ? s.seat === own.seat : s.seat !== own.seat || allowSelf),
-  );
-
-  function choose(seat: number | null) {
-    useStore.getState().setNightSelection(ability!.id, seat);
-    sendNightAction(ability!.id, seat);
-  }
-
+  // gap A1/A10: one control PER night ability. Submitting any one of them sets
+  // the night intent (last submission wins — they are mutually exclusive per
+  // night), so each control reflects whether it is the currently-selected one.
   return (
     <div className="panel panel-pad stack">
+      {nightAbilities.map((ability) => (
+        <AbilityControl key={ability.id} own={own} seats={seats} ability={ability} />
+      ))}
+    </div>
+  );
+}
+
+/**
+ * One night ability's control, chosen by `targetDomain`/id:
+ *  - self/none toggles (alert, vest, ignite, spy, divine) → an ON/OFF arm button;
+ *  - the Guardian Angel's `shield` → a single button bound to the CHARGE;
+ *  - `dead`-domain abilities (autopsy, remember, disguise, retribute) → a grid of
+ *    DEAD seats;
+ *  - everything else → the standard living-seat grid.
+ */
+function AbilityControl({
+  own,
+  seats,
+  ability,
+}: {
+  own: NonNullable<ReturnType<typeof useStore.getState>['own']>;
+  seats: PublicSeat[];
+  ability: AbilityInfo;
+}) {
+  const selectedHere = own.nightAbility === ability.id;
+  const usesLabel =
+    ability.usesRemaining === null ? null : GAME.usesRemaining(ability.usesRemaining);
+
+  function choose(seat: number | null) {
+    useStore.getState().setNightSelection(ability.id, seat);
+    sendNightAction(ability.id, seat);
+  }
+
+  // gap A3/A4/H5: self/none toggles render an explicit ON/OFF button, NOT a grid.
+  if (SELF_TOGGLE_IDS.has(ability.id) || ability.targetDomain === 'self' || ability.targetDomain === 'none') {
+    const armed = selectedHere;
+    return (
+      <div className="stack" style={{ gap: 4 }}>
+        <div className="spread">
+          <strong>{GAME.tonightVerb(ability.verb)}</strong>
+          {usesLabel && <span className="muted">{usesLabel}</span>}
+        </div>
+        <button
+          className={`btn btn-sm ${armed ? 'btn-active' : ''}`}
+          // Arming sends a null-target submission, which the engine ACTIVATES for
+          // these ids (it does NOT treat null as a cancel). There is no un-toggle
+          // frame, so we only ARM here; standing down means choosing another move.
+          onClick={() => {
+            if (armed) return;
+            choose(null);
+          }}
+        >
+          {armed
+            ? `${ability.verb} ✓`
+            : `${GAME.selfToggleArm(ability.verb)}${usesLabel ? ` (${usesLabel})` : ''}`}
+        </button>
+        {armed ? (
+          <span className="faint">
+            {GAME.selfToggleArmed(ability.verb)} {GAME.selfToggleNote}
+          </span>
+        ) : (
+          <span className="faint">{GAME.selfToggleNote}</span>
+        )}
+      </div>
+    );
+  }
+
+  // gap H2: the Guardian Angel's `shield` is restricted to its CHARGE.
+  if (ability.id === 'shield' && own.assignedTarget !== null) {
+    const charge = own.assignedTarget;
+    const armed = selectedHere && own.nightTarget === charge;
+    return (
+      <div className="stack" style={{ gap: 4 }}>
+        <div className="spread">
+          <strong>{GAME.tonightVerb(ability.verb)}</strong>
+          {usesLabel && <span className="muted">{usesLabel}</span>}
+        </div>
+        <span className="faint">{GAME.yourCharge(boundLabel(seats, charge))}</span>
+        <button
+          className={`btn btn-sm ${armed ? 'btn-active' : ''}`}
+          onClick={() => choose(armed ? null : charge)}
+        >
+          {GAME.shieldCharge(boundLabel(seats, charge))}
+        </button>
+        {armed && <span className="muted">{GAME.chargeShielded(boundLabel(seats, charge))}</span>}
+      </div>
+    );
+  }
+
+  // gap A7/A8/A9: dead-grave targets — the grid lists DEAD seats, not living.
+  if (ability.targetDomain === 'dead') {
+    return <DeadTargetGrid own={own} seats={seats} ability={ability} choose={choose} />;
+  }
+
+  // Default: the living-seat grid (Doctor heal, Sheriff check, Vigilante shoot…).
+  const def = getRole(own.role);
+  const allowSelf = def.targetScope === 'others_or_self' || def.targetScope === 'self';
+  const selfOnly = def.targetScope === 'self';
+  const targets = seats.filter((s) => {
+    if (!s.alive) return false;
+    if (ability.targetDomain === 'living_or_dead') return true;
+    return selfOnly ? s.seat === own.seat : s.seat !== own.seat || allowSelf;
+  });
+
+  return (
+    <div className="stack" style={{ gap: 4 }}>
       <div className="spread">
-        <strong>{GAME.nightAction}</strong>
+        <strong>{GAME.tonightVerb(ability.verb)}</strong>
         <span className="muted">{ability.name}</span>
       </div>
-      <div className="target-grid">
+      <div className="target-grid" role="group" aria-label={ability.verb}>
         {targets.map((t) => {
-          const selected = own.nightTarget === t.seat;
+          const selected = selectedHere && own.nightTarget === t.seat;
           return (
             <button
               key={t.seat}
@@ -200,7 +335,7 @@ function NightAction({
           );
         })}
       </div>
-      {own.nightTarget !== null ? (
+      {selectedHere && own.nightTarget !== null ? (
         <div className="spread">
           <span className="muted">
             {GAME.targetSet(
@@ -213,6 +348,144 @@ function NightAction({
         </div>
       ) : (
         <span className="faint">{GAME.actionLocked}</span>
+      )}
+    </div>
+  );
+}
+
+/**
+ * gap A7/A8/A9: a grid of DEAD seats for grave-targeting abilities. The
+ * Retributionist's `retribute` (Revive) may only raise a fallen TOWN seat, so we
+ * restrict the grid to dead seats whose REVEALED role/faction is Town when that
+ * is known (the engine validates regardless); otherwise we list all dead with a
+ * hint. Other grave abilities (autopsy/remember/disguise) list any dead seat.
+ */
+function DeadTargetGrid({
+  own,
+  seats,
+  ability,
+  choose,
+}: {
+  own: NonNullable<ReturnType<typeof useStore.getState>['own']>;
+  seats: PublicSeat[];
+  ability: AbilityInfo;
+  choose: (seat: number | null) => void;
+}) {
+  const dead = seats.filter((s) => !s.alive);
+  const isRetribute = ability.id === 'retribute';
+  // Dead seats with a known Town reveal — the only legal retribution targets.
+  const knownTownDead = dead.filter((s) => s.faction === 'TOWN');
+  const targets = isRetribute && knownTownDead.length > 0 ? knownTownDead : dead;
+  const selectedHere = own.nightAbility === ability.id;
+
+  return (
+    <div className="stack" style={{ gap: 4 }}>
+      <div className="spread">
+        <strong>{GAME.tonightVerb(ability.verb)}</strong>
+        <span className="muted">{ability.name}</span>
+      </div>
+      {targets.length === 0 ? (
+        <span className="faint">{GAME.noDeadTargets}</span>
+      ) : (
+        <>
+          <span className="faint">{GAME.deadTargetPrompt(ability.verb)}</span>
+          <div className="target-grid" role="group" aria-label={ability.verb}>
+            {targets.map((t) => {
+              const selected = selectedHere && own.nightTarget === t.seat;
+              const revealed = t.role ? ` · ${getRole(t.role).name}` : '';
+              return (
+                <button
+                  key={t.seat}
+                  className={`btn btn-sm target-opt ${selected ? 'btn-active' : ''}`}
+                  onClick={() => choose(selected ? null : t.seat)}
+                >
+                  {t.seat + 1} · {sanitizeInline(t.name)}
+                  {revealed}
+                </button>
+              );
+            })}
+          </div>
+          {isRetribute && knownTownDead.length === 0 && (
+            <span className="faint">{GAME.retributeTownHint}</span>
+          )}
+        </>
+      )}
+      {selectedHere && own.nightTarget !== null && (
+        <div className="spread">
+          <span className="muted">
+            {GAME.targetSet(
+              sanitizeInline(seats.find((s) => s.seat === own.nightTarget)?.name ?? ''),
+            )}
+          </span>
+          <button className="btn btn-sm btn-ghost" onClick={() => choose(null)}>
+            {GAME.cancelAction}
+          </button>
+        </div>
+      )}
+    </div>
+  );
+}
+
+/**
+ * gap A2/C4: the Jailor's NIGHT panel. No free target grid — only the cell. If a
+ * prisoner was jailed during the day (`own.jailTarget`), offer "Execute {name}"
+ * (`sendNightAction('kill_jailor', prisoner)`) and "Spare" (a cancel: the engine
+ * treats a null-target `kill_jailor` as a cancellation, which is exactly the
+ * spare). If no one is jailed, the Jailor cannot execute tonight.
+ */
+function JailorCell({
+  own,
+  seats,
+  exec,
+}: {
+  own: NonNullable<ReturnType<typeof useStore.getState>['own']>;
+  seats: PublicSeat[];
+  exec: AbilityInfo | null;
+}) {
+  const prisoner = own.jailTarget;
+  const executionsLeft = exec?.usesRemaining ?? null;
+  const noExecutions = executionsLeft !== null && executionsLeft <= 0;
+  const willExecute = own.nightAbility === 'kill_jailor' && own.nightTarget === prisoner;
+
+  return (
+    <div className="panel panel-pad stack">
+      <div className="spread">
+        <strong>{GAME.cellTitle}</strong>
+        {executionsLeft !== null && (
+          <span className="muted">{GAME.executionsLeft(executionsLeft)}</span>
+        )}
+      </div>
+      {prisoner === null ? (
+        <span className="muted">{GAME.cellNoPrisoner}</span>
+      ) : (
+        <>
+          <span className="muted">{GAME.cellPrisoner(boundLabel(seats, prisoner))}</span>
+          {noExecutions ? (
+            <span className="faint">{GAME.executionsSpent}</span>
+          ) : (
+            <div className="spread">
+              <button
+                className={`btn btn-sm ${willExecute ? 'btn-active' : 'btn-danger'}`}
+                onClick={() => {
+                  useStore.getState().setNightSelection('kill_jailor', prisoner);
+                  sendNightAction('kill_jailor', prisoner);
+                }}
+              >
+                {GAME.cellExecute(boundLabel(seats, prisoner))}
+              </button>
+              <button
+                className="btn btn-sm btn-ghost"
+                onClick={() => {
+                  // Spare: a null-target kill_jailor is a cancel in the engine.
+                  useStore.getState().setNightSelection(null, null);
+                  sendNightAction('kill_jailor', null);
+                }}
+              >
+                {GAME.cellSpare}
+              </button>
+            </div>
+          )}
+        </>
       )}
     </div>
   );
@@ -359,6 +632,11 @@ function DayAbilities({
   phase: Phase;
 }) {
   const def = getRole(own.role);
+  // gap A5/A7: the Medium's séance is a DAY ability (`timing==='day'`) — detect
+  // it from the REAL ability list, NOT `def.dayAction`. It opens a one-night
+  // séance for the coming night (`sendDayAbility('seance')`); the engine rejects
+  // it on Day 0.
+  const seance = own.abilities.find((a) => a.id === 'seance' && a.timing === 'day') ?? null;
 
   if (def.dayAction === 'jail' && phase !== 'DAY_0') {
     const targets = seats.filter((s) => s.alive && s.seat !== own.seat);
@@ -409,19 +687,50 @@ function DayAbilities({
     );
   }
 
+  // gap A5: Medium séance (the engine forbids opening one on Day 0).
+  if (seance && phase !== 'DAY_0') {
+    return <SeanceControl ability={seance} />;
+  }
+
   return null;
+}
+
+/**
+ * gap A5: the Medium's séance opener. A DAY ability that opens a séance for the
+ * coming night so the Medium can speak with the dead. Fires
+ * `sendDayAbility('seance')`; the engine consumes a use when the séance night
+ * resolves and acks it (`day_ability_ack`).
+ */
+function SeanceControl({ ability }: { ability: AbilityInfo }) {
+  const label =
+    ability.usesRemaining === null
+      ? GAME.seanceOpenUnlimited
+      : GAME.seanceOpen(ability.usesRemaining);
+  const spent = ability.usesRemaining !== null && ability.usesRemaining <= 0;
+  return (
+    <div className="panel panel-pad stack">
+      <strong>{ability.name}</strong>
+      <button className="btn btn-primary" disabled={spent} onClick={() => sendDayAbility('seance')}>
+        {label}
+      </button>
+      <span className="faint">{GAME.seanceOpened}</span>
+    </div>
+  );
 }
 
 function canKeepDeathNote(role: string): boolean {
   // The SK and the mafia faction killer maintain a death note (§6.4). The Forger
   // (batch A) uses the same death-note field to prepare the counterfeit will it
-  // plants. We surface the editor to plausible holders; the server is
-  // authoritative on acceptance.
+  // plants. gap H4: the Triad killers (Enforcer = Mafioso analogue, Dragon Head
+  // = Godfather analogue) also attribute death notes. We surface the editor to
+  // plausible holders; the server is authoritative on acceptance.
   return (
     role === 'SERIAL_KILLER' ||
     role === 'MAFIOSO' ||
     role === 'GODFATHER' ||
-    role === 'FORGER'
+    role === 'FORGER' ||
+    role === 'ENFORCER' ||
+    role === 'DRAGON_HEAD'
   );
 }
 

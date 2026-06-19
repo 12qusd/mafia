@@ -19,6 +19,21 @@ export interface ChannelContext {
   isMafia: boolean;
   /** Whether the local seat is a member of the Triad (second evil faction). */
   isTriad: boolean;
+  /** Whether the local seat is the Jailor (drives the jailor side of the cell). */
+  isJailor: boolean;
+  /** Whether the local seat is a Medium (drives the living-Medium séance tab). */
+  isMedium: boolean;
+  /**
+   * The Jailor's selected prisoner for the coming night (`own.jailTarget`), or
+   * null. Non-null at NIGHT means a jailing is in effect for the Jailor.
+   */
+  jailTarget: number | null;
+  /** True when the local seat is tonight's prisoner (a `jailed` result arrived). */
+  jailedThisNight: boolean;
+  /** True when a living Medium opened a séance for this night (ack'd). */
+  seancePending: boolean;
+  /** True when the local seat is silenced in day chat (a `blackmailed` result). */
+  silencedToday: boolean;
   chat: ChatLine[];
 }
 
@@ -49,12 +64,22 @@ export function entitledChannels(ctx: ChannelContext): ChatChannel[] {
   // Triad: the Mafia channel's mirror for the second evil faction.
   if (seen.has('triad') || (ctx.isTriad && ctx.phase === 'NIGHT')) out.push('triad');
 
-  // Jail: only when jail traffic has arrived (jailor or prisoner).
-  if (seen.has('jail')) out.push('jail');
+  // Jail: at NIGHT for the two parties of a jailing — the Jailor (once a
+  // prisoner is set) and that prisoner — so EITHER side can open the cell before
+  // a single line has been spoken. Also shown once jail traffic has arrived.
+  const jailorTonight = ctx.isJailor && ctx.jailTarget !== null;
+  if (
+    seen.has('jail') ||
+    (ctx.phase === 'NIGHT' && ctx.alive && (jailorTonight || ctx.jailedThisNight))
+  ) {
+    out.push('jail');
+  }
 
   // Dead: for dead seats / spectators-with-dead (server-gated), shown when the
-  // seat is dead or has received dead traffic.
-  if (seen.has('dead') || (!ctx.alive && !ctx.spectator)) out.push('dead');
+  // seat is dead or has received dead traffic. A LIVING Medium who opened a
+  // séance also gets it at NIGHT (séance: the dead hear them this night).
+  const seanceTonight = ctx.alive && ctx.isMedium && ctx.seancePending && ctx.phase === 'NIGHT';
+  if (seen.has('dead') || (!ctx.alive && !ctx.spectator) || seanceTonight) out.push('dead');
 
   // Whisper: shown if any whisper has arrived.
   if (seen.has('whisper')) out.push('whisper');
@@ -67,19 +92,54 @@ export function canSpeakIn(channel: ChatChannel, ctx: ChannelContext): boolean {
   if (ctx.spectator) return false;
   switch (channel) {
     case 'day':
-      // Living seats write during day phases.
-      return ctx.alive && DAY_PHASES.has(ctx.phase);
+      // Living seats write during day phases — unless silenced (blackmailed).
+      return ctx.alive && DAY_PHASES.has(ctx.phase) && !ctx.silencedToday;
     case 'mafia':
       return ctx.alive && ctx.isMafia && ctx.phase === 'NIGHT';
     case 'triad':
       return ctx.alive && ctx.isTriad && ctx.phase === 'NIGHT';
     case 'jail':
-      return ctx.phase === 'NIGHT';
+      // Only the two parties of an active jailing speak in the cell, at NIGHT.
+      return (
+        ctx.alive &&
+        ctx.phase === 'NIGHT' &&
+        ((ctx.isJailor && ctx.jailTarget !== null) || ctx.jailedThisNight)
+      );
     case 'dead':
-      return !ctx.alive;
+      // The dead always; a living Medium only on their séance night.
+      return !ctx.alive || (ctx.isMedium && ctx.seancePending && ctx.phase === 'NIGHT');
     case 'whisper':
-      return ctx.alive && DAY_PHASES.has(ctx.phase);
+      return ctx.alive && DAY_PHASES.has(ctx.phase) && !ctx.silencedToday;
     default:
       return false;
   }
+}
+
+/**
+ * Why the local seat cannot write in `channel` right now — used to pick the
+ * correct disabled-input copy in the ChatPane (BUILD_SPEC §13.1). Returns null
+ * when the seat CAN speak. The reason is the most specific true cause:
+ *  - 'spectator'  → an onlooker (never speaks);
+ *  - 'silenced'   → blackmailed in day chat this cycle;
+ *  - 'dead'       → a dead seat looking at a non-dead channel;
+ *  - 'phase'      → living, but this channel/phase grants no voice right now.
+ */
+export type MuteReason = 'spectator' | 'silenced' | 'dead' | 'phase';
+
+export function muteReasonFor(channel: ChatChannel, ctx: ChannelContext): MuteReason | null {
+  if (canSpeakIn(channel, ctx)) return null;
+  if (ctx.spectator) return 'spectator';
+  // A silenced (blackmailed) living seat in a day-writable channel.
+  if (
+    ctx.alive &&
+    ctx.silencedToday &&
+    (channel === 'day' || channel === 'whisper') &&
+    DAY_PHASES.has(ctx.phase)
+  ) {
+    return 'silenced';
+  }
+  // Dead, looking at a channel that is not the dead channel.
+  if (!ctx.alive && channel !== 'dead') return 'dead';
+  // Otherwise: a living seat with no voice in this channel/phase right now.
+  return 'phase';
 }

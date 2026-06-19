@@ -25,6 +25,9 @@ function baseState(): StoreState {
     chat: [],
     whisperMeta: [],
     privateLog: [],
+    jailedThisNight: false,
+    seancePending: false,
+    silencedToday: false,
     toasts: [],
     debug: { state: null, traces: [], events: [] },
   };
@@ -72,6 +75,71 @@ describe('reduce: game lifecycle', () => {
     expect(s.own?.role).toBe('SHERIFF');
     expect(s.own?.faction).toBe('TOWN');
     expect(s.own?.abilities[0]?.id).toBe('investigate');
+    // No bound target → assignedTarget defaults to null.
+    expect(s.own?.assignedTarget).toBeNull();
+  });
+
+  it('your_role stores assignedTarget (Executioner mark / GA charge)', () => {
+    let s = baseState();
+    s = apply(s, {
+      v: PROTOCOL_VERSION,
+      type: 'your_role',
+      role: 'EXECUTIONER',
+      faction: 'NEUTRAL_BENIGN',
+      abilities: [],
+      assignedTarget: 3,
+    });
+    expect(s.own?.assignedTarget).toBe(3);
+  });
+
+  it('a RE-EMITTED your_role on role mutation replaces role/abilities and drops stale mates + night intent', () => {
+    let s = baseState();
+    // First card: a Guardian Angel with a charge and a pending night selection.
+    s = apply(s, {
+      v: PROTOCOL_VERSION,
+      type: 'your_role',
+      role: 'GUARDIAN_ANGEL',
+      faction: 'NEUTRAL_BENIGN',
+      abilities: [{ id: 'shield', name: 'Watch over', timing: 'night', usesRemaining: null, targetDomain: 'living', verb: 'Shield' }],
+      assignedTarget: 2,
+    });
+    s.own = { ...s.own!, nightAbility: 'shield', nightTarget: 2, nightTarget2: null };
+
+    // Charge dies → GA becomes a Survivor; the card is resent without a charge.
+    s = apply(s, {
+      v: PROTOCOL_VERSION,
+      type: 'your_role',
+      role: 'SURVIVOR',
+      faction: 'NEUTRAL_BENIGN',
+      abilities: [{ id: 'vest', name: 'Vest', timing: 'night', usesRemaining: 1, targetDomain: 'self', verb: 'Vest' }],
+    });
+    expect(s.own?.role).toBe('SURVIVOR');
+    expect(s.own?.abilities[0]?.id).toBe('vest');
+    expect(s.own?.assignedTarget).toBeNull();
+    // Stale night intent referencing the old ability is cleared on role change.
+    expect(s.own?.nightAbility).toBeNull();
+    expect(s.own?.nightTarget).toBeNull();
+  });
+
+  it('a re-emitted your_role without mates drops a prior roster', () => {
+    let s = baseState();
+    s = apply(s, {
+      v: PROTOCOL_VERSION,
+      type: 'your_role',
+      role: 'MAFIOSO',
+      faction: 'MAFIA',
+      abilities: [],
+      mates: [1, 2],
+    });
+    expect(s.own?.mates).toEqual([1, 2]);
+    s = apply(s, {
+      v: PROTOCOL_VERSION,
+      type: 'your_role',
+      role: 'GODFATHER',
+      faction: 'MAFIA',
+      abilities: [],
+    });
+    expect(s.own?.mates).toBeUndefined();
   });
 });
 

@@ -35,6 +35,7 @@ function ownFor(role: RoleId, faction: Faction, ability: AbilityInfo): OwnState 
     role,
     faction,
     abilities: [ability],
+    assignedTarget: null,
     nightTarget: null,
     nightTarget2: null,
     nightAbility: null,

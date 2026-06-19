@@ -85,6 +85,9 @@ const initialState: StoreState = {
   chat: [],
   whisperMeta: [],
   privateLog: [],
+  jailedThisNight: false,
+  seancePending: false,
+  silencedToday: false,
   toasts: [],
   debug: emptyDebug(),
 };
@@ -139,6 +142,9 @@ export const useStore = create<Store>((set, get) => ({
       chat: [],
       whisperMeta: [],
       privateLog: [],
+      jailedThisNight: false,
+      seancePending: false,
+      silencedToday: false,
       debug: emptyDebug(),
     });
   },

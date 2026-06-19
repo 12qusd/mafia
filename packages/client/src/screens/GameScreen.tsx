@@ -14,7 +14,7 @@ import { useNavigate } from 'react-router-dom';
 import { getRole, type ChatChannel } from '@nocturne/shared';
 import { strings } from '@nocturne/shared';
 import { useStore } from '../store/store.js';
-import { entitledChannels, canSpeakIn } from '../lib/channels.js';
+import { entitledChannels, canSpeakIn, muteReasonFor, type ChannelContext } from '../lib/channels.js';
 import { GAME } from '../lib/strings-extra.js';
 import { sanitizeInline } from '../lib/sanitize.js';
 import { PhaseBanner } from '../components/PhaseBanner.js';
@@ -39,6 +39,9 @@ export function GameScreen() {
   const connection = useStore((s) => s.connection);
   const testMode = useStore((s) => s.lobby?.testMode ?? false);
   const isAdmin = useStore((s) => s.me?.isAdmin ?? false);
+  const jailedThisNight = useStore((s) => s.jailedThisNight);
+  const seancePending = useStore((s) => s.seancePending);
+  const silencedToday = useStore((s) => s.silencedToday);
 
   const seatNameFor = useMemo(
     () => (seat: number) =>
@@ -64,19 +67,38 @@ export function GameScreen() {
   const spectator = game.spectator || !own;
   const isMafia = own?.faction === 'MAFIA' || (own ? getRole(own.role).faction === 'MAFIA' : false);
   const isTriad = own?.faction === 'TRIAD' || (own ? getRole(own.role).faction === 'TRIAD' : false);
+  const isJailor = own?.role === 'JAILOR';
+  const isMedium = own?.role === 'MEDIUM';
 
-  const channels = entitledChannels({
+  // Single source of truth for the channel entitlements/speak gates (§6.4).
+  const ctx: ChannelContext = {
     phase: game.phase,
     alive,
     spectator,
     isMafia,
     isTriad,
+    isJailor,
+    isMedium,
+    jailTarget: own?.jailTarget ?? null,
+    jailedThisNight,
+    seancePending,
+    silencedToday,
     chat,
-  });
+  };
+
+  const channels = entitledChannels(ctx);
   // Always offer at least the day channel; spectators read it.
   const tabChannels: ChatChannel[] = channels.length ? channels : ['day'];
-  const activeDefault: ChatChannel =
-    game.phase === 'NIGHT' && alive && isMafia
+  // Default to the most relevant tab for the current context: the cell for the
+  // jailor/prisoner at night, the mafia/triad room for an evil seat at night,
+  // otherwise the town day channel.
+  const jailDefault =
+    game.phase === 'NIGHT' &&
+    alive &&
+    ((isJailor && (own?.jailTarget ?? null) !== null) || jailedThisNight);
+  const activeDefault: ChatChannel = jailDefault
+    ? 'jail'
+    : game.phase === 'NIGHT' && alive && isMafia
       ? 'mafia'
       : game.phase === 'NIGHT' && alive && isTriad
         ? 'triad'
@@ -84,9 +106,7 @@ export function GameScreen() {
 
   // Can the local seat speak in the currently relevant context? The ChatPane
   // decides per-channel; we pass a coarse gate too.
-  const speakAnywhere = tabChannels.some((ch) =>
-    canSpeakIn(ch, { phase: game.phase, alive, spectator, isMafia, isTriad, chat }),
-  );
+  const speakAnywhere = tabChannels.some((ch) => canSpeakIn(ch, ctx));
 
   return (
     <>
@@ -111,6 +131,8 @@ export function GameScreen() {
             seatCount={game.seats.length}
             seatNameFor={seatNameFor}
             canSpeak={speakAnywhere}
+            canSpeakInChannel={(ch) => canSpeakIn(ch, ctx)}
+            muteReasonFor={(ch) => muteReasonFor(ch, ctx)}
             showWhisperMeta
             onSend={(ch, text) => sendChat(ch, text)}
             onWhisper={(toSeat, text) => sendWhisper(toSeat, text)}

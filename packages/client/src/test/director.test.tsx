@@ -49,6 +49,9 @@ function baseState(): StoreState {
     chat: [],
     whisperMeta: [],
     privateLog: [],
+    jailedThisNight: false,
+    seancePending: false,
+    silencedToday: false,
     toasts: [],
     debug: { state: null, traces: [], events: [] },
   };

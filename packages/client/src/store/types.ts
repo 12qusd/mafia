@@ -116,6 +116,12 @@ export interface OwnState {
   abilities: AbilityInfo[];
   /** Mafia roster (mafia seats only). */
   mates?: number[];
+  /**
+   * The seat this role is privately bound to: an Executioner's MARK or a
+   * Guardian Angel's CHARGE (§9.2 `your_role.assignedTarget`). Null for roles
+   * without a bound target. Server-sourced only; re-sent on role mutation.
+   */
+  assignedTarget: number | null;
   /** Currently submitted night-action target (null = none/cancelled). */
   nightTarget: number | null;
   /**
@@ -218,6 +224,27 @@ export interface StoreState {
   chat: ChatLine[];
   whisperMeta: WhisperMetaLine[];
   privateLog: PrivateResultLine[];
+
+  // --- Chat/channel context flags (server-derived, §6.4) ------------------
+  /**
+   * True when a `jailed` private_result has arrived for THIS seat this night —
+   * i.e. the local seat is tonight's prisoner. Drives the `jail` chat tab for
+   * the prisoner side (the jailor side is derived from `own.jailTarget`).
+   * Cleared whenever the phase changes away from NIGHT.
+   */
+  jailedThisNight: boolean;
+  /**
+   * True after the local (living) Medium opened a séance for the coming night,
+   * confirmed by the engine's `day_ability_ack {ability:'seance'}`. Grants the
+   * `dead` chat tab to the living Medium at NIGHT. Cleared on leaving NIGHT.
+   */
+  seancePending: boolean;
+  /**
+   * True when a `blackmailed` private_result has arrived for THIS seat — the
+   * seat is silenced in the following day chat. Disables the day-chat input.
+   * Cleared on entering NIGHT (a fresh night may re-apply it).
+   */
+  silencedToday: boolean;
 
   // --- Ephemeral UI -------------------------------------------------------
   toasts: Toast[];

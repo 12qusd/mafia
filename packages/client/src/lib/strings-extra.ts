@@ -95,6 +95,10 @@ export const GAME = {
   chatPlaceholderDead: 'Whisper to the dead…',
   chatMutedSpectator: 'Onlookers cannot speak.',
   chatDeadOnly: 'You can only speak with the dead now.',
+  // Living, but no voice in this channel/phase (e.g. the town asleep at night).
+  chatMutedPhase: 'The town sleeps — there is nothing to say tonight.',
+  // Blackmailed: a hand over your mouth keeps the day's words behind your teeth.
+  chatSilenced: "You've been blackmailed — a hand over your mouth keeps you silent today.",
   whisperHint: 'Tip: /w <seat> message — or click a name to whisper.',
   whisperingTo: (label: string) => `Whispering to ${label}`,
   cancelWhisper: 'Cancel whisper',
@@ -114,6 +118,36 @@ export const GAME = {
   noNightAction: 'You have no move to make tonight. Rest, and watch.',
   actionLocked: 'Your choice is set. You may change it until dawn.',
   targetSet: (label: string) => `Set on ${label}.`,
+  // --- Per-ability night headers (gap H1): "Tonight: {verb}" ---------------
+  tonightVerb: (verb: string) => `Tonight: ${verb}`,
+  // --- Dead-target pickers (gaps A7/A8/A9): grave-targeting abilities -------
+  deadTargetPrompt: (verb: string) => `Choose a grave to ${verb.toLowerCase()}.`,
+  noDeadTargets: 'No graves to work tonight.',
+  retributeTownHint: 'Only fallen Town can answer the call.',
+  // --- Self-toggle abilities (gaps A3/A4/H5): no seat — an armed toggle -----
+  selfToggleArm: (verb: string) => `${verb} tonight`,
+  selfToggleArmed: (verb: string) => `${verb} is armed for tonight.`,
+  selfToggleNote: 'Once armed, it holds until dawn — pick another move to stand down.',
+  selfToggleStandDown: 'Stand down',
+  // --- Jailor cell (gaps A2/C4): execute or spare the night's prisoner ------
+  cellTitle: 'The cell',
+  cellPrisoner: (label: string) => `You are holding ${label}.`,
+  cellExecute: (label: string) => `Execute ${label}`,
+  cellSpare: 'Spare them',
+  cellNoPrisoner: 'No prisoner tonight — you cannot execute.',
+  executionsLeft: (n: number) => `${n} ${n === 1 ? 'execution' : 'executions'} left`,
+  executionsSpent: 'You have no executions left.',
+  // --- Guardian Angel charge (gap H2): the shield is bound to one soul ------
+  yourCharge: (label: string) => `Your charge: ${label}`,
+  shieldCharge: (label: string) => `Watch over ${label}`,
+  chargeShielded: (label: string) => `Watching over ${label}.`,
+  // --- Executioner mark / generic bound target (gap A11 role card) ---------
+  yourMark: (label: string) => `Your mark: ${label}`,
+  boundTo: (label: string) => `Bound to: ${label}`,
+  // --- Medium séance (gap A5): a DAY ability that opens a night séance ------
+  seanceOpen: (n: number) => `Open séance tonight (${n} left)`,
+  seanceOpenUnlimited: 'Open séance tonight',
+  seanceOpened: 'Your séance is open. The dead will hear you tonight.',
   // Witch (witch_control) two-target picker: the puppet whose hand she seizes,
   // and the soul she points it at. Both must be living seats.
   witchPuppet: 'Whose hand to move',
