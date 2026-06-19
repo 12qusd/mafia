@@ -27,7 +27,6 @@ import { VETERAN } from './veteran.js';
 import { TRACKER } from './tracker.js';
 import { SPY } from './spy.js';
 import { AMNESIAC } from './amnesiac.js';
-import { MEDIUM } from './medium.js';
 import { DISGUISER } from './disguiser.js';
 import { ARSONIST } from './arsonist.js';
 import { CRUSADER } from './crusader.js';
@@ -45,7 +44,6 @@ import { WITCH } from './witch.js';
 import { PIRATE } from './pirate.js';
 import { PLAGUEBEARER } from './plaguebearer.js';
 import { PESTILENCE } from './pestilence.js';
-import { RETRIBUTIONIST } from './retributionist.js';
 import { VAMPIRE } from './vampire.js';
 import { VAMPIRE_HUNTER } from './vampire_hunter.js';
 import { CULT_LEADER } from './cult_leader.js';
@@ -84,7 +82,6 @@ export {
   TRACKER,
   SPY,
   AMNESIAC,
-  MEDIUM,
   DISGUISER,
   ARSONIST,
   CRUSADER,
@@ -102,7 +99,6 @@ export {
   PIRATE,
   PLAGUEBEARER,
   PESTILENCE,
-  RETRIBUTIONIST,
   VAMPIRE,
   VAMPIRE_HUNTER,
   CULT_LEADER,
@@ -140,7 +136,6 @@ export const ROLES: Readonly<Record<RoleId, RoleDefinition>> = {
   TRACKER,
   SPY,
   AMNESIAC,
-  MEDIUM,
   DISGUISER,
   ARSONIST,
   CRUSADER,
@@ -158,7 +153,6 @@ export const ROLES: Readonly<Record<RoleId, RoleDefinition>> = {
   PIRATE,
   PLAGUEBEARER,
   PESTILENCE,
-  RETRIBUTIONIST,
   VAMPIRE,
   VAMPIRE_HUNTER,
   CULT_LEADER,
@@ -183,9 +177,9 @@ export const ALL_ROLES: readonly RoleDefinition[] = Object.values(ROLES);
  */
 export const INVESTIGATOR_CLASS_TABLE: Readonly<Record<InvestigatorClass, readonly RoleId[]>> = {
   R1: ['CITIZEN', 'SURVIVOR', 'EXECUTIONER', 'AMNESIAC', 'GUARDIAN_ANGEL', 'CULT_LEADER', 'CULTIST'],
-  R2: ['SHERIFF', 'JAILOR', 'BLACKMAILER', 'TRACKER', 'RETRIBUTIONIST', 'VAMPIRE_HUNTER'],
+  R2: ['SHERIFF', 'JAILOR', 'BLACKMAILER', 'TRACKER', 'VAMPIRE_HUNTER'],
   R3: ['INVESTIGATOR', 'JESTER', 'CONSIGLIERE', 'SPY', 'PSYCHIC', 'CORONER'],
-  R4: ['DOCTOR', 'SERIAL_KILLER', 'MEDIUM', 'MASS_MURDERER', 'PLAGUEBEARER', 'PESTILENCE', 'VAMPIRE'],
+  R4: ['DOCTOR', 'SERIAL_KILLER', 'MASS_MURDERER', 'PLAGUEBEARER', 'PESTILENCE', 'VAMPIRE'],
   R5: ['ESCORT', 'CONSORT', 'JANITOR', 'HYPNOTIST', 'VANGUARD'],
   R6: ['VIGILANTE', 'MAFIOSO', 'VETERAN', 'CRUSADER', 'WEREWOLF', 'JUGGERNAUT', 'ENFORCER', 'PIRATE'],
   R7: ['GODFATHER', 'MAYOR', 'BODYGUARD', 'ARSONIST', 'DRAGON_HEAD', 'TRAPPER'],

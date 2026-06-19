@@ -37,7 +37,6 @@ export const ROLE_IDS = [
   'TRACKER',
   'SPY',
   'AMNESIAC',
-  'MEDIUM',
   'DISGUISER',
   'ARSONIST',
   // --- Role-expansion batch C ---
@@ -59,7 +58,6 @@ export const ROLE_IDS = [
   'PIRATE', // Neutral benign-ish: duels a target, plunders for a personal win
   'PLAGUEBEARER', // Neutral Killing: infects via visits; transforms into Pestilence
   'PESTILENCE', // Neutral Killing: the Plaguebearer's powerful rampaging final form
-  'RETRIBUTIONIST', // Town: once-per-game revive a dead Town player
   // --- Vampire conversion faction (third evil killing faction) ---
   'VAMPIRE', // Vampire: bites at night to CONVERT a victim into a new Vampire
   'VAMPIRE_HUNTER', // Town: stakes any vampire that bites them; becomes a Vigilante when no vampires remain

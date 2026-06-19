@@ -50,7 +50,6 @@ function baseState(): StoreState {
     whisperMeta: [],
     privateLog: [],
     jailedThisNight: false,
-    seancePending: false,
     silencedToday: false,
     toasts: [],
     whisperArm: null,

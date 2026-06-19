@@ -47,11 +47,11 @@ export interface NightActionEvent extends Stamped {
   target2?: SeatId | null;
 }
 
-/** Day ability (jailor select / mayor reveal / medium séance). */
+/** Day ability (jailor select / mayor reveal). */
 export interface DayAbilityEvent extends Stamped {
   type: 'day_ability';
   seat: SeatId;
-  ability: 'jail' | 'reveal' | 'seance';
+  ability: 'jail' | 'reveal';
   target?: SeatId;
 }
 

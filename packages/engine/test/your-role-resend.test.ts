@@ -208,7 +208,6 @@ describe('AbilityInfo target-domain + verb', () => {
   it('DEAD-targeting abilities report domain "dead"', () => {
     const cases: [string, string][] = [
       ['CORONER', 'autopsy'],
-      ['RETRIBUTIONIST', 'retribute'],
       ['AMNESIAC', 'remember'],
       ['DISGUISER', 'disguise'],
     ];
@@ -231,7 +230,6 @@ describe('AbilityInfo target-domain + verb', () => {
       ['ARSONIST', 'ignite'],
       ['SPY', 'spy'],
       ['PSYCHIC', 'divine'],
-      ['MEDIUM', 'seance'],
     ];
     for (const [role, id] of cases) {
       const s = makeGame([role as never, 'CITIZEN', 'SHERIFF']);

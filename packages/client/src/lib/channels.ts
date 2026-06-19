@@ -21,8 +21,6 @@ export interface ChannelContext {
   isTriad: boolean;
   /** Whether the local seat is the Jailor (drives the jailor side of the cell). */
   isJailor: boolean;
-  /** Whether the local seat is a Medium (drives the living-Medium séance tab). */
-  isMedium: boolean;
   /**
    * The Jailor's selected prisoner for the coming night (`own.jailTarget`), or
    * null. Non-null at NIGHT means a jailing is in effect for the Jailor.
@@ -30,8 +28,6 @@ export interface ChannelContext {
   jailTarget: number | null;
   /** True when the local seat is tonight's prisoner (a `jailed` result arrived). */
   jailedThisNight: boolean;
-  /** True when a living Medium opened a séance for this night (ack'd). */
-  seancePending: boolean;
   /** True when the local seat is silenced in day chat (a `blackmailed` result). */
   silencedToday: boolean;
   chat: ChatLine[];
@@ -75,11 +71,10 @@ export function entitledChannels(ctx: ChannelContext): ChatChannel[] {
     out.push('jail');
   }
 
-  // Dead: for dead seats / spectators-with-dead (server-gated), shown when the
-  // seat is dead or has received dead traffic. A LIVING Medium who opened a
-  // séance also gets it at NIGHT (séance: the dead hear them this night).
-  const seanceTonight = ctx.alive && ctx.isMedium && ctx.seancePending && ctx.phase === 'NIGHT';
-  if (seen.has('dead') || (!ctx.alive && !ctx.spectator) || seanceTonight) out.push('dead');
+  // Dead: strictly dead-only (GAME RULE: death is permanent; no LIVING player may
+  // contact the dead). Offered only to actually-DEAD seats (or when dead traffic
+  // has already arrived, which the server delivers to dead seats alone).
+  if (seen.has('dead') || (!ctx.alive && !ctx.spectator)) out.push('dead');
 
   // Whisper: shown if any whisper has arrived.
   if (seen.has('whisper')) out.push('whisper');
@@ -106,8 +101,8 @@ export function canSpeakIn(channel: ChatChannel, ctx: ChannelContext): boolean {
         ((ctx.isJailor && ctx.jailTarget !== null) || ctx.jailedThisNight)
       );
     case 'dead':
-      // The dead always; a living Medium only on their séance night.
-      return !ctx.alive || (ctx.isMedium && ctx.seancePending && ctx.phase === 'NIGHT');
+      // Strictly dead-only: a living seat can never speak with the dead.
+      return !ctx.alive;
     case 'whisper':
       return ctx.alive && DAY_PHASES.has(ctx.phase) && !ctx.silencedToday;
     default:

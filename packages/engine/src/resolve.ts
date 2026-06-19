@@ -1342,40 +1342,6 @@ export function resolveNight(state: GameState): ResolveResult {
     }
   }
 
-  // Retributionist revive (batch E). Once per game, a living Retributionist who
-  // knelt at the grave of a DEAD TOWN seat raises them: they return alive with
-  // their original role and faction intact. Resolved in deterministic
-  // Retributionist-seat order; the lowest-seat Retributionist wins if two target
-  // the same grave. Only a DEAD seat of the TOWN faction is a legal target (the
-  // dark and lone killers stay buried). The revived seat's role was already
-  // publicly revealed at death, so re-aliving leaks nothing new (everyone who saw
-  // the death_announce already knows it); we keep `revealed=true` accordingly.
-  const revivedThisNight = new Set<SeatId>();
-  for (const i of [...intentBySeat.values()].sort((a, b) => a.seat - b.seat)) {
-    if (i.ability !== 'retribute' || i.target === null) continue;
-    const ret = seatOf(state, i.seat);
-    if (ret.role !== 'RETRIBUTIONIST' || !ret.alive || ret.usesRemaining <= 0) continue;
-    const tgt = seatOf(state, i.target);
-    const valid =
-      !tgt.alive &&
-      tgt.faction === 'TOWN' &&
-      !revivedThisNight.has(i.target) &&
-      !tgt.leaving; // a seat that walked out cannot be raised
-    if (!valid) {
-      traces.push({ step: 'retribute', retributionist: i.seat, target: i.target, revived: false });
-      continue;
-    }
-    // Raise the dead: restore life, clear the death bookkeeping, keep role/faction.
-    tgt.alive = true;
-    tgt.deathCause = null;
-    tgt.deathDay = null;
-    // `revealed` stays true — the role is already public from the death reveal; this
-    // does NOT re-leak. Consume the Retributionist's single use.
-    ret.usesRemaining = Math.max(0, ret.usesRemaining - 1);
-    revivedThisNight.add(i.target);
-    traces.push({ step: 'retribute', retributionist: i.seat, target: i.target, revived: true });
-  }
-
   // Vampire conversion (Vampire faction). The single resolving bite (the lowest-
   // seat vampire's, chosen above) TURNS its target into a new Vampire — a role +
   // faction change, mirroring the executioner→jester / plaguebearer→pestilence
@@ -1521,7 +1487,7 @@ function sourceRank(source: DeathCause): number {
  * The concrete night ability a role naturally submits (batch E, Witch control).
  * Used to steer a controlled puppet's action onto the Witch's victim when the
  * puppet submitted nothing. Self-only / control / passive abilities (vest, spy,
- * alert, ignite, divine, the GF/Dragon-Head/Witch control, séance, jail-execute)
+ * alert, ignite, divine, the GF/Dragon-Head/Witch control, jail-execute)
  * cannot be meaningfully redirected at a victim, so they return null. Mirrors
  * roleinfo.ts `roleToNightAbility` but scoped to the redirectable, single-target
  * "act on someone" abilities a Witch can weaponize.
@@ -1801,10 +1767,6 @@ function actorVisits(_actor: SeatState, intent: NightIntent): boolean {
     case 'kill_triad':
     case 'kill_serial':
       return true;
-    case 'retribute':
-      // Retributionist (batch E): the revive is resolved in the promotion step, not
-      // as a street visit — a graveside vigil, not a call on a living house.
-      return false;
     // Batch F: the Trapper visits the ward it rigs (a Lookout/Veteran sees it). The
     // Transporter's two visits are recorded separately via `extraVisits` (it has two
     // houses, not one), so its own `transport` row contributes no single-target

@@ -188,7 +188,6 @@ export type NightAbility =
   | 'duel' // Pirate: duel/plunder a target (occupies + shields them; PRNG-decided success)
   | 'infect' // Plaguebearer: a visit that infects the target (and spreads)
   | 'pestilence' // Pestilence: the transformed Plaguebearer's powerful kill
-  | 'retribute' // Retributionist: once-per-game revive a dead Town seat
   // --- Vampire conversion faction (third evil killing faction) ---
   | 'bite' // Vampire: a visiting conversion attempt (turns the target into a Vampire)
   | 'vampire_check' // Vampire Hunter: study a target, learn vampire/not; passively stakes a biting vampire
@@ -265,7 +264,6 @@ export type ResolutionTrace =
   | { step: 'witch'; witch: SeatId; puppet: SeatId; victim: SeatId; redirected: boolean }
   | { step: 'duel'; pirate: SeatId; target: SeatId; attack: number; success: boolean }
   | { step: 'infect'; plaguebearer: SeatId; infected: SeatId[]; allInfected: boolean }
-  | { step: 'retribute'; retributionist: SeatId; target: SeatId; revived: boolean }
   // --- Vampire conversion faction ---
   // A vampire's bite resolved: `converted` true ⇒ the target was turned into a
   // Vampire; false ⇒ the bite failed (immune/already-vampire/non-convertible/the
@@ -391,13 +389,6 @@ export interface GameState {
   nightIntents: NightIntent[];
   /** Jailor's day-selected prisoner for the coming night (null = none). */
   jailTarget: SeatId | null;
-  /**
-   * Medium (batch B): the Medium seat that has opened a séance for the COMING
-   * night (selected during the day, like the Jailor's prisoner). While set, that
-   * living Medium is granted the DEAD chat entitlement for the next NIGHT. Cleared
-   * at night resolution (the séance is one night). null = no séance pending.
-   */
-  seanceMedium: SeatId | null;
 
   nomination: NominationState;
   trial: TrialState | null;

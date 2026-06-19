@@ -53,7 +53,6 @@ describe('unique roles (§6.5, §6.10)', () => {
         'PIRATE',
         'PLAGUEBEARER',
         'PESTILENCE',
-        'RETRIBUTIONIST',
         // Cult faction: the Cult Leader is the unique sole recruiter (the Cultist
         // is not unique — it is the converted body of the faction).
         'CULT_LEADER',
@@ -72,9 +71,9 @@ describe('investigator result classes (§6.6)', () => {
   // The exact table from §6.6.
   const SPEC_TABLE: Record<string, RoleId[]> = {
     R1: ['CITIZEN', 'SURVIVOR', 'EXECUTIONER', 'AMNESIAC', 'GUARDIAN_ANGEL', 'CULT_LEADER', 'CULTIST'],
-    R2: ['SHERIFF', 'JAILOR', 'BLACKMAILER', 'TRACKER', 'RETRIBUTIONIST', 'VAMPIRE_HUNTER'],
+    R2: ['SHERIFF', 'JAILOR', 'BLACKMAILER', 'TRACKER', 'VAMPIRE_HUNTER'],
     R3: ['INVESTIGATOR', 'JESTER', 'CONSIGLIERE', 'SPY', 'PSYCHIC', 'CORONER'],
-    R4: ['DOCTOR', 'SERIAL_KILLER', 'MEDIUM', 'MASS_MURDERER', 'PLAGUEBEARER', 'PESTILENCE', 'VAMPIRE'],
+    R4: ['DOCTOR', 'SERIAL_KILLER', 'MASS_MURDERER', 'PLAGUEBEARER', 'PESTILENCE', 'VAMPIRE'],
     R5: ['ESCORT', 'CONSORT', 'JANITOR', 'HYPNOTIST', 'VANGUARD'],
     R6: ['VIGILANTE', 'MAFIOSO', 'VETERAN', 'CRUSADER', 'WEREWOLF', 'JUGGERNAUT', 'ENFORCER', 'PIRATE'],
     R7: ['GODFATHER', 'MAYOR', 'BODYGUARD', 'ARSONIST', 'DRAGON_HEAD', 'TRAPPER'],
@@ -134,7 +133,7 @@ describe('sheriff alignment table (§6.6)', () => {
     'ENFORCER',
     'VANGUARD',
     // Batch E: the Witch, Plaguebearer, and Pestilence read suspicious; the Pirate
-    // and Retributionist read clean.
+    // reads clean.
     'WITCH',
     'PLAGUEBEARER',
     'PESTILENCE',
@@ -171,7 +170,6 @@ describe('ability metadata (§6.5)', () => {
     expect(ROLES.DOCTOR.uses?.selfTotal).toBe(1);
     expect(ROLES.JANITOR.uses?.total).toBe(3);
     expect(ROLES.VETERAN.uses?.total).toBe(3);
-    expect(ROLES.MEDIUM.uses?.total).toBe(1);
   });
 
   it('night-immune roles are flagged (§6.5)', () => {

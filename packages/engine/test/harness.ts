@@ -60,7 +60,6 @@ const FACTION_OF: Record<RoleId, GameState['seats'][number]['faction']> = {
   TRACKER: 'TOWN',
   SPY: 'TOWN',
   AMNESIAC: 'NEUTRAL_BENIGN',
-  MEDIUM: 'TOWN',
   DISGUISER: 'MAFIA',
   ARSONIST: 'NEUTRAL_KILLING',
   // --- Role-expansion batch C ---
@@ -82,7 +81,6 @@ const FACTION_OF: Record<RoleId, GameState['seats'][number]['faction']> = {
   PIRATE: 'NEUTRAL_BENIGN',
   PLAGUEBEARER: 'NEUTRAL_KILLING',
   PESTILENCE: 'NEUTRAL_KILLING',
-  RETRIBUTIONIST: 'TOWN',
   // --- Vampire conversion faction ---
   VAMPIRE: 'VAMPIRE',
   VAMPIRE_HUNTER: 'TOWN',
@@ -102,8 +100,6 @@ const USES: Partial<Record<RoleId, { uses: number; self: number }>> = {
   DOCTOR: { uses: Number.MAX_SAFE_INTEGER, self: 1 },
   JANITOR: { uses: 3, self: 0 },
   VETERAN: { uses: 3, self: 0 },
-  MEDIUM: { uses: 1, self: 0 },
-  RETRIBUTIONIST: { uses: 1, self: 0 },
 };
 
 /**

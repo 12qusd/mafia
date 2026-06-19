@@ -40,7 +40,6 @@ export function GameScreen() {
   const testMode = useStore((s) => s.lobby?.testMode ?? false);
   const isAdmin = useStore((s) => s.me?.isAdmin ?? false);
   const jailedThisNight = useStore((s) => s.jailedThisNight);
-  const seancePending = useStore((s) => s.seancePending);
   const silencedToday = useStore((s) => s.silencedToday);
 
   const seatNameFor = useMemo(
@@ -68,7 +67,6 @@ export function GameScreen() {
   const isMafia = own?.faction === 'MAFIA' || (own ? getRole(own.role).faction === 'MAFIA' : false);
   const isTriad = own?.faction === 'TRIAD' || (own ? getRole(own.role).faction === 'TRIAD' : false);
   const isJailor = own?.role === 'JAILOR';
-  const isMedium = own?.role === 'MEDIUM';
 
   // Single source of truth for the channel entitlements/speak gates (§6.4).
   const ctx: ChannelContext = {
@@ -78,10 +76,8 @@ export function GameScreen() {
     isMafia,
     isTriad,
     isJailor,
-    isMedium,
     jailTarget: own?.jailTarget ?? null,
     jailedThisNight,
-    seancePending,
     silencedToday,
     chat,
   };

@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { makeGame, toFirstNight, night, step, ev, endPhase, resolveNightPhase } from './harness.js';
+import { makeGame, toFirstNight, night, ev, endPhase, resolveNightPhase } from './harness.js';
 import type { Effect } from '@nocturne/shared';
 
 /** Find a private_result effect of a given kind addressed to `seat`. */
@@ -202,84 +202,44 @@ describe('batch B — Amnesiac (Neutral benign conversion)', () => {
   });
 });
 
-describe('batch B — Medium (Town séance)', () => {
-  /** Collect dead-channel chat effects addressed to a set including `seat`. */
-  function deadChatTo(effects: Effect[], seat: number) {
-    return effects.filter(
-      (e) =>
-        (e.msg as { type?: string }).type === 'chat_message' &&
-        (e.msg as { channel?: string }).channel === 'dead' &&
-        Array.isArray(e.to) &&
-        (e.to as number[]).includes(seat),
-    );
-  }
-
-  it('a living medium with an open séance can speak with the dead at night', () => {
-    // 0 Medium, 1 Godfather, 2 Mafioso, 3 Citizen (will die), 4..6 Citizen.
-    let s = makeGame(['MEDIUM', 'GODFATHER', 'MAFIOSO', 'CITIZEN', 'CITIZEN', 'CITIZEN', 'CITIZEN']);
+describe('dead channel is strictly dead-only (death is permanent)', () => {
+  // GAME RULE: death is permanent and no LIVING player may ever contact the dead.
+  // The séance bridge (Medium) was removed; the `dead` channel is dead-only.
+  it('a LIVING seat can neither send nor be addressed in the dead channel at night', () => {
+    // 0 Doctor, 1 Godfather, 2 Mafioso, 3 Citizen (will die), 4..6 Citizen.
+    let s = makeGame(['DOCTOR', 'GODFATHER', 'MAFIOSO', 'CITIZEN', 'CITIZEN', 'CITIZEN', 'CITIZEN']);
     s = toFirstNight(s);
     // N1: kill seat 3 so there is a dead audience.
     s = night(s, 1, 'mafia_control', 3);
     s = night(s, 2, 'kill_mafia', 3);
     s = resolveNightPhase(s).state;
     expect(s.seats[3]!.alive).toBe(false);
-
-    // Day 1: the medium opens a séance for the coming night.
-    s = endPhase(s).state; // DAWN -> DAY_DISCUSSION
-    const ack = ev(s, { type: 'day_ability', seat: 0, ability: 'seance', target: undefined });
-    s = ack.state;
-    expect(s.seanceMedium).toBe(0);
-
     // Advance to NIGHT 2.
+    s = endPhase(s).state; // DAWN -> DAY_DISCUSSION
     s = endPhase(s).state; // DAY_DISCUSSION -> DAY_VOTING
     s = endPhase(s).state; // DAY_VOTING -> NIGHT 2 (no lynch)
     expect(s.phase).toBe('NIGHT');
-    expect(s.seanceMedium).toBe(0); // séance carried into the night
 
-    // The living medium speaks in the dead channel; the dead seat (3) + medium hear it.
-    const r = ev(s, { type: 'chat', seat: 0, channel: 'dead', text: 'Who killed you?' });
-    const chats = deadChatTo(r.effects, 3);
-    expect(chats.length).toBe(1);
-    // The audience includes the dead seat 3 AND the medium 0, and NO living non-medium.
-    const audience = chats[0]!.to as number[];
-    expect(audience).toContain(3);
-    expect(audience).toContain(0);
-    expect(audience).not.toContain(1); // a living non-medium is never in the séance
-    expect(audience).not.toContain(2);
-  });
-
-  it('a living non-medium cannot speak in the dead channel even during a séance', () => {
-    let s = makeGame(['MEDIUM', 'GODFATHER', 'MAFIOSO', 'CITIZEN', 'CITIZEN', 'CITIZEN', 'CITIZEN']);
-    s = toFirstNight(s);
-    s = night(s, 1, 'mafia_control', 3);
-    s = night(s, 2, 'kill_mafia', 3);
-    s = resolveNightPhase(s).state;
-    s = endPhase(s).state;
-    s = step(s, { type: 'day_ability', seat: 0, ability: 'seance', target: undefined });
-    s = endPhase(s).state;
-    s = endPhase(s).state; // NIGHT 2
-    // A living non-medium (seat 1) tries to speak in dead chat — dropped.
-    const r = ev(s, { type: 'chat', seat: 1, channel: 'dead', text: 'let me in' });
-    const chats = r.effects.filter(
+    // A living seat (0) tries to speak in dead chat — dropped entirely.
+    const r0 = ev(s, { type: 'chat', seat: 0, channel: 'dead', text: 'let me in' });
+    const fromLiving = r0.effects.filter(
       (e) => (e.msg as { type?: string }).type === 'chat_message' && (e.msg as { channel?: string }).channel === 'dead',
     );
-    expect(chats).toHaveLength(0);
-  });
+    expect(fromLiving).toHaveLength(0);
 
-  it('the séance consumes one use and closes after the night', () => {
-    let s = makeGame(['MEDIUM', 'GODFATHER', 'MAFIOSO', 'CITIZEN', 'CITIZEN', 'CITIZEN', 'CITIZEN']);
-    s = toFirstNight(s);
-    s = night(s, 1, 'mafia_control', 3);
-    s = night(s, 2, 'kill_mafia', 3);
-    s = resolveNightPhase(s).state;
-    s = endPhase(s).state;
-    s = step(s, { type: 'day_ability', seat: 0, ability: 'seance', target: undefined });
-    s = endPhase(s).state;
-    s = endPhase(s).state; // NIGHT 2
-    expect(s.seats[0]!.usesRemaining).toBe(1);
-    s = resolveNightPhase(s).state; // resolve NIGHT 2
-    expect(s.seanceMedium).toBeNull(); // closed
-    expect(s.seats[0]!.usesRemaining).toBe(0); // one séance consumed
+    // A dead seat (3) speaks: ONLY dead seats are addressed; no living seat receives it.
+    const r3 = ev(s, { type: 'chat', seat: 3, channel: 'dead', text: 'they got me' });
+    const deadChats = r3.effects.filter(
+      (e) => (e.msg as { type?: string }).type === 'chat_message' && (e.msg as { channel?: string }).channel === 'dead',
+    );
+    expect(deadChats.length).toBeGreaterThan(0);
+    const livingSeats = s.seats.filter((x) => x.alive).map((x) => x.seat);
+    for (const e of deadChats) {
+      const audience = e.to as number[];
+      for (const living of livingSeats) {
+        expect(audience).not.toContain(living);
+      }
+    }
   });
 });
 

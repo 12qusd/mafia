@@ -101,11 +101,11 @@ export const GUNSMOKE: GameSetup = {
  * "Smoke and Mirrors" — a 15-player table showcasing the expanded (batch-A and
  * batch-B) role roster. Every new trade gets a seat: a Mafia leaning on a
  * Janitor and a Disguiser to bury the truth, against a Town that fields a
- * Bodyguard, a Veteran, a Tracker, a Spy, and a Medium — plus a wandering
+ * Bodyguard, a Veteran, a Tracker, a Psychic, and a Spy — plus a wandering
  * Amnesiac and a patient Arsonist among the neutrals.
  *
  * Town (8): Jailor, Sheriff, Bodyguard, Crusader, Veteran, Tracker, Psychic,
- *           Medium.
+ *           Spy.
  * Mafia (3): Godfather, Janitor, + one RANDOM_MAFIA (Consigliere / Forger /
  *            Blackmailer / Disguiser / Ambusher / Hypnotist / Consort / Framer).
  * Neutral (4): Serial Killer, Arsonist, Amnesiac, Executioner.
@@ -113,7 +113,7 @@ export const GUNSMOKE: GameSetup = {
  * Showcases the full expanded roster: the Janitor is fixed (it is not in the
  * random pool) and the other Mafia support rotates through the RANDOM_MAFIA slot
  * (which now includes the Disguiser, Ambusher, and Hypnotist); the Town fields
- * the batch-B information roles (Tracker, Psychic, Medium) and the batch-A/C
+ * the batch-B information roles (Tracker, Psychic, Spy) and the batch-A/C
  * protectives (Bodyguard, Crusader, Veteran); the neutrals add the batch-B
  * Amnesiac and Arsonist alongside the Serial Killer.
  */
@@ -126,7 +126,7 @@ const SMOKE_AND_MIRRORS_15: SetupSlot[] = [
   F('VETERAN'),
   F('TRACKER'),
   F('PSYCHIC'),
-  F('MEDIUM'),
+  F('SPY'),
   // Mafia
   F('GODFATHER'),
   F('JANITOR'),
@@ -154,7 +154,6 @@ export const SMOKE_AND_MIRRORS: GameSetup = {
     'LOOKOUT',
     'TRACKER',
     'SPY',
-    'MEDIUM',
     'CRUSADER',
     'PSYCHIC',
   ],
@@ -270,12 +269,11 @@ export const TONG_WAR: GameSetup = {
 /**
  * "The Reckoning" — a 15-player showcase of the batch-E complex neutrals. A Witch
  * bends the town's own hands against itself, a Pirate duels for personal glory, a
- * Plaguebearer creeps toward the transformation into Pestilence, and a
- * Retributionist holds a single miracle in reserve to claw a fallen townsperson
- * back from the grave. The Mafia keeps its head down while the spoilers and the
- * plague carve up the board.
+ * Plaguebearer creeps toward the transformation into Pestilence, and a Coroner
+ * works the slab to read the truth the dead carried out of the world. The Mafia
+ * keeps its head down while the spoilers and the plague carve up the board.
  *
- * Town (8): Jailor, Sheriff, Doctor, Lookout, Vigilante, Escort, Retributionist,
+ * Town (8): Jailor, Sheriff, Doctor, Lookout, Vigilante, Escort, Coroner,
  *           Citizen.
  * Mafia (3): Godfather, Mafioso, + one RANDOM_MAFIA.
  * Neutral (4): Witch, Pirate, Plaguebearer, Serial Killer.
@@ -288,7 +286,7 @@ const RECKONING_15: SetupSlot[] = [
   F('LOOKOUT'),
   F('VIGILANTE'),
   F('ESCORT'),
-  F('RETRIBUTIONIST'),
+  F('CORONER'),
   F('CITIZEN'),
   // Mafia
   F('GODFATHER'),
@@ -307,11 +305,11 @@ export const RECKONING: GameSetup = {
   description:
     'A 15-player showcase of the strangest neutrals. A Witch turns the town against itself, a ' +
     'Pirate duels for plunder, and a Plaguebearer spreads a sickness toward a terrible ' +
-    'transformation — while a Retributionist guards a single miracle to call one fallen ' +
-    'townsperson back from the dead.',
+    'transformation — while a Coroner works the slab to read the truth the dead carried out ' +
+    'of the world.',
   minPlayers: 15,
   maxPlayers: 15,
-  townPool: ['CITIZEN', 'DOCTOR', 'SHERIFF', 'LOOKOUT', 'VIGILANTE', 'RETRIBUTIONIST'],
+  townPool: ['CITIZEN', 'DOCTOR', 'SHERIFF', 'LOOKOUT', 'VIGILANTE', 'CORONER'],
   slotsByPlayerCount: {
     '15': RECKONING_15,
   },

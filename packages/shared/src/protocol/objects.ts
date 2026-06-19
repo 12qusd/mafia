@@ -51,9 +51,9 @@ export const AbilityInfoSchema = z.object({
   usesRemaining: z.number().int().min(0).nullable(),
   /**
    * Which seats the ability may legally target, so the client can drive the right
-   * picker: `living` (most actions), `dead` (grave-targeting — autopsy, retribute,
+   * picker: `living` (most actions), `dead` (grave-targeting — autopsy,
    * remember, disguise), `living_or_dead` (either), `self`/`none` (toggles with no
-   * external target — alert, vest, ignite, spy, divine, séance). Additive.
+   * external target — alert, vest, ignite, spy, divine). Additive.
    */
   targetDomain: z.enum(['living', 'dead', 'living_or_dead', 'self', 'none']),
   /** Short imperative the UI shows on the action button (e.g. Heal, Shoot, Bite). */

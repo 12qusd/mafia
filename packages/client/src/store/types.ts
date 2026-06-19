@@ -234,12 +234,6 @@ export interface StoreState {
    */
   jailedThisNight: boolean;
   /**
-   * True after the local (living) Medium opened a séance for the coming night,
-   * confirmed by the engine's `day_ability_ack {ability:'seance'}`. Grants the
-   * `dead` chat tab to the living Medium at NIGHT. Cleared on leaving NIGHT.
-   */
-  seancePending: boolean;
-  /**
    * True when a `blackmailed` private_result has arrived for THIS seat — the
    * seat is silenced in the following day chat. Disables the day-chat input.
    * Cleared on entering NIGHT (a fresh night may re-apply it).

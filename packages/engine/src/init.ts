@@ -27,8 +27,6 @@ import {
   DOCTOR_SELF_HEALS,
   JANITOR_CLEANS,
   VETERAN_ALERTS,
-  MEDIUM_SEANCES,
-  RETRIBUTIONIST_REVIVES,
 } from '@nocturne/shared';
 import type { GameState, SeatState } from './state.js';
 import { seedPrng, shuffle, pick, type PrngState } from './prng.js';
@@ -128,10 +126,6 @@ export function initialUses(role: RoleId): { uses: number; self: number } {
       return { uses: JANITOR_CLEANS, self: 0 };
     case 'VETERAN':
       return { uses: VETERAN_ALERTS, self: 0 };
-    case 'MEDIUM':
-      return { uses: MEDIUM_SEANCES, self: 0 };
-    case 'RETRIBUTIONIST':
-      return { uses: RETRIBUTIONIST_REVIVES, self: 0 };
     default:
       return { uses: 0, self: 0 };
   }
@@ -252,7 +246,6 @@ export function init(setup: GameSetup, seed: string, opts: InitOptions = {}): Ga
     triadSeats,
     nightIntents: [],
     jailTarget: null,
-    seanceMedium: null,
     nomination: { votes: [], trialsUsed: 0, pausedRemainingMs: null },
     trial: null,
     pendingJesterGrief: null,

@@ -259,7 +259,6 @@ const KNOWN_ROLES = new Set<string>([
   'TRACKER',
   'SPY',
   'AMNESIAC',
-  'MEDIUM',
   'DISGUISER',
   'ARSONIST',
   // --- Role-expansion batch C ---
@@ -281,7 +280,6 @@ const KNOWN_ROLES = new Set<string>([
   'PIRATE',
   'PLAGUEBEARER',
   'PESTILENCE',
-  'RETRIBUTIONIST',
   // --- Vampire conversion faction ---
   // Knowledge-isolated design: vampires share NO chat and NO roster, so no new
   // entitlement check is needed. We register both role ids so the cross-capture

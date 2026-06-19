@@ -172,7 +172,6 @@ export function reduce(state: StoreState, msg: ServerMessage): Partial<StoreStat
         whisperMeta: [],
         privateLog: [],
         jailedThisNight: false,
-        seancePending: false,
         silencedToday: false,
         debug: emptyDebug(),
       };
@@ -223,12 +222,11 @@ export function reduce(state: StoreState, msg: ServerMessage): Partial<StoreStat
             : null,
       };
       const patch: Partial<StoreState> = own ? { game, own } : { game };
-      // Chat-context flags (§6.4): the prisoner/séance tabs are NIGHT-scoped, so
-      // they clear the moment we leave NIGHT. The blackmail silence is applied at
-      // night for the FOLLOWING day, so it clears when a new NIGHT begins.
+      // Chat-context flags (§6.4): the prisoner tab is NIGHT-scoped, so it clears
+      // the moment we leave NIGHT. The blackmail silence is applied at night for
+      // the FOLLOWING day, so it clears when a new NIGHT begins.
       if (msg.phase !== 'NIGHT') {
         patch.jailedThisNight = false;
-        patch.seancePending = false;
       } else {
         patch.silencedToday = false;
       }
@@ -319,12 +317,6 @@ export function reduce(state: StoreState, msg: ServerMessage): Partial<StoreStat
     }
 
     case 'day_ability_ack': {
-      // Séance ack: the engine confirms a living Medium opened a séance for the
-      // coming night (apply.ts handleDayAbility). Grant the `dead` chat tab for
-      // that NIGHT; cleared when the phase leaves NIGHT. This needs no `own`.
-      if (msg.ability === 'seance') {
-        return { seancePending: true };
-      }
       if (!state.own) return {};
       // Acknowledge jailor jail-select / mayor reveal.
       if (msg.ability === 'jail') {

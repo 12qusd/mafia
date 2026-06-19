@@ -7,8 +7,7 @@
  *   - self-toggle abilities (Veteran alert) render a button, not a grid;
  *   - the Jailor cell executes the prisoner (no free target grid);
  *   - the Guardian Angel's shield is restricted to its charge;
- *   - the Executioner's mark shows on the role card;
- *   - the Medium's séance (a DAY ability) opens via sendDayAbility('seance').
+ *   - the Executioner's mark shows on the role card.
  */
 
 import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
@@ -177,20 +176,6 @@ describe('Dead-target abilities list DEAD seats (gap A7/A8/A9)', () => {
     expect(useStore.getState().own?.nightTarget).toBe(2);
     expect(lastSent()).toEqual({ v: V, type: 'night_action', ability: 'autopsy', target: 2 });
   });
-
-  it('Retributionist restricts to dead TOWN when known (gap A9)', () => {
-    const RETRIBUTE = ab('retribute', 'Revive', 'night', 'dead', 'Revive', 1);
-    const RSEATS = [
-      seat(0, true, 'Retri'),
-      seat(1, false, 'DeadTown', { role: 'DOCTOR', faction: 'TOWN' }),
-      seat(2, false, 'DeadMafia', { role: 'GODFATHER', faction: 'MAFIA' }),
-    ];
-    useStore.setState({ own: ownFor('RETRIBUTIONIST', 'TOWN', [RETRIBUTE]) });
-    render(<OwnPanel seats={RSEATS} phase="NIGHT" />);
-    const grid = within(screen.getByRole('group', { name: 'Revive' }));
-    expect(grid.getByText(/2 · DeadTown/)).toBeInTheDocument();
-    expect(grid.queryByText(/3 · DeadMafia/)).not.toBeInTheDocument();
-  });
 });
 
 describe('Jailor cell at night (gap A2/C4)', () => {
@@ -254,23 +239,5 @@ describe('Executioner mark on the role card (gap A11)', () => {
     useStore.setState({ own: ownFor('EXECUTIONER', 'NEUTRAL_BENIGN', [], { assignedTarget: 1 }) });
     render(<OwnPanel seats={SEATS} phase="DAY_DISCUSSION" />);
     expect(screen.getByText(GAME.yourMark('2 · Mark'))).toBeInTheDocument();
-  });
-});
-
-describe('Medium séance is a day ability (gap A5)', () => {
-  const SEANCE = ab('seance', 'Séance', 'day', 'self', 'Séance', 2);
-  const SEATS = [seat(0, true, 'Medium'), seat(1, true, 'Other')];
-
-  it('renders the séance opener and fires day_ability(seance)', () => {
-    useStore.setState({ own: ownFor('MEDIUM', 'TOWN', [SEANCE]) });
-    render(<OwnPanel seats={SEATS} phase="DAY_DISCUSSION" />);
-    fireEvent.click(screen.getByText(GAME.seanceOpen(2)));
-    expect(lastSent()).toEqual({ v: V, type: 'day_ability', ability: 'seance' });
-  });
-
-  it('is hidden on Day 0', () => {
-    useStore.setState({ own: ownFor('MEDIUM', 'TOWN', [SEANCE]) });
-    render(<OwnPanel seats={SEATS} phase="DAY_0" />);
-    expect(screen.queryByText(GAME.seanceOpen(2))).not.toBeInTheDocument();
   });
 });

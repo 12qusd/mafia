@@ -3,11 +3,12 @@
  * chat fixes:
  *   - the Jailor and the jailed PRISONER each get a `jail` tab at NIGHT,
  *     BEFORE a single line is spoken (C2 blocker);
- *   - a living séance Medium gets the `dead` tab at NIGHT (A5/F3);
+ *   - the `dead` tab is strictly dead-only: no LIVING seat is ever offered it
+ *     (GAME RULE: death is permanent; the living can never contact the dead);
  *   - a blackmailed seat's day-chat input is disabled (E6);
  *   - the disabled-input copy is context-aware: spectator vs dead vs the town
  *     simply being asleep at night (BLOCKER-ish UX);
- *   - the store flags (jailedThisNight / seancePending / silencedToday) are set
+ *   - the store flags (jailedThisNight / silencedToday) are set
  *     and cleared off the right server frames.
  */
 
@@ -44,10 +45,8 @@ function ctxOf(extra: Partial<ChannelContext> = {}): ChannelContext {
     isMafia: false,
     isTriad: false,
     isJailor: false,
-    isMedium: false,
     jailTarget: null,
     jailedThisNight: false,
-    seancePending: false,
     silencedToday: false,
     chat: [],
     ...extra,
@@ -95,28 +94,24 @@ describe('entitledChannels: jail tab (C2)', () => {
   });
 });
 
-describe('entitledChannels: séance dead tab for a living Medium (A5/F3)', () => {
-  it('offers the dead tab to a living Medium with a pending séance at NIGHT', () => {
-    const tabs = entitledChannels(ctxOf({ isMedium: true, seancePending: true }));
-    expect(tabs).toContain('dead');
-    expect(canSpeakIn('dead', ctxOf({ isMedium: true, seancePending: true }))).toBe(true);
-  });
-
-  it('does NOT offer the dead tab to a living Medium with no séance open', () => {
-    const tabs = entitledChannels(ctxOf({ isMedium: true, seancePending: false }));
-    expect(tabs).not.toContain('dead');
-  });
-
-  it('does not offer the séance dead tab during the day', () => {
-    const tabs = entitledChannels(
-      ctxOf({ phase: 'DAY_DISCUSSION', isMedium: true, seancePending: true }),
-    );
-    expect(tabs).not.toContain('dead');
-  });
-
-  it('a dead seat still gets the dead tab regardless of séance', () => {
+describe('entitledChannels: dead tab is strictly dead-only', () => {
+  // GAME RULE: death is permanent; no LIVING player may ever contact the dead.
+  it('a dead (non-spectator) seat gets the dead tab', () => {
     const tabs = entitledChannels(ctxOf({ alive: false }));
     expect(tabs).toContain('dead');
+    expect(canSpeakIn('dead', ctxOf({ alive: false }))).toBe(true);
+  });
+
+  it('a LIVING seat is never offered the dead tab and cannot speak in it', () => {
+    const tabs = entitledChannels(ctxOf({ alive: true }));
+    expect(tabs).not.toContain('dead');
+    expect(canSpeakIn('dead', ctxOf({ alive: true }))).toBe(false);
+  });
+
+  it('a LIVING seat is never offered the dead tab at NIGHT either', () => {
+    const tabs = entitledChannels(ctxOf({ alive: true, phase: 'NIGHT' }));
+    expect(tabs).not.toContain('dead');
+    expect(canSpeakIn('dead', ctxOf({ alive: true, phase: 'NIGHT' }))).toBe(false);
   });
 });
 
@@ -180,7 +175,6 @@ function baseState(): StoreState {
     whisperMeta: [],
     privateLog: [],
     jailedThisNight: false,
-    seancePending: false,
     silencedToday: false,
     toasts: [],
     whisperArm: null,
@@ -211,14 +205,6 @@ describe('reduce: chat-context flags', () => {
     // A fresh NIGHT clears the prior silence.
     s = apply(s, { v: V, type: 'phase_change', phase: 'NIGHT', dayNumber: 2, endsAt: null });
     expect(s.silencedToday).toBe(false);
-  });
-
-  it('a séance day_ability_ack sets seancePending; leaving NIGHT clears it', () => {
-    let s = baseState();
-    s = apply(s, { v: V, type: 'day_ability_ack', ability: 'seance', target: 0 });
-    expect(s.seancePending).toBe(true);
-    s = apply(s, { v: V, type: 'phase_change', phase: 'DAWN', dayNumber: 1, endsAt: null });
-    expect(s.seancePending).toBe(false);
   });
 });
 

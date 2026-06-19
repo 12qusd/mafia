@@ -14,8 +14,7 @@ import type { ResolutionTrace } from '../src/state.js';
 
 /**
  * Batch E — complex neutrals / conversions: Witch (control/spoiler), Pirate
- * (duel/plunder), Plaguebearer → Pestilence (infection conversion within NK),
- * Retributionist (Town resurrection).
+ * (duel/plunder), Plaguebearer → Pestilence (infection conversion within NK).
  */
 
 /** Submit a Witch control (puppet in target, victim in target2). */
@@ -240,75 +239,6 @@ describe('batch E — Plaguebearer → Pestilence (Neutral Killing conversion)',
     const over = buildGameOver(s, win!);
     // The Pestilence (NEUTRAL_KILLING) seat wins via the SK rider.
     expect(over.results[0]!.outcome).toBe('win');
-  });
-});
-
-// ---------------------------------------------------------------------------
-// Retributionist
-// ---------------------------------------------------------------------------
-
-describe('batch E — Retributionist (Town resurrection)', () => {
-  it('revives a dead Town seat with its original role; consumes the single use', () => {
-    // Enough Town that the night-1 mafia kill does NOT end the game.
-    let s = makeGame([
-      'RETRIBUTIONIST',
-      'SHERIFF',
-      'GODFATHER',
-      'MAFIOSO',
-      'CITIZEN',
-      'DOCTOR',
-      'LOOKOUT',
-      'ESCORT',
-    ]);
-    s = toFirstNight(s);
-    // Night 1: the mafia kills the Sheriff (seat 1).
-    s = night(s, 2, 'mafia_control', 1);
-    s = night(s, 3, 'kill_mafia', 1);
-    s = toNextNight(s);
-    expect(s.gameOver).toBeNull();
-    expect(s.seats[1]!.alive).toBe(false);
-    // Night 2: the Retributionist revives the dead Sheriff.
-    s = night(s, 0, 'retribute', 1);
-    const { state } = resolveNightPhase(s);
-
-    expect(state.seats[1]!.alive).toBe(true);
-    expect(state.seats[1]!.role).toBe('SHERIFF');
-    expect(state.seats[1]!.faction).toBe('TOWN');
-    expect(state.seats[1]!.deathCause).toBe(null);
-    // The single use is spent.
-    expect(state.seats[0]!.usesRemaining).toBe(0);
-    expect(traceOf(state, 'retribute')).toMatchObject({ step: 'retribute', target: 1, revived: true });
-  });
-
-  it('cannot revive a non-Town seat (the dark stays buried)', () => {
-    let s = makeGame(['RETRIBUTIONIST', 'SERIAL_KILLER', 'CITIZEN', 'CITIZEN']);
-    s = toFirstNight(s);
-    // Kill the SK off via a vigilante-less path: lynch it by admin? Simpler — mark dead.
-    s = toNextNight(s);
-    s.seats[1]!.alive = false;
-    s.seats[1]!.faction = 'NEUTRAL_KILLING';
-    s.seats[1]!.deathCause = 'lynch';
-    s = night(s, 0, 'retribute', 1);
-    const { state } = resolveNightPhase(s);
-    // The SK stays dead; the use is NOT consumed (invalid target).
-    expect(state.seats[1]!.alive).toBe(false);
-    expect(state.seats[0]!.usesRemaining).toBe(1);
-    expect(traceOf(state, 'retribute')).toMatchObject({ step: 'retribute', target: 1, revived: false });
-  });
-
-  it('a revived Town seat is counted alive in the win check', () => {
-    // After revival, the Town has the numbers; revival flips a parity.
-    let s = makeGame(['RETRIBUTIONIST', 'SHERIFF', 'DOCTOR']);
-    s.seats[1]!.alive = false;
-    s.seats[1]!.revealed = true;
-    s.seats[1]!.deathCause = 'mafia';
-    expect(s.seats.filter((x) => x.alive)).toHaveLength(2);
-    s = toFirstNight(s);
-    s = night(s, 0, 'retribute', 1);
-    const { state } = resolveNightPhase(s);
-    expect(state.seats.filter((x) => x.alive)).toHaveLength(3);
-    // Town still wins (no evil here) — sanity check the roster is consistent.
-    expect(checkWin(state)).toMatchObject({ winners: ['TOWN'] });
   });
 });
 

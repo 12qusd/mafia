@@ -123,7 +123,6 @@ export const GAME = {
   // --- Dead-target pickers (gaps A7/A8/A9): grave-targeting abilities -------
   deadTargetPrompt: (verb: string) => `Choose a grave to ${verb.toLowerCase()}.`,
   noDeadTargets: 'No graves to work tonight.',
-  retributeTownHint: 'Only fallen Town can answer the call.',
   // --- Self-toggle abilities (gaps A3/A4/H5): no seat — an armed toggle -----
   selfToggleArm: (verb: string) => `${verb} tonight`,
   selfToggleArmed: (verb: string) => `${verb} is armed for tonight.`,
@@ -144,10 +143,6 @@ export const GAME = {
   // --- Executioner mark / generic bound target (gap A11 role card) ---------
   yourMark: (label: string) => `Your mark: ${label}`,
   boundTo: (label: string) => `Bound to: ${label}`,
-  // --- Medium séance (gap A5): a DAY ability that opens a night séance ------
-  seanceOpen: (n: number) => `Open séance tonight (${n} left)`,
-  seanceOpenUnlimited: 'Open séance tonight',
-  seanceOpened: 'Your séance is open. The dead will hear you tonight.',
   // Witch (witch_control) two-target picker: the puppet whose hand she seizes,
   // and the soul she points it at. Both must be living seats.
   witchPuppet: 'Whose hand to move',
@@ -530,7 +525,6 @@ export const TRACE_STEP_LABEL: Record<string, string> = {
   witch: '0 · Witch control',
   duel: '2 · Pirate duel',
   infect: '8 · Plague spread',
-  retribute: '8 · Retribution',
   pestilence: '5 · Pestilence',
   vampire_check: '6 · Vampire Hunter check',
   convert: '8 · Vampire conversion',

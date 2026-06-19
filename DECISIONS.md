@@ -1773,3 +1773,78 @@ held: engine determinism property test green; classic leak sweep 0/200; the new
 - The Coroner reads the APPARENT role (a Disguiser's borrowed face), matching every
   other reveal; a Janitor-cleaned (secret) body is not autopsy-able (nothing on the
   slab) — consistent with its public reveal carrying no role.
+
+## GAME RULE: death is permanent — remove Medium (séance) + Retributionist (revive)
+
+New non-negotiable rule: **death is permanent, and no LIVING player may ever
+contact the dead.** The dead-only `dead` channel STAYS (the dead chat among
+themselves); what is removed is every LIVING→DEAD bridge and every revival.
+
+### Removed
+- **MEDIUM** role + its `seance` day-ability (the séance was the only living→dead
+  chat bridge). Deleted `packages/shared/src/roles/medium.ts`.
+- **RETRIBUTIONIST** role + its `retribute` night revive (revival violates "death
+  is permanent"). Deleted `packages/shared/src/roles/retributionist.ts`.
+- Kept Coroner / Disguiser / Amnesiac / Vampire / Cult — they read the dead
+  (forensics) / adopt a dead role / convert the LIVING; none chat with or revive
+  the dead.
+
+### Dead channel is now strictly dead-only (the teeth of the rule)
+- engine `apply.ts` `handleChat` `'dead'` case: stripped the séance branch
+  entirely. Now `if (s.alive) return;` — a LIVING seat can neither post to nor be
+  addressed in the dead channel; `toDead` addresses dead seats alone. Re-verified
+  by a new engine golden ("dead channel is strictly dead-only") AND the bots leak
+  auditor (the auditor already flags a spectator receiving dead chat; a living
+  non-spectator now also has no path in).
+- client `channels.ts`: removed the `isMedium`/`seancePending` séance path; the
+  `dead` tab is offered/writable ONLY to actually-DEAD seats. Removed the
+  `seancePending` store flag + its reducer (`day_ability_ack ability==='seance'`)
+  and the OwnPanel `SeanceControl`.
+
+### Setup-slot replacements (each still PASSES validateSetup at 15p)
+- **Smoke and Mirrors** (`smoke-and-mirrors`): the fixed `MEDIUM` slot → **SPY**
+  (a batch-B Town information role already in this setup's townPool; keeps the
+  "make every late-night visit count" theme). townPool drops `MEDIUM` (SPY already
+  present). 15 slots, killing role present, uniques ≤1 — validates `{ok:true}`.
+- **The Reckoning** (`reckoning`): the fixed `RETRIBUTIONIST` slot → **CORONER**
+  (a Town investigative role that READS the dead on the slab — forensics, NOT
+  contact/revival — fitting the rule). townPool `RETRIBUTIONIST`→`CORONER`. 15
+  slots, validates `{ok:true}`. Descriptions/comments updated to match.
+
+### Surfaces touched (exhaustive)
+- shared: deleted both role files; removed from roles/index.ts (imports,
+  re-exports, ROLES, ALL_ROLES) + INVESTIGATOR_CLASS_TABLE (RETRI from R2, MEDIUM
+  from R4); RoleId enum/schema (ROLE_IDS); constants `MEDIUM_SEANCES` +
+  `RETRIBUTIONIST_REVIVES` deleted; curated.ts slot+townPool+copy swaps;
+  protocol/objects.ts targetDomain doc (dropped retribute/séance mentions);
+  roles.test.ts (UNIQUE_ROLES, class table, dropped `ROLES.MEDIUM.uses` assert).
+  UNIQUE_ROLES auto-shrinks (RETRI was unique; MEDIUM was not). Role count 52→50.
+- engine: state.ts (NightAbility `retribute` removed; `seanceMedium` field +
+  `retribute` ResolutionTrace removed); apply.ts (dead-only handleChat; removed
+  `seance` day-ability case + the night-close séance-consume block; DayAbility
+  ability narrowed to `'jail'|'reveal'`); events.ts DayAbilityEvent ability
+  narrowed; resolve.ts (removed the whole retribute revive branch + its `visits`
+  case + a séance doc mention); roleinfo.ts (roleToNightAbility RETRI,
+  ABILITY_DOMAIN/VERB seance+retribute, abilityInfoFor MEDIUM+RETRI cases, doc);
+  init.ts (uses cases + `seanceMedium` init + imports). Tests: deleted the batch-B
+  Medium describe (replaced with a dead-only golden), the batch-E Retributionist
+  describe, the your-role-resend RETRI/MEDIUM tuples, harness FACTION/USES entries.
+- bots: leak.ts KNOWN_ROLES dropped MEDIUM/RETRIBUTIONIST (no seance/retribute
+  private_result whitelist existed). leakcheck/sim SETUP_MAPs unchanged — the
+  `smoke-and-mirrors`/`reckoning` setup IDS still exist (only their composition
+  changed).
+- client: store types/reducer/store (`seancePending` gone), GameScreen (`isMedium`
+  + ctx), OwnPanel (SeanceControl + retribute dead-target Town-restriction removed;
+  DeadTargetGrid simplified to list any dead), strings-extra (séance keys,
+  retributeTownHint, retribute trace-label removed). Glossary is data-driven off
+  ALL_ROLES so it auto-drops both roles; its test asserts `=== ALL_ROLES.length`
+  and stays green. Client tests updated (channels-chat dead-only, own-panel-actions
+  séance/retri removed, reducer/director seancePending fields).
+
+### Gate (all GREEN; nothing committed, no pm2 restart)
+- `pnpm -r build` clean (all 5 packages incl. server). `pnpm -r test`: shared 186,
+  engine 225, client 157, server 56, bots 36 — all pass. `npx eslint .` clean.
+- Leak sweeps (inline, NO_DB, redirected): classic 9p ×200 → **0**; smoke-and-mirrors
+  15p ×60 → **0**; reckoning 15p ×60 → **0**; the-long-night 15p ×50 → **0**.
+- Determinism/purity property tests pass (`§12.1`: same seed ⇒ identical hash; init
+  determinism; termination; leak-shape). Role count == **50**.

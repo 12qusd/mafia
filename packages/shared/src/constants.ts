@@ -77,13 +77,7 @@ export const JANITOR_CLEANS = 3 as const;
 /** Veteran alerts available across the match (§ batch A). */
 export const VETERAN_ALERTS = 3 as const;
 
-// --- Role-expansion batch B metered uses ---
-/** Medium séances available across the match (§ batch B). */
-export const MEDIUM_SEANCES = 1 as const;
-
 // --- Role-expansion batch E metered uses / thresholds ---
-/** Retributionist revives available across the match (§ batch E). One miracle. */
-export const RETRIBUTIONIST_REVIVES = 1 as const;
 /** Successful plunders a Pirate needs for its personal win (§ batch E). */
 export const PIRATE_PLUNDERS_TO_WIN = 2 as const;
 

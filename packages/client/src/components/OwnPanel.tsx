@@ -221,7 +221,7 @@ function NightAction({
  * One night ability's control, chosen by `targetDomain`/id:
  *  - self/none toggles (alert, vest, ignite, spy, divine) → an ON/OFF arm button;
  *  - the Guardian Angel's `shield` → a single button bound to the CHARGE;
- *  - `dead`-domain abilities (autopsy, remember, disguise, retribute) → a grid of
+ *  - `dead`-domain abilities (autopsy, remember, disguise) → a grid of
  *    DEAD seats;
  *  - everything else → the standard living-seat grid.
  */
@@ -354,11 +354,8 @@ function AbilityControl({
 }
 
 /**
- * gap A7/A8/A9: a grid of DEAD seats for grave-targeting abilities. The
- * Retributionist's `retribute` (Revive) may only raise a fallen TOWN seat, so we
- * restrict the grid to dead seats whose REVEALED role/faction is Town when that
- * is known (the engine validates regardless); otherwise we list all dead with a
- * hint. Other grave abilities (autopsy/remember/disguise) list any dead seat.
+ * gap A7/A8: a grid of DEAD seats for grave-targeting abilities
+ * (autopsy/remember/disguise). Lists any dead seat.
  */
 function DeadTargetGrid({
   own,
@@ -371,11 +368,7 @@ function DeadTargetGrid({
   ability: AbilityInfo;
   choose: (seat: number | null) => void;
 }) {
-  const dead = seats.filter((s) => !s.alive);
-  const isRetribute = ability.id === 'retribute';
-  // Dead seats with a known Town reveal — the only legal retribution targets.
-  const knownTownDead = dead.filter((s) => s.faction === 'TOWN');
-  const targets = isRetribute && knownTownDead.length > 0 ? knownTownDead : dead;
+  const targets = seats.filter((s) => !s.alive);
   const selectedHere = own.nightAbility === ability.id;
 
   return (
@@ -405,9 +398,6 @@ function DeadTargetGrid({
               );
             })}
           </div>
-          {isRetribute && knownTownDead.length === 0 && (
-            <span className="faint">{GAME.retributeTownHint}</span>
-          )}
         </>
       )}
       {selectedHere && own.nightTarget !== null && (
@@ -632,11 +622,6 @@ function DayAbilities({
   phase: Phase;
 }) {
   const def = getRole(own.role);
-  // gap A5/A7: the Medium's séance is a DAY ability (`timing==='day'`) — detect
-  // it from the REAL ability list, NOT `def.dayAction`. It opens a one-night
-  // séance for the coming night (`sendDayAbility('seance')`); the engine rejects
-  // it on Day 0.
-  const seance = own.abilities.find((a) => a.id === 'seance' && a.timing === 'day') ?? null;
 
   if (def.dayAction === 'jail' && phase !== 'DAY_0') {
     const targets = seats.filter((s) => s.alive && s.seat !== own.seat);
@@ -687,35 +672,7 @@ function DayAbilities({
     );
   }
 
-  // gap A5: Medium séance (the engine forbids opening one on Day 0).
-  if (seance && phase !== 'DAY_0') {
-    return <SeanceControl ability={seance} />;
-  }
-
   return null;
-}
-
-/**
- * gap A5: the Medium's séance opener. A DAY ability that opens a séance for the
- * coming night so the Medium can speak with the dead. Fires
- * `sendDayAbility('seance')`; the engine consumes a use when the séance night
- * resolves and acks it (`day_ability_ack`).
- */
-function SeanceControl({ ability }: { ability: AbilityInfo }) {
-  const label =
-    ability.usesRemaining === null
-      ? GAME.seanceOpenUnlimited
-      : GAME.seanceOpen(ability.usesRemaining);
-  const spent = ability.usesRemaining !== null && ability.usesRemaining <= 0;
-  return (
-    <div className="panel panel-pad stack">
-      <strong>{ability.name}</strong>
-      <button className="btn btn-primary" disabled={spent} onClick={() => sendDayAbility('seance')}>
-        {label}
-      </button>
-      <span className="faint">{GAME.seanceOpened}</span>
-    </div>
-  );
 }
 
 function canKeepDeathNote(role: string): boolean {

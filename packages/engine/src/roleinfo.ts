@@ -101,8 +101,6 @@ export function roleToNightAbility(role: RoleId): NightAbility | null {
       return 'infect';
     case 'PESTILENCE':
       return 'pestilence';
-    case 'RETRIBUTIONIST':
-      return 'retribute';
     // --- Vampire conversion faction ---
     case 'VAMPIRE':
       return 'bite';
@@ -132,10 +130,10 @@ export function roleToNightAbility(role: RoleId): NightAbility | null {
  * The target-domain an ability picker presents (BUILD_SPEC §13.1). This is the
  * single source of truth the client uses to choose its picker: a LIVING-seat
  * picker, a DEAD-grave picker, or a no-target SELF toggle.
- *   - `dead`   — grave-targeting abilities: autopsy (Coroner), retribute
- *                (Retributionist), remember (Amnesiac), disguise (Disguiser).
+ *   - `dead`   — grave-targeting abilities: autopsy (Coroner), remember
+ *                (Amnesiac), disguise (Disguiser).
  *   - `self` / `none` — no external target: alert (Veteran), vest (Survivor),
- *                ignite (Arsonist), spy (Spy), divine (Psychic), séance (Medium),
+ *                ignite (Arsonist), spy (Spy), divine (Psychic),
  *                and self-passive reveals (Mayor).
  *   - `living` — everything else (it resolves against a living seat in resolve.ts).
  * Two-target abilities (witch_control, transport) keep `living` (both ends live).
@@ -143,7 +141,6 @@ export function roleToNightAbility(role: RoleId): NightAbility | null {
 const ABILITY_DOMAIN: Record<string, AbilityInfo['targetDomain']> = {
   // --- DEAD-grave targets ---
   autopsy: 'dead',
-  retribute: 'dead',
   remember: 'dead',
   disguise: 'dead',
   // --- SELF / no-target toggles ---
@@ -152,7 +149,6 @@ const ABILITY_DOMAIN: Record<string, AbilityInfo['targetDomain']> = {
   ignite: 'self',
   spy: 'self',
   divine: 'self',
-  seance: 'self',
   reveal: 'self',
 };
 
@@ -166,7 +162,6 @@ const ABILITY_VERB: Record<string, string> = {
   watch: 'Watch',
   spy: 'Listen',
   divine: 'Divine',
-  seance: 'Séance',
   // Town protective / support
   protect: 'Heal',
   guard: 'Guard',
@@ -180,7 +175,6 @@ const ABILITY_VERB: Record<string, string> = {
   kill_vigilante: 'Shoot',
   kill_jailor: 'Execute',
   jail: 'Jail',
-  retribute: 'Revive',
   vampire_check: 'Hunt',
   // Roleblocks / control
   roleblock: 'Roleblock',
@@ -257,10 +251,6 @@ export function abilityInfoFor(seat: SeatState): AbilityInfo[] {
     case 'JANITOR':
       out.push(ability('clean', 'Clean', 'night', seat.usesRemaining));
       break;
-    case 'MEDIUM':
-      // The séance is opened during the day (like jailing) and resolves at night.
-      out.push(ability('seance', 'Séance', 'day', seat.usesRemaining));
-      break;
     case 'ARSONIST':
       out.push(ability('douse', 'Douse', 'night', null));
       out.push(ability('ignite', 'Ignite', 'night', null));
@@ -288,9 +278,6 @@ export function abilityInfoFor(seat: SeatState): AbilityInfo[] {
       break;
     case 'PESTILENCE':
       out.push(ability('pestilence', 'Reap', 'night', null));
-      break;
-    case 'RETRIBUTIONIST':
-      out.push(ability('retribute', 'Revive', 'night', seat.usesRemaining));
       break;
     case 'VAMPIRE':
       out.push(ability('bite', 'Bite', 'night', null));

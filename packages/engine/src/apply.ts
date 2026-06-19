@@ -296,23 +296,11 @@ function handleChat(
       return;
     }
     case 'dead': {
-      // Dead seats may write any time after death. Medium séance (batch B): during
-      // a séance NIGHT the living séance Medium may also speak with the dead.
-      const seanceActive =
-        state.phase === 'NIGHT' && state.seanceMedium !== null && state.seanceMedium === seat;
-      if (!s.alive && !seanceActive) return; // a living non-medium cannot speak
-      if (s.alive && !seanceActive) return; // (redundant guard, explicit for clarity)
-      // While a séance is open, the dead audience is augmented by the living
-      // medium for that night — addressed explicitly so no living non-medium ever
-      // receives dead chat. Otherwise the standard `dead` broadcast applies.
-      if (state.phase === 'NIGHT' && state.seanceMedium !== null) {
-        const deadSeats = state.seats.filter((x) => !x.alive).map((x) => x.seat);
-        const audience = [...new Set([...deadSeats, state.seanceMedium])].sort((a, b) => a - b);
-        effects.push(
-          toSeats(audience, { type: 'chat_message', channel: 'dead', from: seat, text, ts }),
-        );
-        return;
-      }
+      // The dead channel is strictly dead-only (GAME RULE: death is permanent and
+      // no LIVING player may ever contact the dead). Only a DEAD seat may post, and
+      // `toDead` addresses the frame to dead seats alone — no living seat can ever
+      // send to or receive from this channel.
+      if (s.alive) return; // a living seat can never speak with the dead
       effects.push(toDead({ type: 'chat_message', channel: 'dead', from: seat, text, ts }));
       return;
     }
@@ -515,24 +503,12 @@ function handleNightAction(
 function handleDayAbility(
   state: GameState,
   seat: SeatId,
-  ability: 'jail' | 'reveal' | 'seance',
+  ability: 'jail' | 'reveal',
   target: SeatId | undefined,
   effects: Effect[],
 ): void {
   const s = seatOf(state, seat);
   if (!s.alive || s.stumped) return; // a stump has no day ability (goal 8)
-
-  if (ability === 'seance') {
-    // Medium (batch B): open a one-night séance for the COMING night. Selected
-    // during a day phase (not Day 0), like the Jailor's prisoner. Requires a
-    // séance remaining; the use is consumed when the séance night resolves.
-    if (s.role !== 'MEDIUM' || s.usesRemaining <= 0) return;
-    if (state.phase === 'DAY_0') return;
-    if (!isDayPhase(state.phase)) return;
-    state.seanceMedium = seat;
-    effects.push(toSeat(seat, { type: 'day_ability_ack', ability: 'seance', target: seat }));
-    return;
-  }
 
   if (ability === 'jail') {
     // Jailor selects a prisoner during day phases (not Day 0).
@@ -636,15 +612,6 @@ function runNightResolution(state: GameState, now: GameTick, effects: Effect[]):
   const res = resolveNight(state);
   effects.push(...res.effects);
   state.traces.push(...res.traces);
-
-  // Medium (batch B): a séance that ran this night consumes one use and closes.
-  if (state.seanceMedium !== null) {
-    const m = state.seats[state.seanceMedium];
-    if (m && m.role === 'MEDIUM' && m.usesRemaining > 0) {
-      m.usesRemaining = Math.max(0, m.usesRemaining - 1);
-    }
-    state.seanceMedium = null;
-  }
 
   // Clear night inputs.
   state.nightIntents = [];
