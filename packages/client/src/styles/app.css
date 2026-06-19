@@ -169,6 +169,9 @@ label {
 .faction-VAMPIRE {
   color: var(--f-vampire);
 }
+.faction-CULT {
+  color: var(--f-cult);
+}
 .faction-NEUTRAL_KILLING {
   color: var(--f-nk);
 }

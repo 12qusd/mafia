@@ -108,6 +108,10 @@ export function roleToNightAbility(role: RoleId): NightAbility | null {
       return 'bite';
     case 'VAMPIRE_HUNTER':
       return 'vampire_check';
+    // --- Cult conversion faction ---
+    case 'CULT_LEADER':
+      return 'recruit';
+    // CULTIST has no night ability (only the Leader recruits).
     // JAILOR's execution uses 'kill_jailor', but only after a jailing — handled
     // by the server when the jailor presses "execute".
     case 'JAILOR':
@@ -179,6 +183,10 @@ export function abilityInfoFor(seat: SeatState): AbilityInfo[] {
     case 'VAMPIRE_HUNTER':
       out.push({ id: 'vampire_check', name: 'Hunt', timing: 'night', usesRemaining: null });
       break;
+    case 'CULT_LEADER':
+      out.push({ id: 'recruit', name: 'Recruit', timing: 'night', usesRemaining: null });
+      break;
+    // CULTIST has no night ability (only the Cult Leader recruits).
     case 'DOCTOR':
       out.push({ id: 'protect', name: 'Heal', timing: 'night', usesRemaining: null });
       break;

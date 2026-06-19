@@ -375,3 +375,62 @@ export const LONG_NIGHT: GameSetup = {
     '15': LONG_NIGHT_15,
   },
 };
+
+/**
+ * "The Faithful" — a 15-player showcase of the Cult conversion faction. A lone
+ * Cult Leader preaches in the dark, drawing the town into the fold one soul at a
+ * time (one recruit per night, with a night's rest after each). Every conversion
+ * is a townsperson lost — so the longer the town waits, the larger the flock. But
+ * the Cult lives and dies with its Leader: kill or lynch them and the recruiting
+ * stops cold (a headless flock can hold a room by numbers, but it grows no more).
+ * The town fields its readers and a Vigilante/Jailor to root the Leader out, while
+ * a small Mafia works the chaos. The game terminates: the Cult wins by reaching
+ * parity, or the town finds the Leader and ends the gathering.
+ *
+ * Town (11): Jailor, Sheriff, Investigator, Doctor, Lookout, Escort, Vigilante,
+ *            Bodyguard, + three RANDOM_TOWN.
+ * Mafia (3): Godfather, Mafioso, + one RANDOM_MAFIA.
+ * Cult (1): Cult Leader.
+ *
+ * Exercises the full recruitment path: the `recruit` ability + the `recruited`
+ * private_result, the Cult-Leader-only one-recruit-per-night rule, the one-night
+ * cooldown, recruitment stopping when the Leader dies, the fourth evil faction in
+ * the generalized win check, and the knowledge-isolated design (no cult chat /
+ * roster — verified by the leak sweep).
+ */
+const FAITHFUL_15: SetupSlot[] = [
+  // Town
+  F('JAILOR'),
+  F('SHERIFF'),
+  F('INVESTIGATOR'),
+  F('DOCTOR'),
+  F('LOOKOUT'),
+  F('ESCORT'),
+  F('VIGILANTE'),
+  F('BODYGUARD'),
+  RANDOM_TOWN,
+  RANDOM_TOWN,
+  RANDOM_TOWN,
+  // Mafia
+  F('GODFATHER'),
+  F('MAFIOSO'),
+  RANDOM_MAFIA,
+  // Cult
+  F('CULT_LEADER'),
+];
+
+export const FAITHFUL: GameSetup = {
+  id: 'the-faithful',
+  name: 'The Faithful',
+  description:
+    'A 15-player showcase of the Cult. A lone Cult Leader draws the town into the fold one soul ' +
+    'at a time — every convert is one of the town’s own, sworn and silent — while a small ' +
+    'Mafia works the chaos. The flock lives and dies with its Leader: find them, and the ' +
+    'gathering ends. The longer the town waits, the more of it belongs to the Cult.',
+  minPlayers: 15,
+  maxPlayers: 15,
+  townPool: ['CITIZEN', 'DOCTOR', 'SHERIFF', 'LOOKOUT', 'VIGILANTE', 'BODYGUARD'],
+  slotsByPlayerCount: {
+    '15': FAITHFUL_15,
+  },
+};

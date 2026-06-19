@@ -1,26 +1,25 @@
 /**
  * Win conditions & endgame (BUILD_SPEC §6.9).
  *
- * Generalized for THREE independent evil killing factions — Mafia, Triad, and
- * Vampire. They are enemies, not allies: no two evil factions can ever co-win,
- * they must wipe each other (and any neutral killer) out first. The Vampire grows
- * by conversion rather than a faction kill, but for the win math it is just a
- * third killing faction that wins on parity. The rules (see {@link checkWin}):
+ * Generalized for FOUR independent evil factions — Mafia, Triad, Vampire, and
+ * Cult. They are enemies, not allies: no two evil factions can ever co-win, they
+ * must wipe each other (and any neutral killer) out first. The Vampire and the Cult
+ * grow by conversion rather than a faction kill, but for the win math they are just
+ * killing factions that win on parity. The rules (see {@link checkWin}):
  *
- *   - Town wins iff NO living Mafia, NO living Triad, NO living Vampire, and no
- *     living NK.
- *   - An evil killing faction F (Mafia | Triad | Vampire) wins iff F has living
+ *   - Town wins iff NO living Mafia, Triad, Vampire, Cult, and no living NK.
+ *   - An evil faction F (Mafia | Triad | Vampire | Cult) wins iff F has living
  *     members, there are NO living members of any OTHER killing faction (the other
  *     evil factions AND no living NK), and F has reached parity with the rest
  *     (|F| >= |living non-F|).
  *   - The Serial Killer (NK) wins iff it is the last killer standing (no living
- *     Mafia, Triad, or Vampire), among only itself + benign neutrals.
- *   - If TWO OR MORE killing factions (Mafia / Triad / Vampire / NK) are alive,
- *     the game CONTINUES — no one wins yet; they fight it out.
+ *     Mafia, Triad, Vampire, or Cult), among only itself + benign neutrals.
+ *   - If TWO OR MORE killing factions (Mafia / Triad / Vampire / Cult / NK) are
+ *     alive, the game CONTINUES — no one wins yet; they fight it out.
  *
  * The 1v1 auto-resolve and the stalemate guard follow the same priority ladder:
- * SK > Vampire > Triad > Mafia > Town. A pure evil-vs-evil endgame with nothing
- * else alive resolves to the LARGER faction; an exact tie continues (the
+ * SK > Cult > Vampire > Triad > Mafia > Town. A pure evil-vs-evil endgame with
+ * nothing else alive resolves to the LARGER faction; an exact tie continues (the
  * auto-resolve) / draws-by-priority (the stalemate guard) — see below.
  */
 
@@ -34,17 +33,19 @@ interface FactionTally {
   mafia: SeatState[];
   triad: SeatState[]; // second evil killing faction
   vampire: SeatState[]; // third evil killing faction (grows by conversion)
+  cult: SeatState[]; // fourth evil faction (grows by recruitment)
   sk: SeatState[]; // serial killers (NEUTRAL_KILLING)
   benign: SeatState[]; // jester/exe/survivor (NEUTRAL_BENIGN)
 }
 
 function tally(state: GameState): FactionTally {
-  const t: FactionTally = { town: [], mafia: [], triad: [], vampire: [], sk: [], benign: [] };
+  const t: FactionTally = { town: [], mafia: [], triad: [], vampire: [], cult: [], sk: [], benign: [] };
   for (const s of livingSeats(state)) {
     if (s.faction === 'TOWN') t.town.push(s);
     else if (s.faction === 'MAFIA') t.mafia.push(s);
     else if (s.faction === 'TRIAD') t.triad.push(s);
     else if (s.faction === 'VAMPIRE') t.vampire.push(s);
+    else if (s.faction === 'CULT') t.cult.push(s);
     else if (s.faction === 'NEUTRAL_KILLING') t.sk.push(s);
     else t.benign.push(s);
   }
@@ -73,10 +74,12 @@ export function checkWin(
   const mafiaCount = t.mafia.length;
   const triadCount = t.triad.length;
   const vampireCount = t.vampire.length;
-  // The three evil killing factions, as a uniform list (parity winner + endgame
+  const cultCount = t.cult.length;
+  // The four evil killing factions, as a uniform list (parity winner + endgame
   // priority computed from this). Priority order (highest first) mirrors the
-  // stalemate ladder: Vampire > Triad > Mafia. (SK sits above all of these.)
+  // stalemate ladder: Cult > Vampire > Triad > Mafia. (SK sits above all of these.)
   const evilFactions: { party: WinningParty; reason: WinCheckReason; count: number; priority: number }[] = [
+    { party: 'CULT', reason: 'cult_parity', count: cultCount, priority: 4 },
     { party: 'VAMPIRE', reason: 'vampire_parity', count: vampireCount, priority: 3 },
     { party: 'TRIAD', reason: 'triad_parity', count: triadCount, priority: 2 },
     { party: 'MAFIA', reason: 'mafia_parity', count: mafiaCount, priority: 1 },
@@ -136,9 +139,9 @@ export function checkWin(
 
 /**
  * Stalemate guard (§6.9.6): if `quietNights` reached the threshold, the game
- * ends — largest living faction wins. Priority ladder for ties: SK > Vampire >
- * Triad > Mafia > Town (SK counts as a faction of 1 and wins ties; among the evil
- * factions the larger wins, tie ⇒ the deterministic priority above).
+ * ends — largest living faction wins. Priority ladder for ties: SK > Cult >
+ * Vampire > Triad > Mafia > Town (SK counts as a faction of 1 and wins ties; among
+ * the evil factions the larger wins, tie ⇒ the deterministic priority above).
  */
 export function checkStalemate(
   state: GameState,
@@ -146,13 +149,14 @@ export function checkStalemate(
   if (state.quietNights < STALEMATE_QUIET_NIGHTS) return null;
   const t = tally(state);
 
-  // Larger count wins; ties broken by priority (SK > Vampire > Triad > Mafia > Town).
+  // Larger count wins; ties broken by priority (SK > Cult > Vampire > Triad > Mafia > Town).
   const candidates: { party: WinningParty; count: number; priority: number }[] = [];
   if (t.town.length > 0) candidates.push({ party: 'TOWN', count: t.town.length, priority: 0 });
   if (t.mafia.length > 0) candidates.push({ party: 'MAFIA', count: t.mafia.length, priority: 1 });
   if (t.triad.length > 0) candidates.push({ party: 'TRIAD', count: t.triad.length, priority: 2 });
   if (t.vampire.length > 0) candidates.push({ party: 'VAMPIRE', count: t.vampire.length, priority: 3 });
-  if (t.sk.length > 0) candidates.push({ party: 'SERIAL_KILLER', count: t.sk.length, priority: 4 });
+  if (t.cult.length > 0) candidates.push({ party: 'CULT', count: t.cult.length, priority: 4 });
+  if (t.sk.length > 0) candidates.push({ party: 'SERIAL_KILLER', count: t.sk.length, priority: 5 });
 
   if (candidates.length === 0) {
     return { reason: 'stalemate', winners: ['DRAW'] };
@@ -262,6 +266,8 @@ function seatWon(seat: SeatState, state: GameState, winners: WinningParty[]): bo
       return winners.includes('TRIAD');
     case 'VAMPIRE':
       return winners.includes('VAMPIRE');
+    case 'CULT':
+      return winners.includes('CULT');
     case 'NEUTRAL_KILLING':
       return winners.includes('SERIAL_KILLER');
     case 'NEUTRAL_BENIGN':

@@ -48,6 +48,8 @@ import { PESTILENCE } from './pestilence.js';
 import { RETRIBUTIONIST } from './retributionist.js';
 import { VAMPIRE } from './vampire.js';
 import { VAMPIRE_HUNTER } from './vampire_hunter.js';
+import { CULT_LEADER } from './cult_leader.js';
+import { CULTIST } from './cultist.js';
 
 export type { RoleDefinition } from './types.js';
 export type { NightActionKind, DayActionKind, TargetScope, AbilityUses } from './types.js';
@@ -100,6 +102,8 @@ export {
   RETRIBUTIONIST,
   VAMPIRE,
   VAMPIRE_HUNTER,
+  CULT_LEADER,
+  CULTIST,
 };
 
 /** Registry of every role definition, keyed by id (BUILD_SPEC §6.5). */
@@ -151,6 +155,8 @@ export const ROLES: Readonly<Record<RoleId, RoleDefinition>> = {
   RETRIBUTIONIST,
   VAMPIRE,
   VAMPIRE_HUNTER,
+  CULT_LEADER,
+  CULTIST,
 };
 
 /** Look up a role definition by id. */
@@ -167,7 +173,7 @@ export const ALL_ROLES: readonly RoleDefinition[] = Object.values(ROLES);
  * (handled by the engine, not this static table).
  */
 export const INVESTIGATOR_CLASS_TABLE: Readonly<Record<InvestigatorClass, readonly RoleId[]>> = {
-  R1: ['CITIZEN', 'SURVIVOR', 'EXECUTIONER', 'AMNESIAC', 'GUARDIAN_ANGEL'],
+  R1: ['CITIZEN', 'SURVIVOR', 'EXECUTIONER', 'AMNESIAC', 'GUARDIAN_ANGEL', 'CULT_LEADER', 'CULTIST'],
   R2: ['SHERIFF', 'JAILOR', 'BLACKMAILER', 'TRACKER', 'RETRIBUTIONIST', 'VAMPIRE_HUNTER'],
   R3: ['INVESTIGATOR', 'JESTER', 'CONSIGLIERE', 'SPY', 'PSYCHIC'],
   R4: ['DOCTOR', 'SERIAL_KILLER', 'MEDIUM', 'MASS_MURDERER', 'PLAGUEBEARER', 'PESTILENCE', 'VAMPIRE'],

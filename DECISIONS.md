@@ -1550,3 +1550,111 @@ killing faction that wins on parity; conversion is irrelevant to the math.
   The bot policy needs no vampire awareness: only the lowest-seat STARTING vampire's
   bite resolves, and the bite is a generic single-target ability the policy already
   drives.
+
+## Cult conversion faction (fourth evil faction)
+
+The Cult is Nocturne's SECOND conversion faction — built on the exact proven,
+leak-safe scaffold the Vampire established. It grows by RECRUITMENT (a night
+conversion that draws a seat TOWN/benign→CULT) and wins by parity. It is
+deliberately KNOWLEDGE-ISOLATED like the Vampire so the information-leak invariant
+stays trivially provable. What makes it DISTINCT from the Vampire:
+
+- ONLY the Cult Leader recruits (one convert/night); the rank-and-file Cultists
+  cannot grow the cult. Contrast: ANY vampire bites.
+- Conversions STOP when the Cult Leader dies — a headless cult can still reach a
+  parity win but can never grow again.
+- A one-night COOLDOWN: the Cult Leader cannot recruit on consecutive nights
+  (after a successful recruit it must rest a night). (The simple deterministic
+  nuance, chosen over the "fresh-convert is settling" variant.)
+
+### Leak-safety: knowledge-isolated (NO cult chat, NO roster)
+- Cult shares NO secret chat (no 'cult' ChatChannel) and NO `your_role.mates`
+  roster. Converted Cultists are NEVER told who the other cult members are (not
+  even the Leader). The ONLY private info on conversion is the `recruited`
+  private_result delivered to the converted seat alone — it carries NO other seat's
+  identity or role (as leak-trivial as `roleblocked`/`turned`).
+- `yourRoleEffect` was NOT extended to emit mates for CULT (mates ship only to
+  MAFIA/TRIAD). A converted seat is NEVER re-sent `your_role` — it keeps the
+  (TOWN/benign, NO mates) card from deal time. So no roster, no chat, no new
+  your_role ⇒ no new leak surface. The auditor needed only KNOWN_ROLES additions
+  (CULT_LEADER, CULTIST). Verified: 0 leaks on classic 9p (200 games) and
+  the-faithful 15p (80 games, conversion exercised).
+
+### Conversion design
+- WHO converts: ONLY the (unique) Cult Leader, and only if it is alive with a
+  standing `recruit` intent and a valid living target. Cultists cannot recruit.
+- COOLDOWN: a one-night cooldown. `cultLastRecruitNight` (GameState) records the
+  night of the last successful recruit; if `nightNumber === cultLastRecruitNight +
+  1` the recruit fails (the Leader rests the night after a conversion). Reset is
+  unnecessary — the field only advances. Deterministic.
+- WHAT is convertible: a living TOWN or NEUTRAL_BENIGN seat that is NOT already
+  CULT and NOT night-immune. Mafia/Triad/Vampire/NK/other-neutrals resist (the
+  recruit just fails). Same convertible set as the Vampire.
+- DEATH-STOPS-GROWTH: the recruit only converts if the Cult Leader is still alive
+  after the night's kills are settled (a Leader lynched/shot this night recruits no
+  one; and with no Leader alive, future nights have no recruiter at all).
+- ROLE/FACTION CHANGE: a successful recruit changes the target to role CULTIST +
+  faction CULT (so investigations read consistently thereafter — sheriff-suspicious,
+  investigator-R1, psychic-evil). Mirrors the vampire turn.
+- IMMUNITY: the Cult Leader is NOT night-immune and NOT roleblock-immune (recorded;
+  the town's counter is to find and kill/lynch the Leader). The recruit is a VISIT
+  (a Lookout/Tracker/Veteran/Crusader/Ambusher sees it). NO cult kill — recruitment
+  + parity is the entire win condition.
+- Resolution order: the recruit is applied in resolve.ts step 8, AFTER kills are
+  settled, exactly like the vampire convert. New ResolutionTrace
+  `recruit {leader,target,recruited}`.
+
+### Roles
+- CULT_LEADER (faction CULT, UNIQUE): the converter. Sheriff-suspicious;
+  investigator class R1 (hides among the soft Town/benign R1 set — Citizen,
+  Survivor, Executioner, Amnesiac, Guardian Angel — so a single check never
+  confirms it). NOT night-immune (recorded). No counter role is added — the town
+  counters by killing/lynching the Leader (recorded).
+- CULTIST (faction CULT): the converted body of the faction. Sheriff-suspicious;
+  investigator class R1 (a fresh convert reads like an ordinary soul). Has no night
+  ability — it exists to swell the parity count and cannot itself recruit.
+
+### Win-check extension to a FOURTH evil faction
+wincheck.ts already generalized Mafia/Triad/Vampire into a uniform `livingEvil`
+list (length 1 ⇒ parity check). Adding the Cult is a UNIFORM list addition — NOT a
+special case:
+- `tally` gains a `cult` bucket; the `evilFactions` list gains CULT.
+- Priority ladder slot: SK > Cult > Vampire > Triad > Mafia > Town. The Cult takes
+  the highest evil priority (4) below SK, so a stalemate/endgame tie at the top
+  resolves to the Cult over Vampire/Triad/Mafia. (Recorded.)
+- Town wins iff no living Mafia, Triad, Vampire, Cult, OR NK. An evil faction F
+  wins iff it is the SOLE living killing faction at parity. SK wins iff last killer.
+  Two+ killing factions ⇒ continue. The pure evil-vs-evil endgame + stalemate
+  ladders extend uniformly.
+- New WinningParty CULT + WinCheckReason `cult_parity`.
+- ALL pre-existing win/triad/vampire/determinism goldens stay GREEN; added goldens:
+  cult parity win, town beats cult, cult-vs-mafia continue, a recruit growing the
+  cult to a parity win, and recruitment stops when the Cult Leader dies.
+
+### Additions (surfaces touched)
+- Faction CULT (FactionSchema; compose/validate/builder records; client
+  FACTION_LABEL + `--f-cult` ochre/gold-green [colorblind chartreuse] +
+  .faction-CULT + IconCult eye-in-triangle glyph + FactionIcon case).
+- WinningParty CULT + WINNER_LABEL line. WinCheckReason `cult_parity`.
+- RoleIds CULT_LEADER (converter, unique) + CULTIST (body), original noir copy.
+  INVESTIGATOR_CLASS_TABLE: both → R1. Sheriff: both suspicious. Psychic treats
+  CULT as evil. UNIQUE_ROLES += CULT_LEADER.
+- NightAbility `recruit` (CULT_LEADER); it visits. roleToNightAbility +
+  abilityInfoFor (Recruit card). CULTIST has no night ability.
+- NO new DeathCause (the Cult has no killing power). PrivateResultKind `recruited`
+  (+ zod payload, strings, client PrivateLog rendering). ResolutionTrace `recruit`.
+  GameState field `cultLastRecruitNight` (cooldown bookkeeping).
+- Curated setup "The Faithful" (the-faithful, 15p: 1 Cult Leader + small Mafia +
+  Town); validateSetup passes (a CULT_LEADER slot counts as a killing/terminal path
+  in validate.ts — its recruitment drives the game to parity). Added to leakcheck +
+  sim CLI SETUP_MAPs.
+- leak.ts KNOWN_ROLES += CULT_LEADER, CULTIST. NO new whitelist needed (the
+  knowledge-isolated design adds no secret-bearing frame type).
+
+### Skipped / deferred
+- NO cult chat channel and NO new human-client night UI beyond the generic
+  single-target picker (the engine/protocol/bots path is complete; a recruited seat
+  keeps its original role card by design — the convert experience is "you receive a
+  `recruited` note in your private log"). The bot policy needs no cult awareness:
+  only the (unique) Cult Leader recruits, via the generic single-target `recruit`
+  ability the policy already drives.

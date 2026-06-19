@@ -256,6 +256,7 @@ export function init(setup: GameSetup, seed: string, opts: InitOptions = {}): Ga
     trial: null,
     pendingJesterGrief: null,
     quietNights: 0,
+    cultLastRecruitNight: -1,
     jesterWinners: [],
     exeWinners: [],
     gaWinners: [],

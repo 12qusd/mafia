@@ -34,6 +34,9 @@ const SETUP_MAP: Record<string, string> = {
   'long-night': 'the-long-night',
   the_long_night: 'the-long-night',
   'the-long-night': 'the-long-night',
+  faithful: 'the-faithful',
+  the_faithful: 'the-faithful',
+  'the-faithful': 'the-faithful',
 };
 
 function main(): void {

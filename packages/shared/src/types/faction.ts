@@ -18,6 +18,16 @@ import { z } from 'zod';
  *   trivially leak-safe; see DECISIONS.md "Vampire conversion faction"). Like the
  *   Mafia and Triad, the Vampires are enemies of every other killing faction:
  *   they cannot co-win, they must wipe the others out first (§6.9, wincheck.ts).
+ * - CULT — a FOURTH evil faction that, like the Vampire, grows by CONVERSION
+ *   rather than by a faction kill — but ONLY the (unique) Cult Leader recruits
+ *   (one convert per night, with a one-night cooldown), and recruitment STOPS the
+ *   moment the Cult Leader dies (a headless cult can still win at parity but can
+ *   never grow). The Cult wins on parity exactly like the Mafia/Triad/Vampire, and
+ *   — by the same design — shares NO secret chat and NO roster: every member acts
+ *   alone and is never told who the others are (knowledge-isolated, so recruitment
+ *   is trivially leak-safe; see DECISIONS.md "Cult conversion faction"). Like the
+ *   other evil factions, the Cult is an enemy of every other killing faction: it
+ *   cannot co-win, it must wipe the others out first (§6.9, wincheck.ts).
  * - NEUTRAL_KILLING — independent killer (Serial Killer); wins as last killer.
  * - NEUTRAL_BENIGN — independent personal win conditions (Jester, Executioner,
  *   Survivor); do not threaten the town/mafia parity math directly.
@@ -27,6 +37,7 @@ export const FACTIONS = [
   'MAFIA',
   'TRIAD',
   'VAMPIRE',
+  'CULT',
   'NEUTRAL_KILLING',
   'NEUTRAL_BENIGN',
 ] as const;

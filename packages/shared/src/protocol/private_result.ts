@@ -135,6 +135,14 @@ export const VampireHunterResultPayload = z.object({
   isVampire: z.boolean(),
 });
 
+/**
+ * Cult recruited result (Cult faction). The recruited seat learns they have been
+ * drawn into the Cult. Carries NO other seat's identity or role (not even the Cult
+ * Leader's) — exactly as leak-trivial as `turned`/`roleblocked`. Delivered to the
+ * converted seat ALONE.
+ */
+export const RecruitedPayload = z.object({ kind: z.literal('recruited') });
+
 /** Discriminated union of all private-result payloads (without envelope). */
 export const PrivateResultPayloadSchema = z.discriminatedUnion('kind', [
   SheriffResultPayload,
@@ -157,5 +165,6 @@ export const PrivateResultPayloadSchema = z.discriminatedUnion('kind', [
   PsychicVisionPayload,
   TurnedPayload,
   VampireHunterResultPayload,
+  RecruitedPayload,
 ]);
 export type PrivateResultPayload = z.infer<typeof PrivateResultPayloadSchema>;

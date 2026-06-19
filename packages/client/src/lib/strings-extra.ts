@@ -429,6 +429,7 @@ export const TRACE_STEP_LABEL: Record<string, string> = {
   pestilence: '5 · Pestilence',
   vampire_check: '6 · Vampire Hunter check',
   convert: '8 · Vampire conversion',
+  recruit: '8 · Cult recruitment',
   investigate: '6 · Investigate',
   death: '7 · Death',
   promotion: '8 · Promotion',
@@ -464,6 +465,7 @@ export const FACTION_LABEL: Record<Faction, string> = {
   MAFIA: 'Mafia',
   TRIAD: 'Triad',
   VAMPIRE: 'Vampire',
+  CULT: 'Cult',
   NEUTRAL_KILLING: 'Lone Killer',
   NEUTRAL_BENIGN: 'Neutral',
 };
@@ -474,6 +476,7 @@ export const WINNER_LABEL: Record<WinningParty, string> = {
   MAFIA: 'The Mafia owns the town',
   TRIAD: 'The Triad rules the streets',
   VAMPIRE: 'The coven drinks the town dry',
+  CULT: 'The Cult gathers the town into the fold',
   SERIAL_KILLER: 'The Lone Killer stands alone at the end',
   JESTER: 'The Jester got the last laugh',
   EXECUTIONER: 'The Executioner got their man',

@@ -31,6 +31,7 @@
   --f-mafia: #b14a50;
   --f-triad: #3fa66a; /* triad — jade green (second evil faction) */
   --f-vampire: #8a3b54; /* vampire — desaturated crimson-violet (third evil faction) */
+  --f-cult: #7d8a2e; /* cult — olive / gold-green (fourth evil faction; distinct from triad jade + nb tan) */
   --f-nk: #b07ad6; /* neutral killing */
   --f-nb: #c9a45a; /* neutral benign */
 
@@ -49,6 +50,7 @@
   --f-mafia: #fb5607; /* orange-red */
   --f-triad: #2ec4b6; /* teal — distinct from mafia orange-red and nk yellow */
   --f-vampire: #d81159; /* magenta-pink — distinct from mafia orange-red, nb violet, nk yellow */
+  --f-cult: #9bcb3c; /* chartreuse / lime-green — distinct from triad teal, nk yellow, town blue */
   --f-nk: #ffbe0b; /* yellow */
   --f-nb: #8338ec; /* violet */
   --c-blood: #fb5607;

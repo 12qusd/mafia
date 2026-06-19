@@ -54,6 +54,9 @@ describe('unique roles (§6.5, §6.10)', () => {
         'PLAGUEBEARER',
         'PESTILENCE',
         'RETRIBUTIONIST',
+        // Cult faction: the Cult Leader is the unique sole recruiter (the Cultist
+        // is not unique — it is the converted body of the faction).
+        'CULT_LEADER',
       ].sort(),
     );
   });
@@ -68,7 +71,7 @@ describe('unique roles (§6.5, §6.10)', () => {
 describe('investigator result classes (§6.6)', () => {
   // The exact table from §6.6.
   const SPEC_TABLE: Record<string, RoleId[]> = {
-    R1: ['CITIZEN', 'SURVIVOR', 'EXECUTIONER', 'AMNESIAC', 'GUARDIAN_ANGEL'],
+    R1: ['CITIZEN', 'SURVIVOR', 'EXECUTIONER', 'AMNESIAC', 'GUARDIAN_ANGEL', 'CULT_LEADER', 'CULTIST'],
     R2: ['SHERIFF', 'JAILOR', 'BLACKMAILER', 'TRACKER', 'RETRIBUTIONIST', 'VAMPIRE_HUNTER'],
     R3: ['INVESTIGATOR', 'JESTER', 'CONSIGLIERE', 'SPY', 'PSYCHIC'],
     R4: ['DOCTOR', 'SERIAL_KILLER', 'MEDIUM', 'MASS_MURDERER', 'PLAGUEBEARER', 'PESTILENCE', 'VAMPIRE'],
@@ -137,6 +140,9 @@ describe('sheriff alignment table (§6.6)', () => {
     'PESTILENCE',
     // Vampire faction: the Vampire reads suspicious; the Town Vampire Hunter reads clean.
     'VAMPIRE',
+    // Cult faction: the Cult Leader and the Cultist both read suspicious (evil).
+    'CULT_LEADER',
+    'CULTIST',
   ];
 
   it('exactly the spec set reads suspicious un-framed', () => {
@@ -232,5 +238,15 @@ describe('ability metadata (§6.5)', () => {
     expect(vamps).toEqual(['VAMPIRE']);
     // The Vampire Hunter is a TOWN counter, NOT a vampire.
     expect(ROLES.VAMPIRE_HUNTER.faction).toBe('TOWN');
+  });
+
+  it('Cult faction has exactly the Cult Leader (unique recruiter) + the Cultist', () => {
+    const cult = ALL_ROLES.filter((r) => r.faction === 'CULT')
+      .map((r) => r.id)
+      .sort();
+    expect(cult).toEqual(['CULTIST', 'CULT_LEADER']);
+    // Only the Cult Leader is unique (the sole recruiter); the Cultist is not.
+    expect(ROLES.CULT_LEADER.unique).toBe(true);
+    expect(ROLES.CULTIST.unique).toBe(false);
   });
 });

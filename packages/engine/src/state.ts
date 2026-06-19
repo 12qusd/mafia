@@ -181,6 +181,8 @@ export type NightAbility =
   // --- Vampire conversion faction (third evil killing faction) ---
   | 'bite' // Vampire: a visiting conversion attempt (turns the target into a Vampire)
   | 'vampire_check' // Vampire Hunter: study a target, learn vampire/not; passively stakes a biting vampire
+  // --- Cult conversion faction (fourth evil faction) ---
+  | 'recruit' // Cult Leader: a visiting conversion attempt (draws the target into the Cult)
   | 'kill_vigilante'
   | 'kill_mafia'
   | 'kill_serial'
@@ -257,6 +259,11 @@ export type ResolutionTrace =
   | { step: 'convert'; vampire: SeatId; target: SeatId; converted: boolean; staked: boolean }
   // The Vampire Hunter's active check: whether the studied target is a vampire.
   | { step: 'vampire_check'; hunter: SeatId; target: SeatId; isVampire: boolean }
+  // --- Cult conversion faction ---
+  // The Cult Leader's recruitment resolved: `recruited` true ⇒ the target was drawn
+  // into the Cult; false ⇒ the recruit failed (immune/already-cult/non-convertible/
+  // unreachable/the Leader died this night/the one-night cooldown was in effect).
+  | { step: 'recruit'; leader: SeatId; target: SeatId; recruited: boolean }
   | { step: 'promotion'; kind: 'guardian_to_survivor'; seat: SeatId }
   | { step: 'promotion'; kind: 'plaguebearer_to_pestilence'; seat: SeatId }
   // The Vampire Hunter retires to a Vigilante once no vampires remain (role change).
@@ -287,6 +294,7 @@ export type WinCheckReason =
   | 'mafia_parity'
   | 'triad_parity'
   | 'vampire_parity'
+  | 'cult_parity'
   | 'serial_killer_last'
   | 'one_v_one'
   | 'stalemate'
@@ -372,6 +380,15 @@ export interface GameState {
 
   /** Consecutive zero-death nights (stalemate guard). */
   quietNights: number;
+
+  /**
+   * Cult conversion faction: the nightNumber of the LAST successful recruit (-1 if
+   * none yet). Enforces the one-night cooldown — the Cult Leader cannot recruit on
+   * the night immediately following a conversion (a recruit on night N forbids a
+   * recruit on night N+1). Advance-only; never reset. See DECISIONS.md "Cult
+   * conversion faction".
+   */
+  cultLastRecruitNight: number;
 
   /** Personal win flags accrued during play (riders awarded at game over). */
   jesterWinners: SeatId[];

@@ -68,6 +68,18 @@ export function IconVampire({ size = 14, className }: P) {
     className,
   );
 }
+/** Cult: an all-seeing eye set within a triangle (distinct from fangs / dagger / knot). */
+export function IconCult({ size = 14, className }: P) {
+  return svg(
+    size,
+    <>
+      <path d="M12 3l9 16H3z" />
+      <path d="M7.5 14c1.4-2 7.6-2 9 0-1.4 2-7.6 2-9 0z" />
+      <circle cx="12" cy="14" r="1.4" />
+    </>,
+    className,
+  );
+}
 /** Neutral killing: a dagger. */
 export function IconNK({ size = 14, className }: P) {
   return svg(
@@ -96,6 +108,8 @@ export function FactionIcon({ faction, size, className }: P & { faction: Faction
       return <IconTriad {...p} />;
     case 'VAMPIRE':
       return <IconVampire {...p} />;
+    case 'CULT':
+      return <IconCult {...p} />;
     case 'NEUTRAL_KILLING':
       return <IconNK {...p} />;
     case 'NEUTRAL_BENIGN':

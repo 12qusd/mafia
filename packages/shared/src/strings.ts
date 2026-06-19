@@ -161,6 +161,8 @@ export const PRIVATE_RESULT_TEXT: Record<PrivateResultKind, string> = {
   turned:
     'Teeth found your throat in the dark, and the thirst is yours now. You have been turned — you hunt with the coven from this night on.',
   vampire_hunter_result: '', // resolved via vampireHunterResultLine (needs the verdict)
+  recruited:
+    'A whisper at your door, a sign you cannot unsee, and something in you answers. You have been drawn into the Cult — you walk with the faithful from this night on.',
 };
 
 /** Sheriff result line (BUILD_SPEC §6.6). */

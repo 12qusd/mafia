@@ -63,6 +63,11 @@ export type TrialOutcome = z.infer<typeof TrialOutcomeSchema>;
  *                         `isVampire` for the studied target. Carries the target
  *                         seat + a yes/no flag — NO role strings — so it is
  *                         leak-trivial (like the sheriff's suspicious/not read).
+ * - recruited            — you have been drawn into the CULT (Cult faction).
+ *                         Delivered to the converted seat ALONE; carries NO other
+ *                         seat's identity or role (not even the Cult Leader's), so
+ *                         it is as leak-trivial as `turned`/`roleblocked`. The
+ *                         seat's own new alignment is its own to know.
  */
 export const PRIVATE_RESULT_KINDS = [
   'sheriff_result',
@@ -85,6 +90,7 @@ export const PRIVATE_RESULT_KINDS = [
   'psychic_vision',
   'turned',
   'vampire_hunter_result',
+  'recruited',
 ] as const;
 export const PrivateResultKindSchema = z.enum(PRIVATE_RESULT_KINDS);
 export type PrivateResultKind = z.infer<typeof PrivateResultKindSchema>;

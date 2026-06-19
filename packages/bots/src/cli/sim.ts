@@ -64,6 +64,9 @@ function normalizeSetup(id: string): string {
     'long-night': 'the-long-night',
     the_long_night: 'the-long-night',
     'the-long-night': 'the-long-night',
+    faithful: 'the-faithful',
+    the_faithful: 'the-faithful',
+    'the-faithful': 'the-faithful',
   };
   return map[id] ?? id;
 }

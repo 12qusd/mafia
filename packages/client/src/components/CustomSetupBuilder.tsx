@@ -65,6 +65,7 @@ const ROLES_BY_FACTION: Record<Faction, RoleId[]> = (() => {
     MAFIA: [],
     TRIAD: [],
     VAMPIRE: [],
+    CULT: [],
     NEUTRAL_KILLING: [],
     NEUTRAL_BENIGN: [],
   } as Record<Faction, RoleId[]>;
@@ -152,6 +153,7 @@ export function CustomSetupBuilder() {
       MAFIA: 0,
       TRIAD: 0,
       VAMPIRE: 0,
+      CULT: 0,
       NEUTRAL_KILLING: 0,
       NEUTRAL_BENIGN: 0,
     };

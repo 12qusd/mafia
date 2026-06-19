@@ -63,6 +63,9 @@ export const ROLE_IDS = [
   // --- Vampire conversion faction (third evil killing faction) ---
   'VAMPIRE', // Vampire: bites at night to CONVERT a victim into a new Vampire
   'VAMPIRE_HUNTER', // Town: stakes any vampire that bites them; becomes a Vigilante when no vampires remain
+  // --- Cult conversion faction (fourth evil faction) ---
+  'CULT_LEADER', // Cult: the unique converter — recruits one victim per night (one-night cooldown); recruitment stops if it dies
+  'CULTIST', // Cult: the converted body of the faction; swells the parity count but cannot itself recruit
 ] as const;
 
 export const RoleIdSchema = z.enum(ROLE_IDS);

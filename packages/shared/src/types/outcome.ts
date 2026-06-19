@@ -15,6 +15,10 @@ export const WINNING_PARTIES = [
   // collective faction winner like TOWN / MAFIA / TRIAD; can never co-win with
   // another killing faction (see wincheck.ts).
   'VAMPIRE',
+  // CULT — the fourth evil faction (recruitment + parity win). Like the Vampire it
+  // grows by conversion, but only the Cult Leader recruits. A collective faction
+  // winner; can never co-win with another killing faction (see wincheck.ts).
+  'CULT',
   'SERIAL_KILLER',
   'JESTER',
   'EXECUTIONER',

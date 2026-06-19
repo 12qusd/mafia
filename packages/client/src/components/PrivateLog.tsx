@@ -71,6 +71,8 @@ function renderPayload(p: PrivateResultPayload, label: (seat: number) => string)
     case 'blackmailed':
     case 'turned':
       // Vampire faction `turned`: a flat noir line; carries no other seat / role.
+    case 'recruited': // eslint-disable-line no-fallthrough
+      // Cult faction `recruited`: a flat noir line; carries no other seat / role.
       return strings.PRIVATE_RESULT_TEXT[p.kind];
     default:
       return '';

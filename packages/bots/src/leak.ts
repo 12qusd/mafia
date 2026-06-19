@@ -284,4 +284,12 @@ const KNOWN_ROLES = new Set<string>([
   // converted seat's pre-reveal role appeared at an unentitled observer).
   'VAMPIRE',
   'VAMPIRE_HUNTER',
+  // --- Cult conversion faction ---
+  // Knowledge-isolated design: the Cult shares NO chat and NO roster, so no new
+  // entitlement check is needed. We register both role ids so the cross-capture
+  // deep scan still catches any accidental broadcast of a CULT_LEADER / CULTIST
+  // role string (e.g. if a `recruited` result ever leaked the convert's role, or a
+  // recruited seat's pre-reveal role appeared at an unentitled observer).
+  'CULT_LEADER',
+  'CULTIST',
 ]);

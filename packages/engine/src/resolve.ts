@@ -695,6 +695,25 @@ export function resolveNight(state: GameState): ResolveResult {
     kills.push({ source: 'staked', attacker: resolvingBite.target, target: resolvingBite.vampire, powerful: true });
   }
 
+  // Cult recruit (Cult faction): determine the SINGLE recruit that resolves this
+  // night. ONLY the (unique) Cult Leader recruits — the rank-and-file Cultists
+  // cannot grow the Cult. We pick the lowest-seat living CULT_LEADER with a
+  // still-standing `recruit` intent and a valid living target. (In a valid setup
+  // the Cult Leader is unique, so this is "the" Leader; the lowest-seat iteration
+  // keeps it deterministic even in a degenerate multi-Leader setup.) Unlike the
+  // Vampire there is NO counter-stake — the Cult has no killing power, so nothing
+  // is pushed to the kill pass here; the conversion is applied in step 8 after
+  // kills are settled. The recruit is a VISIT (a Lookout/Veteran/etc. sees it).
+  let resolvingRecruit: { leader: SeatId; target: SeatId } | null = null;
+  for (const i of [...intentBySeat.values()].sort((a, b) => a.seat - b.seat)) {
+    if (i.ability !== 'recruit' || i.target === null || i.target === i.seat) continue;
+    const leader = seatOf(state, i.seat);
+    if (!leader.alive || leader.role !== 'CULT_LEADER') continue;
+    if (!seatOf(state, i.target).alive) continue;
+    resolvingRecruit = { leader: i.seat, target: i.target };
+    break; // lowest-seat Cult Leader wins (intents iterated in seat order)
+  }
+
   // Resolve kills simultaneously against state after steps 1–4.
   // Track which seats die; a doctor shield absorbs exactly one successful kill.
   const shieldUsed = new Set<SeatId>();
@@ -1225,6 +1244,56 @@ export function resolveNight(state: GameState): ResolveResult {
     });
   }
 
+  // Cult recruitment (Cult faction). The single resolving recruit (the Cult
+  // Leader's, chosen above) DRAWS its target into the Cult — a role + faction
+  // change to CULTIST/CULT, mirroring the vampire turn. The recruit CONVERTS iff,
+  // after this night's kills are settled:
+  //   - the Cult Leader is still alive (a dead Leader recruits no one — and with no
+  //     Leader alive, recruitment is over for good: death STOPS growth), and
+  //   - the target is still alive (a corpse cannot be drawn in), and
+  //   - the target was reachable (not jailed / dueled away), and
+  //   - the target is CONVERTIBLE: a living TOWN or NEUTRAL_BENIGN seat that is NOT
+  //     already Cult and NOT night-immune (same convertible set as the Vampire —
+  //     Mafia/Triad/Vampire/NK/other neutrals resist; the recruit just fails), and
+  //   - the one-night COOLDOWN is clear: the Leader must rest the night after each
+  //     conversion, so a recruit on night N forbids a recruit on night N+1
+  //     (state.cultLastRecruitNight tracks the last successful-recruit night).
+  // The recruited seat is told privately "you have been drawn into the Cult" —
+  // carrying NO other identity or role (as leak-trivial as `roleblocked`/`turned`).
+  // A `recruit` trace records the outcome either way. NO new your_role is sent: the
+  // seat keeps the (TOWN/benign, no-mates) card it received at deal time, so the
+  // knowledge-isolated design leaks nothing (see DECISIONS.md "Cult conversion
+  // faction").
+  if (resolvingRecruit !== null) {
+    const leader = seatOf(state, resolvingRecruit.leader);
+    const target = seatOf(state, resolvingRecruit.target);
+    const leaderSurvived = leader.alive && !dyingSet.has(resolvingRecruit.leader);
+    const targetSurvived = target.alive && !dyingSet.has(resolvingRecruit.target);
+    const reachable = !jailed.has(resolvingRecruit.target) && !dueledTargets.has(resolvingRecruit.target);
+    const convertible =
+      (target.faction === 'TOWN' || target.faction === 'NEUTRAL_BENIGN') && !isNightImmune(target);
+    const cooldownClear = state.nightNumber !== state.cultLastRecruitNight + 1;
+    const recruited =
+      leaderSurvived && targetSurvived && reachable && convertible && cooldownClear;
+    if (recruited) {
+      target.role = 'CULTIST';
+      target.faction = 'CULT';
+      const u = initialUses('CULTIST');
+      target.usesRemaining = u.uses;
+      target.selfUsesRemaining = u.self;
+      // Record the conversion night for the one-night cooldown.
+      state.cultLastRecruitNight = state.nightNumber;
+      // Tell the recruit privately — no other seat's identity revealed.
+      effects.push(toSeat(resolvingRecruit.target, { type: 'private_result', kind: 'recruited' }));
+    }
+    traces.push({
+      step: 'recruit',
+      leader: resolvingRecruit.leader,
+      target: resolvingRecruit.target,
+      recruited,
+    });
+  }
+
   // Vampire Hunter retirement (Vampire faction): once NO vampires remain in the
   // game, every living Vampire Hunter's hunt is over — it becomes a Vigilante
   // (role change within TOWN, mirroring the executioner→jester / guardian→survivor
@@ -1521,6 +1590,9 @@ function actorVisits(_actor: SeatState, intent: NightIntent): boolean {
     // bites a Hunter is a visitor the Hunter can stake).
     case 'bite': // eslint-disable-line no-fallthrough
     case 'vampire_check':
+    // Cult faction: the Cult Leader visits the soul it recruits (so a Lookout/
+    // Tracker/Veteran/Crusader/Ambusher sees the call).
+    case 'recruit': // eslint-disable-line no-fallthrough
     case 'kill_vigilante':
     case 'kill_mafia':
     case 'kill_triad':
@@ -1543,11 +1615,12 @@ function apparentRoleOf(target: SeatState): RoleId {
   return target.apparentRole ?? target.role;
 }
 
-/** Factions the Psychic's vision treats as "evil" (batch C; Vampire faction adds VAMPIRE). */
+/** Factions the Psychic's vision treats as "evil" (batch C; +VAMPIRE, +CULT). */
 const PSYCHIC_EVIL_FACTIONS: ReadonlySet<Faction> = new Set<Faction>([
   'MAFIA',
   'TRIAD',
   'VAMPIRE',
+  'CULT',
   'NEUTRAL_KILLING',
 ]);
 
@@ -1617,6 +1690,11 @@ function sheriffRead(target: SeatState, framed: ReadonlySet<SeatId>): SheriffRes
     // reads clean). A seat the coven turns therefore starts reading suspicious from
     // the night it is turned — its sheriff alignment tracks its true faction.
     'VAMPIRE',
+    // Cult faction: the Cult Leader and the Cultist both read suspicious. A seat the
+    // Cult recruits starts reading suspicious from the night it is drawn in — its
+    // sheriff alignment tracks its true faction.
+    'CULT_LEADER',
+    'CULTIST',
   ];
   return suspiciousRoles.includes(apparentRoleOf(target)) ? 'suspicious' : 'not_suspicious';
 }

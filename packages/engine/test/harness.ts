@@ -86,6 +86,9 @@ const FACTION_OF: Record<RoleId, GameState['seats'][number]['faction']> = {
   // --- Vampire conversion faction ---
   VAMPIRE: 'VAMPIRE',
   VAMPIRE_HUNTER: 'TOWN',
+  // --- Cult conversion faction ---
+  CULT_LEADER: 'CULT',
+  CULTIST: 'CULT',
 };
 
 const USES: Partial<Record<RoleId, { uses: number; self: number }>> = {

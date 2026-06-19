@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { makeGame, toFirstNight, night, resolveNightPhase, endPhase } from './harness.js';
+import { makeGame, toFirstNight, night, resolveNightPhase, endPhase, toNextNight } from './harness.js';
 import { checkWin, checkStalemate } from '../src/wincheck.js';
 
 describe('§6.9 win conditions', () => {
@@ -273,5 +273,89 @@ describe('§6.9 win conditions', () => {
     if (go && go.msg.type === 'game_over') {
       expect(go.msg.winners).toContain('TOWN');
     }
+  });
+
+  // --- Cult faction (fourth evil faction) ----------------------------------
+
+  it('Cult wins at parity (cultCount >= rest, no other killer)', () => {
+    // 2 cult (Leader + Cultist), 2 town → cultCount(2) >= rest(2) ⇒ cult win.
+    const s = makeGame(['CULT_LEADER', 'CULTIST', 'CITIZEN', 'SHERIFF']);
+    const win = checkWin(s);
+    expect(win).toMatchObject({ reason: 'cult_parity', winners: ['CULT'] });
+  });
+
+  it('Town does NOT win while the Cult lives, and wins once it is gone', () => {
+    // 1 Cult Leader + 3 town: a cult member alive ⇒ town cannot win.
+    const live = makeGame(['CULT_LEADER', 'CITIZEN', 'SHERIFF', 'DOCTOR']);
+    expect(checkWin(live)).toBeNull();
+    // No cult left ⇒ Town wins.
+    const gone = makeGame(['SHERIFF', 'DOCTOR', 'CITIZEN']);
+    expect(checkWin(gone)).toMatchObject({ reason: 'town_elimination', winners: ['TOWN'] });
+  });
+
+  it('Cult does NOT win while a Mafia lives (two killing factions ⇒ continue)', () => {
+    // 2 cult vs 1 mafia: cult at parity vs the rest, but Mafia alive blocks it.
+    const s = makeGame(['CULT_LEADER', 'CULTIST', 'MAFIOSO']);
+    expect(checkWin(s)).toBeNull();
+  });
+
+  it('stalemate: Cult beats Vampire on a tie (priority Cult > Vampire)', () => {
+    // 2 cult, 2 vampire → tie ⇒ Cult (priority ladder: Cult > Vampire > Triad > Mafia).
+    const s = makeGame(['CULT_LEADER', 'CULTIST', 'VAMPIRE', 'VAMPIRE']);
+    s.quietNights = 3;
+    expect(checkStalemate(s)).toMatchObject({ reason: 'stalemate', winners: ['CULT'] });
+  });
+
+  it('a recruit grows the Cult to a parity win', () => {
+    // 0 Cult Leader, 1 Citizen, 2 Citizen. Night 1: recruit seat 1 → 2 cult vs 1
+    // town. cultCount(2) >= rest(1) ⇒ cult parity at night resolution.
+    let s = makeGame(['CULT_LEADER', 'CITIZEN', 'CITIZEN']);
+    s = toFirstNight(s);
+    s = night(s, 0, 'recruit', 1);
+    const { state, effects } = resolveNightPhase(s);
+    expect(state.seats[1]!.faction).toBe('CULT');
+    expect(state.gameOver).not.toBeNull();
+    const go = effects.find((e) => e.msg.type === 'game_over');
+    if (go && go.msg.type === 'game_over') {
+      expect(go.msg.winners).toContain('CULT');
+    }
+  });
+
+  it('a Leader killed the same night recruits no one (a dead Leader turns nobody)', () => {
+    // 0 Cult Leader, 1 Vigilante, 2 Citizen, 3 Citizen, 4 Citizen, 5 Sheriff.
+    // Night 2: the Leader reaches for seat 2 AND the Vigilante guns the Leader down
+    // the same night. The conversion is applied AFTER kills settle, so a Leader who
+    // dies this night converts no one — the recruit is voided.
+    let s = makeGame(['CULT_LEADER', 'VIGILANTE', 'CITIZEN', 'CITIZEN', 'CITIZEN', 'SHERIFF']);
+    s = toFirstNight(s);
+    s = toNextNight(s); // advance to night 2 (Vigilante cannot shoot N1)
+    s = night(s, 0, 'recruit', 2); // Leader recruits seat 2
+    s = night(s, 1, 'kill_vigilante', 0); // Vigilante kills the Leader the same night
+    const r = resolveNightPhase(s);
+    expect(r.state.seats[0]!.alive).toBe(false); // Leader dead
+    const recTrace = r.state.traces.find((t) => t.step === 'recruit');
+    expect(recTrace).toMatchObject({ recruited: false });
+    expect(r.state.seats[2]!.faction).toBe('TOWN'); // NOT converted
+  });
+
+  it('recruitment STOPS once the Cult Leader is dead (a headless cult cannot grow)', () => {
+    // 0 Cult Leader, 1 Vigilante, 2..5 Citizen. The Leader recruits on night 1
+    // (cult → 2). On night 2 the Vigilante kills the Leader. On night 3 the (dead)
+    // Leader's recruit does nothing — the lone Cultist cannot grow the cult.
+    let s = makeGame(['CULT_LEADER', 'VIGILANTE', 'CITIZEN', 'CITIZEN', 'CITIZEN', 'CITIZEN']);
+    s = toFirstNight(s);
+    s = night(s, 0, 'recruit', 2); // night 1: recruit seat 2
+    s = toNextNight(s); // resolve N1 + advance to N2
+    expect(s.seats[2]!.faction).toBe('CULT'); // recruit landed on night 1
+    // Night 2: Vigilante shoots the Leader.
+    s = night(s, 1, 'kill_vigilante', 0);
+    s = toNextNight(s); // resolve N2 (Leader dies) + advance to N3
+    expect(s.seats[0]!.alive).toBe(false); // Leader dead
+    // Night 3: the dead Leader cannot recruit; assert seat 3 stays Town.
+    s = night(s, 0, 'recruit', 3);
+    const r = resolveNightPhase(s);
+    expect(r.state.seats[3]!.faction).toBe('TOWN'); // no recruiter → no conversion
+    const livingCult = r.state.seats.filter((x) => x.alive && x.faction === 'CULT').length;
+    expect(livingCult).toBe(1); // only the night-1 Cultist remains; the cult never grew
   });
 });

@@ -7,6 +7,7 @@ import {
   FULL_MOON,
   RECKONING,
   LONG_NIGHT,
+  FAITHFUL,
   SETUPS,
   getSetup,
   factionCountsAt,
@@ -107,6 +108,20 @@ describe('curated 15-player setups (§6.10)', () => {
     // Validation passes (the Vampire conversion counts as a killing path).
     expect(validateSetup(LONG_NIGHT, 15)).toEqual({ ok: true });
   });
+
+  it('The Faithful fields a lone Cult Leader (15 slots, validates)', () => {
+    expect(slotCountAt(FAITHFUL, 15)).toBe(15);
+    expect(FAITHFUL.minPlayers).toBe(15);
+    expect(FAITHFUL.maxPlayers).toBe(15);
+    const slots = FAITHFUL.slotsByPlayerCount['15']!;
+    expect(maxFixedRoleCount(slots, 'CULT_LEADER')).toBe(1);
+    // The Cult Leader is unique — exactly one per game (the sole recruiter).
+    expect(maxFixedRoleCount(slots, 'CULT_LEADER')).toBeLessThanOrEqual(1);
+    const counts = factionCountsAt(FAITHFUL, 15)!;
+    expect(counts.CULT).toBe(1);
+    // Validation passes (the Cult recruitment counts as a killing/terminal path).
+    expect(validateSetup(FAITHFUL, 15)).toEqual({ ok: true });
+  });
 });
 
 describe('Classic Nocturne unique-role constraint (§6.10)', () => {
@@ -121,8 +136,8 @@ describe('Classic Nocturne unique-role constraint (§6.10)', () => {
 });
 
 describe('setup registry', () => {
-  it('ships the curated setups (3 MVP + batch-A/D showcases + Tong War + Reckoning + Long Night)', () => {
-    expect(SETUPS).toHaveLength(8);
+  it('ships the curated setups (3 MVP + batch-A/D showcases + Tong War + Reckoning + Long Night + Faithful)', () => {
+    expect(SETUPS).toHaveLength(9);
   });
 
   it('getSetup resolves by id', () => {
@@ -133,6 +148,7 @@ describe('setup registry', () => {
     expect(getSetup('full-moon')).toBe(FULL_MOON);
     expect(getSetup('reckoning')).toBe(RECKONING);
     expect(getSetup('the-long-night')).toBe(LONG_NIGHT);
+    expect(getSetup('the-faithful')).toBe(FAITHFUL);
     expect(getSetup('nope')).toBeUndefined();
   });
 
