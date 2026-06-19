@@ -1464,11 +1464,14 @@ KNOWLEDGE-ISOLATED to keep the information-leak invariant trivially provable.
   AFTER it converted." By keeping the vampire info-surface empty (nothing secret
   crosses seats), the existing auditor needs only KNOWN_ROLES additions — no
   dynamic-faction-timeline rewrite. This is the recommended default; we took it.
-- A converted seat is NEVER re-sent `your_role` — it keeps the (TOWN/benign, NO
-  mates) role card it received at deal time. `yourRoleEffect` was NOT extended to
-  emit mates for VAMPIRE. So no roster, no chat, no new your_role ⇒ no new leak
-  surface. Verified: 0 leaks / 80 games on the-long-night 15p (conversion exercised)
-  and 0 leaks / 200 on classic 9p.
+- UPDATE (role-card resend, your_role-on-mutation): a converted seat IS now re-sent
+  a fresh `your_role` at conversion so its UI rebuilds the card + abilities (e.g. the
+  Bite action). This stays leak-safe because `yourRoleEffect` emits `mates` ONLY for
+  the MAFIA/TRIAD factions — a VAMPIRE convert's resent frame carries the new role +
+  abilities ONLY, NO roster, addressed to that seat alone. So: no roster, no chat,
+  the new your_role carries no cross-seat secret ⇒ no new leak surface. Verified:
+  0 leaks / 200 on classic 9p and 0 leaks across the-long-night / the-faithful /
+  smoke-and-mirrors 15p sweeps (conversion + resend exercised).
 
 ### Conversion design
 - WHO converts: only ONE vampire bites per night — the LOWEST-SEAT living vampire
@@ -1573,12 +1576,14 @@ stays trivially provable. What makes it DISTINCT from the Vampire:
   even the Leader). The ONLY private info on conversion is the `recruited`
   private_result delivered to the converted seat alone — it carries NO other seat's
   identity or role (as leak-trivial as `roleblocked`/`turned`).
-- `yourRoleEffect` was NOT extended to emit mates for CULT (mates ship only to
-  MAFIA/TRIAD). A converted seat is NEVER re-sent `your_role` — it keeps the
-  (TOWN/benign, NO mates) card from deal time. So no roster, no chat, no new
-  your_role ⇒ no new leak surface. The auditor needed only KNOWN_ROLES additions
-  (CULT_LEADER, CULTIST). Verified: 0 leaks on classic 9p (200 games) and
-  the-faithful 15p (80 games, conversion exercised).
+- `yourRoleEffect` emits mates ONLY for MAFIA/TRIAD (never CULT). UPDATE (role-card
+  resend): a recruited seat IS now re-sent a fresh `your_role` at conversion so its
+  UI reflects the CULTIST card — but because mates ship only to MAFIA/TRIAD, that
+  resent frame carries the new role ONLY (NO roster), addressed to the seat alone.
+  So no roster, no chat, the resent your_role carries no cross-seat secret ⇒ no new
+  leak surface. The auditor needed only KNOWN_ROLES additions (CULT_LEADER, CULTIST).
+  Verified: 0 leaks on classic 9p (200 games) and the-faithful / smoke-and-mirrors /
+  the-long-night 15p sweeps (conversion + resend exercised).
 
 ### Conversion design
 - WHO converts: ONLY the (unique) Cult Leader, and only if it is alive with a

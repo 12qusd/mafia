@@ -82,7 +82,9 @@ const SERVER_EXAMPLES: Record<string, unknown> = {
     type: 'your_role',
     role: 'GODFATHER',
     faction: 'MAFIA',
-    abilities: [{ id: 'control', name: 'Order the kill', timing: 'night', usesRemaining: null }],
+    abilities: [
+      { id: 'control', name: 'Order the kill', timing: 'night', usesRemaining: null, targetDomain: 'living', verb: 'Order kill' },
+    ],
     mates: [3, 5],
   },
   phase_change: { v: V, type: 'phase_change', phase: 'NIGHT', dayNumber: 1, endsAt: 1_700_000_000 },

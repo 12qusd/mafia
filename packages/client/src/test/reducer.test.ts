@@ -67,7 +67,7 @@ describe('reduce: game lifecycle', () => {
       type: 'your_role',
       role: 'SHERIFF',
       faction: 'TOWN',
-      abilities: [{ id: 'investigate', name: 'Investigate', timing: 'night', usesRemaining: null }],
+      abilities: [{ id: 'investigate', name: 'Investigate', timing: 'night', usesRemaining: null, targetDomain: 'living', verb: 'Investigate' }],
     });
     expect(s.own?.role).toBe('SHERIFF');
     expect(s.own?.faction).toBe('TOWN');
@@ -90,7 +90,7 @@ describe('reduce: phase_change (BUILD_SPEC §6.1, §6.2)', () => {
       type: 'your_role',
       role: 'DOCTOR',
       faction: 'TOWN',
-      abilities: [{ id: 'protect', name: 'Protect', timing: 'night', usesRemaining: null }],
+      abilities: [{ id: 'protect', name: 'Protect', timing: 'night', usesRemaining: null, targetDomain: 'living', verb: 'Heal' }],
     });
     return s;
   }
@@ -256,7 +256,7 @@ describe('reduce: private_result, trial, errors, force_update', () => {
         seats: [seat(0), seat(1), seat(2)],
         ownRole: 'JAILOR',
         ownFaction: 'TOWN',
-        abilities: [{ id: 'execute', name: 'Execute', timing: 'night', usesRemaining: 2 }],
+        abilities: [{ id: 'execute', name: 'Execute', timing: 'night', usesRemaining: 2, targetDomain: 'living', verb: 'Execute' }],
         privateLog: [{ kind: 'jailed' }],
         chatBacklog: [{ channel: 'day', from: 0, text: 'hi', ts: 1 }],
         lastWill: 'my will',

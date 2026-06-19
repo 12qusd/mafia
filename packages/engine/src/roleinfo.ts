@@ -128,93 +128,201 @@ export function roleToNightAbility(role: RoleId): NightAbility | null {
   }
 }
 
+/**
+ * The target-domain an ability picker presents (BUILD_SPEC §13.1). This is the
+ * single source of truth the client uses to choose its picker: a LIVING-seat
+ * picker, a DEAD-grave picker, or a no-target SELF toggle.
+ *   - `dead`   — grave-targeting abilities: autopsy (Coroner), retribute
+ *                (Retributionist), remember (Amnesiac), disguise (Disguiser).
+ *   - `self` / `none` — no external target: alert (Veteran), vest (Survivor),
+ *                ignite (Arsonist), spy (Spy), divine (Psychic), séance (Medium),
+ *                and self-passive reveals (Mayor).
+ *   - `living` — everything else (it resolves against a living seat in resolve.ts).
+ * Two-target abilities (witch_control, transport) keep `living` (both ends live).
+ */
+const ABILITY_DOMAIN: Record<string, AbilityInfo['targetDomain']> = {
+  // --- DEAD-grave targets ---
+  autopsy: 'dead',
+  retribute: 'dead',
+  remember: 'dead',
+  disguise: 'dead',
+  // --- SELF / no-target toggles ---
+  alert: 'self',
+  vest: 'self',
+  ignite: 'self',
+  spy: 'self',
+  divine: 'self',
+  seance: 'self',
+  reveal: 'self',
+};
+
+/** Short imperative the UI shows on each ability button (BUILD_SPEC §13.1). */
+const ABILITY_VERB: Record<string, string> = {
+  // Town investigative
+  investigate_sheriff: 'Check',
+  investigate_investigator: 'Investigate',
+  investigate_consigliere: 'Investigate',
+  investigate_track: 'Track',
+  watch: 'Watch',
+  spy: 'Listen',
+  divine: 'Divine',
+  seance: 'Séance',
+  // Town protective / support
+  protect: 'Heal',
+  guard: 'Guard',
+  crusade: 'Crusade',
+  shield: 'Shield',
+  vest: 'Vest',
+  alert: 'Alert',
+  transport: 'Transport',
+  trap: 'Trap',
+  // Town killing
+  kill_vigilante: 'Shoot',
+  kill_jailor: 'Execute',
+  jail: 'Jail',
+  retribute: 'Revive',
+  vampire_check: 'Hunt',
+  // Roleblocks / control
+  roleblock: 'Roleblock',
+  hypnotize: 'Hypnotize',
+  witch_control: 'Control',
+  // Mafia / Triad
+  kill_mafia: 'Kill',
+  kill_triad: 'Kill',
+  mafia_control: 'Order kill',
+  triad_control: 'Order kill',
+  frame: 'Frame',
+  forge: 'Forge',
+  clean: 'Clean',
+  blackmail: 'Blackmail',
+  disguise: 'Disguise',
+  ambush: 'Ambush',
+  // Neutral killing
+  kill_serial: 'Stab',
+  douse: 'Douse',
+  ignite: 'Ignite',
+  rampage: 'Rampage',
+  massacre: 'Massacre',
+  juggernaut: 'Crush',
+  infect: 'Infect',
+  pestilence: 'Reap',
+  // Conversion factions
+  bite: 'Bite',
+  recruit: 'Recruit',
+  // Neutral benign / other
+  duel: 'Duel',
+  autopsy: 'Autopsy',
+  remember: 'Remember',
+  reveal: 'Reveal',
+};
+
+/** Domain for an ability id — defaults to `living` (the common case). */
+function domainOf(id: string): AbilityInfo['targetDomain'] {
+  return ABILITY_DOMAIN[id] ?? 'living';
+}
+
+/** Verb for an ability id — falls back to a generic "Act" if unmapped. */
+function verbOf(id: string): string {
+  return ABILITY_VERB[id] ?? 'Act';
+}
+
+/** Build one AbilityInfo, attaching its domain + verb from the central tables. */
+function ability(
+  id: string,
+  name: string,
+  timing: AbilityInfo['timing'],
+  usesRemaining: number | null,
+): AbilityInfo {
+  return { id, name, timing, usesRemaining, targetDomain: domainOf(id), verb: verbOf(id) };
+}
+
 /** Build the per-role ability-info list for the role card (§9.2 your_role). */
 export function abilityInfoFor(seat: SeatState): AbilityInfo[] {
   const def = ROLES[seat.role];
   const out: AbilityInfo[] = [];
   switch (seat.role) {
     case 'VIGILANTE':
-      out.push({ id: 'kill_vigilante', name: 'Shoot', timing: 'night', usesRemaining: seat.usesRemaining });
+      out.push(ability('kill_vigilante', 'Shoot', 'night', seat.usesRemaining));
       break;
     case 'VETERAN':
-      out.push({ id: 'alert', name: 'Alert', timing: 'night', usesRemaining: seat.usesRemaining });
+      out.push(ability('alert', 'Alert', 'night', seat.usesRemaining));
       break;
     case 'JAILOR':
-      out.push({ id: 'jail', name: 'Jail', timing: 'day', usesRemaining: null });
-      out.push({ id: 'kill_jailor', name: 'Execute', timing: 'night', usesRemaining: seat.usesRemaining });
+      out.push(ability('jail', 'Jail', 'day', null));
+      out.push(ability('kill_jailor', 'Execute', 'night', seat.usesRemaining));
       break;
     case 'SURVIVOR':
-      out.push({ id: 'vest', name: 'Vest', timing: 'night', usesRemaining: seat.usesRemaining });
+      out.push(ability('vest', 'Vest', 'night', seat.usesRemaining));
       break;
     case 'JANITOR':
-      out.push({ id: 'clean', name: 'Clean', timing: 'night', usesRemaining: seat.usesRemaining });
+      out.push(ability('clean', 'Clean', 'night', seat.usesRemaining));
       break;
     case 'MEDIUM':
       // The séance is opened during the day (like jailing) and resolves at night.
-      out.push({ id: 'seance', name: 'Séance', timing: 'day', usesRemaining: seat.usesRemaining });
+      out.push(ability('seance', 'Séance', 'day', seat.usesRemaining));
       break;
     case 'ARSONIST':
-      out.push({ id: 'douse', name: 'Douse', timing: 'night', usesRemaining: null });
-      out.push({ id: 'ignite', name: 'Ignite', timing: 'night', usesRemaining: null });
+      out.push(ability('douse', 'Douse', 'night', null));
+      out.push(ability('ignite', 'Ignite', 'night', null));
       break;
     case 'WEREWOLF':
-      out.push({ id: 'rampage', name: 'Rampage', timing: 'night', usesRemaining: null });
+      out.push(ability('rampage', 'Rampage', 'night', null));
       break;
     case 'MASS_MURDERER':
-      out.push({ id: 'massacre', name: 'Massacre', timing: 'night', usesRemaining: null });
+      out.push(ability('massacre', 'Massacre', 'night', null));
       break;
     case 'GUARDIAN_ANGEL':
-      out.push({ id: 'shield', name: 'Watch over', timing: 'night', usesRemaining: null });
+      out.push(ability('shield', 'Watch over', 'night', null));
       break;
     case 'JUGGERNAUT':
-      out.push({ id: 'juggernaut', name: 'Crush', timing: 'night', usesRemaining: null });
+      out.push(ability('juggernaut', 'Crush', 'night', null));
       break;
     case 'WITCH':
-      out.push({ id: 'witch_control', name: 'Control', timing: 'night', usesRemaining: null });
+      out.push(ability('witch_control', 'Control', 'night', null));
       break;
     case 'PIRATE':
-      out.push({ id: 'duel', name: 'Duel', timing: 'night', usesRemaining: null });
+      out.push(ability('duel', 'Duel', 'night', null));
       break;
     case 'PLAGUEBEARER':
-      out.push({ id: 'infect', name: 'Infect', timing: 'night', usesRemaining: null });
+      out.push(ability('infect', 'Infect', 'night', null));
       break;
     case 'PESTILENCE':
-      out.push({ id: 'pestilence', name: 'Reap', timing: 'night', usesRemaining: null });
+      out.push(ability('pestilence', 'Reap', 'night', null));
       break;
     case 'RETRIBUTIONIST':
-      out.push({ id: 'retribute', name: 'Revive', timing: 'night', usesRemaining: seat.usesRemaining });
+      out.push(ability('retribute', 'Revive', 'night', seat.usesRemaining));
       break;
     case 'VAMPIRE':
-      out.push({ id: 'bite', name: 'Bite', timing: 'night', usesRemaining: null });
+      out.push(ability('bite', 'Bite', 'night', null));
       break;
     case 'VAMPIRE_HUNTER':
-      out.push({ id: 'vampire_check', name: 'Hunt', timing: 'night', usesRemaining: null });
+      out.push(ability('vampire_check', 'Hunt', 'night', null));
       break;
     case 'CULT_LEADER':
-      out.push({ id: 'recruit', name: 'Recruit', timing: 'night', usesRemaining: null });
+      out.push(ability('recruit', 'Recruit', 'night', null));
       break;
     // CULTIST has no night ability (only the Cult Leader recruits).
     case 'TRANSPORTER':
-      out.push({ id: 'transport', name: 'Transport', timing: 'night', usesRemaining: null });
+      out.push(ability('transport', 'Transport', 'night', null));
       break;
     case 'CORONER':
-      out.push({ id: 'autopsy', name: 'Autopsy', timing: 'night', usesRemaining: null });
+      out.push(ability('autopsy', 'Autopsy', 'night', null));
       break;
     case 'TRAPPER':
-      out.push({ id: 'trap', name: 'Set trap', timing: 'night', usesRemaining: null });
+      out.push(ability('trap', 'Set trap', 'night', null));
       break;
     case 'DOCTOR':
-      out.push({ id: 'protect', name: 'Heal', timing: 'night', usesRemaining: null });
+      out.push(ability('protect', 'Heal', 'night', null));
       break;
     case 'BODYGUARD':
-      out.push({ id: 'guard', name: 'Guard', timing: 'night', usesRemaining: null });
+      out.push(ability('guard', 'Guard', 'night', null));
       break;
     case 'MAYOR':
-      out.push({ id: 'reveal', name: 'Reveal', timing: 'day', usesRemaining: seat.mayorRevealed ? 0 : 1 });
+      out.push(ability('reveal', 'Reveal', 'day', seat.mayorRevealed ? 0 : 1));
       break;
     default: {
       const ab = roleToNightAbility(seat.role);
-      if (ab) out.push({ id: ab, name: def.name, timing: 'night', usesRemaining: null });
+      if (ab) out.push(ability(ab, def.name, 'night', null));
     }
   }
   void VIGILANTE_BULLETS;
@@ -240,6 +348,14 @@ export function yourRoleEffect(state: GameState, seat: SeatState): Effect {
           .filter((s) => s.faction === seat.faction && s.seat !== seat.seat)
           .map((s) => s.seat)
       : undefined;
+  // The seat's OWN private bound target: the Executioner's mark / the Guardian
+  // Angel's charge. Leak-safe — it is this seat's own info, addressed only here.
+  const assignedTarget =
+    seat.role === 'EXECUTIONER'
+      ? (seat.exeTarget ?? undefined)
+      : seat.role === 'GUARDIAN_ANGEL'
+        ? (seat.gaTarget ?? undefined)
+        : undefined;
   const payload: Record<string, unknown> = {
     type: 'your_role',
     role: seat.role,
@@ -247,5 +363,6 @@ export function yourRoleEffect(state: GameState, seat: SeatState): Effect {
     abilities,
   };
   if (mates) payload.mates = mates;
+  if (assignedTarget !== undefined) payload.assignedTarget = assignedTarget;
   return { to: [seat.seat] as SeatId[], msg: { v: PROTOCOL_VERSION, ...payload } as never };
 }

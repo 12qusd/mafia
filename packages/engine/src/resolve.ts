@@ -24,6 +24,7 @@ import { pick, shuffle, type PrngState } from './prng.js';
 import { resolveBlocks, type BlockIntent } from './roleblock.js';
 import { toSeat, seatOf } from './helpers.js';
 import { initialUses } from './init.js';
+import { yourRoleEffect } from './roleinfo.js';
 
 /** Kill source order (fixed report order, §6.8.5). */
 const KILL_SOURCE_ORDER: DeathCause[] = [
@@ -1206,13 +1207,16 @@ export function resolveNight(state: GameState): ResolveResult {
   applyUseDecrements(state, intentBySeat, jailorExec, jailorSeat);
 
   // Mafia succession: GF died & no living Mafioso ⇒ senior (lowest-seat) living
-  // mafia becomes Mafioso (effective next night).
-  applyMafiaSuccession(state, traces);
+  // mafia becomes Mafioso (effective next night). Re-emit the role card so the new
+  // Mafioso's UI gains the faction kill (and the correct mafia roster).
+  const promotedMafioso = applyMafiaSuccession(state, traces);
+  if (promotedMafioso) effects.push(yourRoleEffect(state, promotedMafioso));
 
   // Triad succession: Dragon Head died & no living Enforcer ⇒ senior (lowest-seat)
   // living triad becomes Enforcer (effective next night). Exact mirror of the
-  // Mafia succession above.
-  applyTriadSuccession(state, traces);
+  // Mafia succession above (re-emit the new Enforcer's role card too).
+  const promotedEnforcer = applyTriadSuccession(state, traces);
+  if (promotedEnforcer) effects.push(yourRoleEffect(state, promotedEnforcer));
 
   // Executioner → Jester if target died at night.
   for (const s of state.seats) {
@@ -1223,6 +1227,8 @@ export function resolveNight(state: GameState): ResolveResult {
         s.faction = 'NEUTRAL_BENIGN';
         s.exeTarget = null;
         traces.push({ step: 'promotion', kind: 'executioner_to_jester', seat: s.seat });
+        // Re-emit the role card so the (now-Jester) seat's UI reflects the change.
+        effects.push(yourRoleEffect(state, s));
       }
     }
   }
@@ -1246,6 +1252,9 @@ export function resolveNight(state: GameState): ResolveResult {
     effects.push(
       toSeat(s.seat, { type: 'private_result', kind: 'remember_result', target: i.target, role: newRole }),
     );
+    // Re-emit the role card so the remembered role's abilities (and, if the new
+    // role is mafia/triad, that faction's roster) appear on the seat's UI.
+    effects.push(yourRoleEffect(state, s));
   }
 
   // Juggernaut (batch D): credit kills landed THIS night to the killer's counter,
@@ -1308,6 +1317,8 @@ export function resolveNight(state: GameState): ResolveResult {
         pb.usesRemaining = u.uses;
         pb.selfUsesRemaining = u.self;
         traces.push({ step: 'promotion', kind: 'plaguebearer_to_pestilence', seat: pb.seat });
+        // Re-emit the role card so the now-Pestilence seat sees Reap, not Infect.
+        effects.push(yourRoleEffect(state, pb));
       }
     }
   }
@@ -1326,6 +1337,8 @@ export function resolveNight(state: GameState): ResolveResult {
       s.usesRemaining = u.uses;
       s.selfUsesRemaining = u.self;
       traces.push({ step: 'promotion', kind: 'guardian_to_survivor', seat: s.seat });
+      // Re-emit the role card so the now-Survivor seat sees Vest, not Watch over.
+      effects.push(yourRoleEffect(state, s));
     }
   }
 
@@ -1375,9 +1388,11 @@ export function resolveNight(state: GameState): ResolveResult {
   //     NK/other neutrals are left non-convertible; the bite just fails on them).
   // The converted seat is told privately "you have been turned" — carrying NO
   // other identity or role (as leak-trivial as `roleblocked`). A `convert` trace
-  // records the outcome either way. NO new your_role is sent: the seat keeps the
-  // (TOWN/benign, no-mates) role card it received at deal time, so the knowledge-
-  // isolated design leaks nothing (see DECISIONS.md "Vampire conversion faction").
+  // records the outcome either way. A FRESH your_role is re-emitted to the convert
+  // so its UI shows the Bite ability — and because yourRoleEffect omits `mates` for
+  // the VAMPIRE faction, it carries the new (no-roster) role card ONLY, so the
+  // knowledge-isolated design still leaks nothing (see DECISIONS.md "Vampire
+  // conversion faction").
   if (resolvingBite !== null) {
     const vampire = seatOf(state, resolvingBite.vampire);
     const target = seatOf(state, resolvingBite.target);
@@ -1397,6 +1412,9 @@ export function resolveNight(state: GameState): ResolveResult {
       target.selfUsesRemaining = u.self;
       // Tell the convert privately — no other seat's identity revealed.
       effects.push(toSeat(resolvingBite.target, { type: 'private_result', kind: 'turned' }));
+      // Re-emit the role card so the convert's UI shows Bite. yourRoleEffect omits
+      // `mates` for VAMPIRE → no roster leaks (knowledge-isolation preserved).
+      effects.push(yourRoleEffect(state, target));
     }
     traces.push({
       step: 'convert',
@@ -1423,10 +1441,11 @@ export function resolveNight(state: GameState): ResolveResult {
   //     (state.cultLastRecruitNight tracks the last successful-recruit night).
   // The recruited seat is told privately "you have been drawn into the Cult" —
   // carrying NO other identity or role (as leak-trivial as `roleblocked`/`turned`).
-  // A `recruit` trace records the outcome either way. NO new your_role is sent: the
-  // seat keeps the (TOWN/benign, no-mates) card it received at deal time, so the
-  // knowledge-isolated design leaks nothing (see DECISIONS.md "Cult conversion
-  // faction").
+  // A `recruit` trace records the outcome either way. A FRESH your_role is re-emitted
+  // to the recruit so its UI reflects the new CULTIST card — and because
+  // yourRoleEffect omits `mates` for the CULT faction, it carries the new (no-roster)
+  // role card ONLY, so the knowledge-isolated design still leaks nothing (see
+  // DECISIONS.md "Cult conversion faction").
   if (resolvingRecruit !== null) {
     const leader = seatOf(state, resolvingRecruit.leader);
     const target = seatOf(state, resolvingRecruit.target);
@@ -1448,6 +1467,9 @@ export function resolveNight(state: GameState): ResolveResult {
       state.cultLastRecruitNight = state.nightNumber;
       // Tell the recruit privately — no other seat's identity revealed.
       effects.push(toSeat(resolvingRecruit.target, { type: 'private_result', kind: 'recruited' }));
+      // Re-emit the role card so the recruit's UI reflects CULTIST. yourRoleEffect
+      // omits `mates` for CULT → no roster leaks (knowledge-isolation preserved).
+      effects.push(yourRoleEffect(state, target));
     }
     traces.push({
       step: 'recruit',
@@ -1473,6 +1495,8 @@ export function resolveNight(state: GameState): ResolveResult {
       s.usesRemaining = u.uses;
       s.selfUsesRemaining = u.self;
       traces.push({ step: 'promotion', kind: 'hunter_to_vigilante', seat: s.seat });
+      // Re-emit the role card so the now-Vigilante seat sees Shoot, not Hunt.
+      effects.push(yourRoleEffect(state, s));
     }
   }
 
@@ -1926,7 +1950,11 @@ function applyUseDecrements(
   }
 }
 
-function applyMafiaSuccession(state: GameState, traces: ResolutionTrace[]): void {
+/**
+ * Returns the seat promoted to Mafioso this night (so the caller can re-emit its
+ * role card), or null if no succession fired.
+ */
+function applyMafiaSuccession(state: GameState, traces: ResolutionTrace[]): SeatState | null {
   const livingMafia = state.seats.filter((s) => s.alive && s.faction === 'MAFIA');
   const hasGodfather = livingMafia.some((s) => s.role === 'GODFATHER');
   const hasMafioso = livingMafia.some((s) => s.role === 'MAFIOSO');
@@ -1936,7 +1964,9 @@ function applyMafiaSuccession(state: GameState, traces: ResolutionTrace[]): void
     senior.role = 'MAFIOSO';
     // faction stays MAFIA.
     traces.push({ step: 'promotion', kind: 'mafia_succession', seat: senior.seat, newRole: 'MAFIOSO' });
+    return senior;
   }
+  return null;
 }
 
 /**
@@ -1945,7 +1975,7 @@ function applyMafiaSuccession(state: GameState, traces: ResolutionTrace[]): void
  * (lowest-seat) living Triad member is promoted to Enforcer so the faction kill
  * carries on next night.
  */
-function applyTriadSuccession(state: GameState, traces: ResolutionTrace[]): void {
+function applyTriadSuccession(state: GameState, traces: ResolutionTrace[]): SeatState | null {
   const livingTriad = state.seats.filter((s) => s.alive && s.faction === 'TRIAD');
   const hasDragonHead = livingTriad.some((s) => s.role === 'DRAGON_HEAD');
   const hasEnforcer = livingTriad.some((s) => s.role === 'ENFORCER');
@@ -1954,5 +1984,7 @@ function applyTriadSuccession(state: GameState, traces: ResolutionTrace[]): void
     senior.role = 'ENFORCER';
     // faction stays TRIAD.
     traces.push({ step: 'promotion', kind: 'triad_succession', seat: senior.seat, newRole: 'ENFORCER' });
+    return senior;
   }
+  return null;
 }

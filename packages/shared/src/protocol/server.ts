@@ -41,12 +41,18 @@ export const GameStartedSchema = envelope('game_started', {
   config: LobbyConfigSchema,
 });
 
-// your_role {role, faction, abilities, mates?}
+// your_role {role, faction, abilities, mates?, assignedTarget?}
 export const YourRoleSchema = envelope('your_role', {
   role: RoleIdSchema,
   faction: FactionSchema,
   abilities: z.array(AbilityInfoSchema),
   mates: z.array(SeatIdSchema).optional(),
+  /**
+   * The seat this role is privately bound to: an Executioner's mark or a Guardian
+   * Angel's charge. Own private info (leak-safe — addressed to the owning seat).
+   * Absent for roles without a bound target.
+   */
+  assignedTarget: SeatIdSchema.optional(),
 });
 
 // phase_change {phase, dayNumber, endsAt}

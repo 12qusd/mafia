@@ -47,7 +47,7 @@ function ownFor(role: RoleId, faction: Faction, ability: AbilityInfo): OwnState 
   };
 }
 
-const WITCH_ABILITY: AbilityInfo = { id: 'witch_control', name: 'Control', timing: 'night', usesRemaining: null };
+const WITCH_ABILITY: AbilityInfo = { id: 'witch_control', name: 'Control', timing: 'night', usesRemaining: null, targetDomain: 'living', verb: 'Control' };
 // Seats: 0 = the Witch herself (never targetable), 1 = Puppet, 2 = Victim.
 const SEATS = [seat(0, true, 'Witch'), seat(1, true, 'Puppet'), seat(2, true, 'Victim')];
 
@@ -118,7 +118,7 @@ describe('Witch two-target night picker (gap 1)', () => {
 
   it('non-Witch roles get a single picker and submit only `target`', () => {
     useStore.setState({
-      own: ownFor('DOCTOR', 'TOWN', { id: 'protect', name: 'Heal', timing: 'night', usesRemaining: null }),
+      own: ownFor('DOCTOR', 'TOWN', { id: 'protect', name: 'Heal', timing: 'night', usesRemaining: null, targetDomain: 'living', verb: 'Heal' }),
     });
     render(<OwnPanel seats={SEATS} phase="NIGHT" />);
 
@@ -151,7 +151,7 @@ describe('Witch two-target night picker (gap 1)', () => {
   });
 });
 
-const TRANSPORT_ABILITY: AbilityInfo = { id: 'transport', name: 'Transport', timing: 'night', usesRemaining: null };
+const TRANSPORT_ABILITY: AbilityInfo = { id: 'transport', name: 'Transport', timing: 'night', usesRemaining: null, targetDomain: 'living', verb: 'Transport' };
 // Seats: 0 = the Transporter (never targetable), 1 = House A, 2 = House B.
 const TP_SEATS = [seat(0, true, 'Driver'), seat(1, true, 'HouseA'), seat(2, true, 'HouseB')];
 
