@@ -68,7 +68,7 @@ export function SettingsScreen() {
             <div>{SETTINGS.animations}</div>
             <div className="faint">{SETTINGS.animationsHint}</div>
           </div>
-          <div className="row">
+          <div className="row segmented">
             {(['full', 'reduced', 'off'] as AnimationLevel[]).map((level) => (
               <button
                 key={level}
@@ -87,7 +87,7 @@ export function SettingsScreen() {
 
         <div className="toggle">
           <span>{SETTINGS.textScale}</span>
-          <div className="row">
+          <div className="row segmented">
             {(['small', 'normal', 'large'] as TextScale[]).map((scale) => (
               <button
                 key={scale}

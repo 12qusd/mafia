@@ -34,7 +34,7 @@ export function GameOver() {
 
   return (
     <div className="overlay">
-      <div className="panel panel-pad modal stack" style={{ maxWidth: 680 }}>
+      <div className="panel panel-pad modal stack gameover-modal" style={{ maxWidth: 680 }}>
         <div className="win-result">{GAME.gameOver}</div>
         <div className="stack" style={{ alignItems: 'center' }}>
           {over.winners.map((w) => (

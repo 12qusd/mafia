@@ -43,7 +43,8 @@ export function OwnPanel({
 
   return (
     <div className="stack">
-      <div className="role-card">
+      <div className={`role-card role-card-${def.faction}`}>
+        <div className="role-card-crest" aria-hidden="true" />
         <div className="spread">
           <span className="role-name">{def.name}</span>
           <FactionTag faction={def.faction} />

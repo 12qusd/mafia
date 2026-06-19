@@ -59,8 +59,8 @@ export function DeathFeed({ seatNameFor }: { seatNameFor: (seat: number) => stri
 
   return (
     <div className="overlay">
-      <div className="panel panel-pad modal stack">
-        <div className="row" style={{ gap: 8 }}>
+      <div className="panel panel-pad modal stack deathfeed-modal">
+        <div className="row deathfeed-title" style={{ gap: 8 }}>
           <IconSkull size={20} />
           <h2 style={{ margin: 0 }}>{GAME.deathFeedTitle}</h2>
         </div>

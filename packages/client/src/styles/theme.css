@@ -5,6 +5,10 @@
  * also carries an icon + label (§13.1 Settings, colorblind requirement).
  *
  * Day/night scene tinting is driven by a `data-scene` attribute on the app root.
+ *
+ * This file is the DESIGN SYSTEM: palette, gradients, gold-leaf accents, a spacing
+ * scale, a layered elevation/shadow system, a type scale, motion tokens, and the
+ * global element baseline. app.css consumes these tokens to dress every screen.
  */
 
 :root {
@@ -26,6 +30,26 @@
   --c-blood-dim: #732127;
   --c-verdigris: #3f7d6e; /* secondary cool accent */
 
+  /* Gold-leaf accent treatment — a brushed-metal gradient + a soft underglow used
+     on the wordmark, primary buttons, and deco rules. Always paired with a solid
+     fallback color (the gradient is layered, never the only paint). */
+  --grad-gold: linear-gradient(
+    135deg,
+    #e8ca7e 0%,
+    #c9a45a 38%,
+    #9a7e3f 64%,
+    #d8b96a 100%
+  );
+  --grad-gold-soft: linear-gradient(180deg, rgba(224, 182, 92, 0.16), rgba(201, 164, 90, 0.02));
+  --grad-brass-btn: linear-gradient(180deg, #ecce81 0%, #cda257 46%, #9c7f40 100%);
+  --grad-panel: linear-gradient(
+    180deg,
+    color-mix(in srgb, var(--c-panel) 84%, transparent) 0%,
+    color-mix(in srgb, var(--c-panel-2) 84%, transparent) 100%
+  );
+  --glow-brass: 0 0 18px rgba(201, 164, 90, 0.28);
+  --glow-blood: 0 0 16px rgba(163, 52, 58, 0.32);
+
   /* Faction colors (paired ALWAYS with icon + label). */
   --f-town: #5c8fc9;
   --f-mafia: #b14a50;
@@ -35,10 +59,57 @@
   --f-nk: #b07ad6; /* neutral killing */
   --f-nb: #c9a45a; /* neutral benign */
 
+  /* Spacing scale (4px base) — used for paddings/gaps across components. */
+  --sp-1: 4px;
+  --sp-2: 8px;
+  --sp-3: 12px;
+  --sp-4: 16px;
+  --sp-5: 22px;
+  --sp-6: 32px;
+  --sp-7: 48px;
+
   --radius: 4px;
+  --radius-lg: 8px;
+  --radius-pill: 999px;
+
+  /* Layered elevation system — stacked shadows for cinematic depth + a hairline
+     top highlight that reads like light catching a brass edge. */
+  --shadow-sm: 0 1px 2px rgba(0, 0, 0, 0.4);
   --shadow: 0 6px 24px rgba(0, 0, 0, 0.55);
-  --font-display: 'Georgia', 'Times New Roman', serif;
-  --font-body: ui-sans-serif, system-ui, 'Segoe UI', Roboto, sans-serif;
+  --shadow-md:
+    0 2px 6px rgba(0, 0, 0, 0.4),
+    0 10px 30px rgba(0, 0, 0, 0.5);
+  --shadow-lg:
+    0 4px 10px rgba(0, 0, 0, 0.45),
+    0 18px 50px rgba(0, 0, 0, 0.6);
+  --edge-hi: inset 0 1px 0 rgba(255, 255, 255, 0.05);
+  --edge-gold: inset 0 0 0 1px rgba(201, 164, 90, 0.16);
+
+  /* Type system. Two stacks (deco-ish display serif + clean body sans), a type
+     scale, and shared letter-spacing / weight tokens for a cohesive voice. */
+  --font-display: 'Cormorant Garamond', 'Hoefler Text', 'Big Caslon', 'Georgia',
+    'Times New Roman', serif;
+  --font-body: ui-sans-serif, system-ui, 'Segoe UI', Roboto, 'Helvetica Neue', sans-serif;
+
+  --fs-xs: calc(11px * var(--scale));
+  --fs-sm: calc(12.5px * var(--scale));
+  --fs-base: calc(14px * var(--scale));
+  --fs-md: calc(16px * var(--scale));
+  --fs-lg: calc(20px * var(--scale));
+  --fs-xl: calc(26px * var(--scale));
+  --fs-2xl: calc(34px * var(--scale));
+  --fs-3xl: calc(52px * var(--scale));
+
+  --ls-tight: 0.02em;
+  --ls-wide: 0.08em;
+  --ls-wider: 0.16em;
+  --ls-marquee: 0.34em;
+
+  /* Motion tokens — short, eased, and switched off under reduced-motion. */
+  --ease-out: cubic-bezier(0.22, 0.61, 0.36, 1);
+  --ease-deco: cubic-bezier(0.2, 0.9, 0.3, 1.15);
+  --t-fast: 0.12s;
+  --t-med: 0.22s;
 
   --scale: 1;
 }
@@ -82,9 +153,10 @@ body {
   background: var(--c-ink);
   color: var(--c-text);
   font-family: var(--font-body);
-  font-size: calc(16px * var(--scale));
-  line-height: 1.5;
+  font-size: var(--fs-md);
+  line-height: 1.55;
   -webkit-font-smoothing: antialiased;
+  text-rendering: optimizeLegibility;
 }
 
 h1,
@@ -92,17 +164,55 @@ h2,
 h3,
 .display {
   font-family: var(--font-display);
-  letter-spacing: 0.02em;
+  letter-spacing: var(--ls-tight);
   font-weight: 600;
+  line-height: 1.15;
 }
 
 a {
   color: var(--c-amber);
+  text-underline-offset: 2px;
 }
 
 button {
   font-family: var(--font-body);
-  font-size: calc(14px * var(--scale));
+  font-size: var(--fs-base);
+}
+
+/* Accessibility: a crisp brass focus ring on every keyboard-focused control. */
+:focus-visible {
+  outline: 2px solid var(--c-amber);
+  outline-offset: 2px;
+  border-radius: var(--radius);
+}
+
+/* Themed scrollbars — slim brass-tinted runners that match the noir chrome. */
+* {
+  scrollbar-width: thin;
+  scrollbar-color: var(--c-brass-dim) transparent;
+}
+*::-webkit-scrollbar {
+  width: 10px;
+  height: 10px;
+}
+*::-webkit-scrollbar-track {
+  background: transparent;
+}
+*::-webkit-scrollbar-thumb {
+  background: linear-gradient(180deg, var(--c-line), var(--c-brass-dim));
+  border-radius: var(--radius-pill);
+  border: 2px solid transparent;
+  background-clip: padding-box;
+}
+*::-webkit-scrollbar-thumb:hover {
+  background: linear-gradient(180deg, var(--c-brass-dim), var(--c-brass));
+  background-clip: padding-box;
+}
+
+/* Text selection in brass. */
+::selection {
+  background: rgba(201, 164, 90, 0.3);
+  color: var(--c-text);
 }
 
 /* --- Art-deco background motif (pure CSS, no assets) ---------------------
@@ -117,12 +227,19 @@ button {
   position: relative;
   min-height: 100%;
   background:
-    radial-gradient(1200px 600px at 50% -10%, rgba(201, 164, 90, 0.06), transparent 60%),
-    repeating-linear-gradient(
-      135deg,
-      rgba(255, 255, 255, 0.012) 0 2px,
-      transparent 2px 22px
-    );
+    radial-gradient(1200px 620px at 50% -12%, rgba(201, 164, 90, 0.08), transparent 60%),
+    radial-gradient(900px 700px at 50% 120%, rgba(63, 125, 110, 0.05), transparent 62%),
+    repeating-linear-gradient(135deg, rgba(255, 255, 255, 0.014) 0 2px, transparent 2px 24px);
+}
+/* A faint vignette at the very edges deepens the cinematic frame without walling
+   off the canvas (it is a fixed, pointer-transparent, translucent overlay). */
+.deco-bg::after {
+  content: '';
+  position: fixed;
+  inset: 0;
+  pointer-events: none;
+  z-index: 0;
+  background: radial-gradient(130% 120% at 50% 40%, transparent 58%, rgba(4, 3, 8, 0.55) 100%);
 }
 
 /* Scene tinting (BUILD_SPEC §13.2 day/night ambiance). Translucent gradients only
@@ -133,14 +250,14 @@ button {
 }
 [data-scene='night'] .deco-bg {
   background:
-    radial-gradient(1000px 500px at 50% 120%, rgba(63, 125, 110, 0.08), transparent 60%),
-    radial-gradient(900px 480px at 50% -10%, rgba(40, 40, 90, 0.16), transparent 60%);
+    radial-gradient(1000px 520px at 50% 120%, rgba(63, 125, 110, 0.09), transparent 60%),
+    radial-gradient(900px 480px at 50% -10%, rgba(40, 40, 90, 0.18), transparent 60%);
 }
 [data-scene='day'] .deco-bg {
   background:
-    radial-gradient(1100px 560px at 50% -10%, rgba(224, 182, 92, 0.1), transparent 60%);
+    radial-gradient(1100px 560px at 50% -10%, rgba(224, 182, 92, 0.12), transparent 60%);
 }
 [data-scene='dusk'] .deco-bg {
   background:
-    radial-gradient(1100px 560px at 50% -10%, rgba(163, 52, 58, 0.1), transparent 60%);
+    radial-gradient(1100px 560px at 50% -10%, rgba(163, 52, 58, 0.12), transparent 60%);
 }
