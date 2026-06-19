@@ -184,6 +184,7 @@ export const GAME = {
   skipThreshold: (have: number, need: number) => `${have} / ${need} to call it a day`,
   tally: (n: number) => `${n}`,
   mayorMark: 'Mayor',
+  mayorRevealed: 'Revealed Mayor — their vote weighs three.',
   afkBadge: 'Away',
   disconnectedBadge: 'Disconnected',
   deadTag: 'Dead',

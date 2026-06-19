@@ -18,5 +18,18 @@ export const PublicSeatSchema = z.object({
   role: RoleIdSchema.optional(),
   /** Revealed faction, if this seat has been legally revealed. */
   faction: FactionSchema.optional(),
+  /**
+   * Whether this seat is a revealed Mayor (public knowledge: the mayor reveal is
+   * a public `day_ability_ack`). A revealed Mayor's vote weighs 3, so the client
+   * needs this to compute the correct weighted majority threshold. Leak-safe: the
+   * reveal is already public and sets the seat's `revealed` flag.
+   */
+  mayorRevealed: z.boolean().optional(),
+  /**
+   * Whether this seat is an admin-created non-voting stump (vote weight 0). Public
+   * (broadcast via `seat_transform`). Lets the client zero this seat's vote weight
+   * in the threshold math.
+   */
+  stumped: z.boolean().optional(),
 });
 export type PublicSeat = z.infer<typeof PublicSeatSchema>;

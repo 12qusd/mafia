@@ -37,10 +37,18 @@ export function PlayerList({
   spectator: boolean;
   onWhisper: (seat: number) => void;
 }) {
-  const vote = useStore((s) => s.own?.vote ?? null);
   const muted = useStore((s) => s.settings.mutedSeats);
   const toggleMute = useStore((s) => s.toggleMute);
   const stumped = useMemo(() => new Set(stumpedSeats), [stumpedSeats]);
+
+  // The local seat's current vote is read from the authoritative server tally
+  // (`votesBySeat`), not a locally-mirrored flag — the engine may clear a vote
+  // (e.g. the target dies) and `votesBySeat` always reflects the truth. This is
+  // what drives the active highlight on the vote/skip buttons and the "retract".
+  const vote = useMemo(
+    () => (ownSeat === null ? null : (votesBySeat.find((v) => v.seat === ownSeat)?.target ?? null)),
+    [votesBySeat, ownSeat],
+  );
 
   const tallyBySeat = useMemo(() => {
     const m = new Map<number, number>();
@@ -50,18 +58,33 @@ export function PlayerList({
 
   const voting = phase === 'DAY_VOTING';
   const canVote = voting && alive && !spectator;
-  const skipWeight = votesBySeat.filter((v) => v.target === 'skip').length;
+
+  // Per-seat vote weight, mirroring the engine's `voteWeight` (helpers.ts): a
+  // stump weighs 0, a REVEALED MAYOR weighs 3, everyone else 1. Both flags are
+  // now public on `PublicSeat` (`stumped`/`mayorRevealed`); the `stumped` set is
+  // still consulted for back-compat (admin stump shown before a seat refresh).
+  const weightOf = useMemo(() => {
+    return (s: PublicSeat): number => {
+      if (s.stumped || stumped.has(s.seat)) return 0;
+      return s.mayorRevealed ? 3 : 1;
+    };
+  }, [stumped]);
+
+  // Skip uses the WEIGHTED sum of skip voters (a revealed Mayor's skip weighs 3),
+  // exactly like the engine — NOT a raw voter count.
+  const skipWeight = useMemo(() => {
+    const weightBySeat = new Map(seats.map((s) => [s.seat, weightOf(s)]));
+    return votesBySeat.reduce(
+      (sum, v) => (v.target === 'skip' ? sum + (weightBySeat.get(v.seat) ?? 1) : sum),
+      0,
+    );
+  }, [votesBySeat, seats, weightOf]);
 
   // Weighted-majority threshold the engine uses to put a seat on trial / call a
   // skip day: floor(livingVoteWeight / 2) + 1 (engine `majorityThreshold`).
-  // Vote weight is 1 per living seat, 0 for a stump. A REVEALED MAYOR weighs 3,
-  // but `PublicSeat` carries no mayor-revealed flag (role/faction are populated
-  // only on death/reveal-by-death), so the client cannot see a live reveal and
-  // APPROXIMATES at 1 per living non-stump seat. With a revealed Mayor seated
-  // the true threshold can be one higher; the display is a floor, not a lie.
   const livingVoteWeight = useMemo(
-    () => seats.reduce((sum, s) => (s.alive && !stumped.has(s.seat) ? sum + 1 : sum), 0),
-    [seats, stumped],
+    () => seats.reduce((sum, s) => (s.alive ? sum + weightOf(s) : sum), 0),
+    [seats, weightOf],
   );
   const trialThreshold = Math.floor(livingVoteWeight / 2) + 1;
 
@@ -104,6 +127,11 @@ export function PlayerList({
                   {isStump && (
                     <span className="badge badge-stump" title={ADMIN.stumpTitle}>
                       {ADMIN.stumpBadge}
+                    </span>
+                  )}
+                  {s.alive && s.mayorRevealed && (
+                    <span className="badge badge-mayor" title={GAME.mayorRevealed}>
+                      {GAME.mayorMark}
                     </span>
                   )}
                   {!s.alive && revealedRole && (

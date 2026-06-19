@@ -317,13 +317,33 @@ export function reduce(state: StoreState, msg: ServerMessage): Partial<StoreStat
     }
 
     case 'day_ability_ack': {
-      if (!state.own) return {};
-      // Acknowledge jailor jail-select / mayor reveal.
+      // The `jail` ack is private (sent only to the Jailor via `toSeat`); the
+      // `reveal` ack is PUBLIC (`toPublic`) and carries the revealing seat in
+      // `target`, so every client — including spectators with no `own` — receives
+      // it and must mark that seat's public role/mayor flag.
       if (msg.ability === 'jail') {
+        if (!state.own) return {};
         return { own: { ...state.own, jailTarget: msg.target ?? null } };
       }
       if (msg.ability === 'reveal') {
-        return { own: { ...state.own, revealed: true } };
+        const revealedSeat = msg.target ?? null;
+        const patch: Partial<StoreState> = {};
+        // Mark the seat as a revealed Mayor in the public list so the vote
+        // threshold/skip math counts its weight (3) for ALL clients.
+        if (state.game && revealedSeat !== null) {
+          const seats = state.game.seats.map((s) =>
+            s.seat === revealedSeat
+              ? { ...s, mayorRevealed: true, role: s.role ?? 'MAYOR' }
+              : s,
+          );
+          patch.game = { ...state.game, seats };
+        }
+        // Only the revealing Mayor flips its OWN `revealed` flag (this ack is
+        // public, so without the seat guard every client would set it).
+        if (state.own && revealedSeat === state.own.seat) {
+          patch.own = { ...state.own, revealed: true };
+        }
+        return patch;
       }
       return {};
     }
@@ -370,8 +390,9 @@ export function reduce(state: StoreState, msg: ServerMessage): Partial<StoreStat
     }
 
     case 'seat_transform': {
-      // Public stump marker (goal 8). Track in the parallel set; never mutate
-      // the server-sent PublicSeat shape.
+      // Public stump marker (goal 8). Keep the parallel set (existing consumers)
+      // AND the authoritative `stumped` flag on the public seat in sync, so the
+      // vote-threshold math can zero this seat's weight from the seat shape.
       if (!state.game) return {};
       const cur = state.game.stumpedSeats;
       const next = msg.stumped
@@ -379,7 +400,10 @@ export function reduce(state: StoreState, msg: ServerMessage): Partial<StoreStat
           ? cur
           : [...cur, msg.seat]
         : cur.filter((s) => s !== msg.seat);
-      return { game: { ...state.game, stumpedSeats: next } };
+      const seats = state.game.seats.map((s) =>
+        s.seat === msg.seat ? { ...s, stumped: msg.stumped } : s,
+      );
+      return { game: { ...state.game, stumpedSeats: next, seats } };
     }
 
     case 'error': {

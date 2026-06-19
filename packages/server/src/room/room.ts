@@ -526,8 +526,16 @@ export class Room implements AudienceProvider {
   /** Public seat list (no secrets); revealed role only for revealed seats (§5). */
   publicSeats(): unknown[] {
     const reveal = new Map<SeatId, { role: string; faction: string }>();
+    // Public per-seat flags that affect the weighted vote: a revealed Mayor
+    // weighs 3, an admin stump weighs 0. Both are already public knowledge (the
+    // mayor reveal is a public `day_ability_ack`; a stump is a public
+    // `seat_transform`), so exposing them here leaks nothing (§5).
+    const mayorRevealed = new Set<SeatId>();
+    const stumped = new Set<SeatId>();
     for (const s of this.engine.seats(this.state)) {
       if (s.revealed) reveal.set(s.seat, { role: s.role, faction: s.faction });
+      if (s.mayorRevealed) mayorRevealed.add(s.seat);
+      if (s.stumped) stumped.add(s.seat);
     }
     const dead = new Set(this.deadSeats());
     return this.seats
@@ -541,6 +549,8 @@ export class Room implements AudienceProvider {
           connected: s.connected,
           afk: s.afk,
           ...(rev ? { role: rev.role, faction: rev.faction } : {}),
+          ...(mayorRevealed.has(s.seat) ? { mayorRevealed: true } : {}),
+          ...(stumped.has(s.seat) ? { stumped: true } : {}),
         };
       });
   }

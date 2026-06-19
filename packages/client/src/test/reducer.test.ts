@@ -430,10 +430,15 @@ describe('reduce: seat_transform stump marking (goal 8)', () => {
     expect(s.game?.stumpedSeats).not.toContain(1);
   });
 
-  it('never mutates the server-sent PublicSeat shape', () => {
+  it('syncs the public `stumped` flag onto the seat (now a real public field)', () => {
     let s = withGame();
     s = apply(s, { v: PROTOCOL_VERSION, type: 'seat_transform', seat: 0, stumped: true });
-    // The PublicSeat objects carry no fabricated `stumped` field.
-    expect(s.game?.seats.every((seat) => !('stumped' in seat))).toBe(true);
+    // `stumped` is a legitimate public PublicSeat field (server-sent via the
+    // public seat list + seat_transform), so the reducer keeps it in sync on the
+    // seat — the vote-weight math reads it. Only the transformed seat is marked.
+    expect(s.game?.seats.find((seat) => seat.seat === 0)?.stumped).toBe(true);
+    expect(s.game?.seats.filter((seat) => seat.seat !== 0).every((seat) => !seat.stumped)).toBe(
+      true,
+    );
   });
 });

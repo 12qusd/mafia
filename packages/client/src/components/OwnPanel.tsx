@@ -306,7 +306,12 @@ function AbilityControl({
 
   // Default: the living-seat grid (Doctor heal, Sheriff check, Vigilante shoot…).
   const def = getRole(own.role);
-  const allowSelf = def.targetScope === 'others_or_self' || def.targetScope === 'self';
+  // The Arsonist's role scope is `others_or_self` for its IGNITE (stay home), but
+  // that is a separate self-toggle; its `douse` may NOT target self (the engine
+  // rejects a self-douse), so never offer the actor in the douse grid.
+  const allowSelf =
+    ability.id !== 'douse' &&
+    (def.targetScope === 'others_or_self' || def.targetScope === 'self');
   const selfOnly = def.targetScope === 'self';
   const targets = seats.filter((s) => {
     if (!s.alive) return false;
