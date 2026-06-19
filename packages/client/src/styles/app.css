@@ -1,8 +1,19 @@
 /* Component styles for NOCTURNE. Original art-deco noir, CSS only. */
 
 /* --- Generic primitives ------------------------------------------------- */
+/* Panels are FROSTED GLASS: a high-opacity (~82%) tinted gradient over a 6px
+   backdrop-blur. The cinematic three.js stage reads through as soft ambient
+   motion while light text stays crisp. With no canvas (reduced/off/no-WebGL),
+   the same translucency simply layers over <body> ink + the .deco-bg scene tint,
+   so the static look is on-aesthetic and fully legible. Opacity is expressed via
+   color-mix on the existing palette tokens (no new colors). */
 .panel {
-  background: linear-gradient(180deg, var(--c-panel) 0%, var(--c-panel-2) 100%);
+  background: linear-gradient(
+    180deg,
+    color-mix(in srgb, var(--c-panel) 82%, transparent) 0%,
+    color-mix(in srgb, var(--c-panel-2) 82%, transparent) 100%
+  );
+  backdrop-filter: blur(6px);
   border: 1px solid var(--c-line);
   border-radius: var(--radius);
   box-shadow: var(--shadow);
@@ -195,8 +206,12 @@ label {
   justify-content: space-between;
   padding: 10px 18px;
   border-bottom: 1px solid var(--c-line-soft);
-  background: rgba(12, 11, 16, 0.7);
-  backdrop-filter: blur(4px);
+  /* Frosted nav strip — translucent enough to let the cinematic show at the top
+     edge, opaque enough (60%) over a 6px blur to keep brand + nav links crisp. */
+  background: rgba(12, 11, 16, 0.6);
+  backdrop-filter: blur(6px);
+  position: relative;
+  z-index: 1;
 }
 .brand {
   font-family: var(--font-display);
@@ -325,20 +340,92 @@ label {
   height: 13px;
 }
 
-/* --- Cinematic animation layer (three.js backdrop) ---------------------- */
-/* Full-bleed canvas BEHIND the game UI. Never interactive: pointer-events are
+/* --- Cinematic animation layer (three.js backdrop) ----------------------
+   Full-bleed canvas BEHIND the game UI. Never interactive: pointer-events are
    disabled so chat input, vote buttons, and the player list stay fully usable
-   on top. Mounted only at the 'full' effective animation level. */
+   on top. Mounted only at the 'full' effective animation level. The occlusion
+   that previously hid it (opaque .deco-bg fill + opaque panels) is gone — the
+   canvas now composites over <body> ink and shows through the frosted panels and
+   in the gaps around the layout. z-index stays 0 (below every interactive
+   control + modal) at ALL times; cinematic beats only change opacity / transform
+   / filter, never stacking, so they can never cover a button. */
 .anim-stage {
   position: fixed;
   inset: 0;
   z-index: 0;
   pointer-events: none;
-  /* Sit visually under the deco-bg scene tint without fighting it. */
-  opacity: 0.92;
+  opacity: 1;
+  /* Eased so phase beats "breathe" the stage forward/back smoothly (~1.6s, in
+     step with the ~1.7–2.2s transition flourishes driven from StageCanvas). */
+  transform: scale(1);
+  transition: opacity 1.6s ease, transform 1.6s ease, filter 1.6s ease;
+  transform-origin: 50% 42%;
+  will-change: opacity, transform;
 }
 .anim-stage canvas {
   display: block;
+}
+
+/* ---- Cinematic moments (data-stage on the document root, set by AnimationStage
+   ONLY while the canvas is mounted). The dramatic beats push the stage forward
+   and ease the side panels back a hair; discussion/voting (day) keep panels at
+   full frosted legibility. All values stay well inside the legible range. ---- */
+
+/* DAWN — death reveals: the showpiece. Brighten + gently push the stage forward
+   so players watch the reveal; ease the flanking columns back slightly. */
+[data-stage='dawn'] .anim-stage {
+  opacity: 1;
+  transform: scale(1.05);
+  filter: brightness(1.12) saturate(1.05);
+}
+/* GALLOWS — trial defense / judgment / execution: ominous, elevated stage. */
+[data-stage='gallows'] .anim-stage {
+  opacity: 1;
+  transform: scale(1.04);
+  filter: brightness(1.06) saturate(1.04);
+}
+/* NIGHT — moody ambient; a touch of forward presence without stealing focus. */
+[data-stage='night'] .anim-stage {
+  opacity: 1;
+  transform: scale(1.02);
+}
+/* DAY — discussion/voting: stage recedes for maximum legibility (no scale). */
+[data-stage='day'] .anim-stage {
+  opacity: 0.94;
+  transform: scale(1);
+}
+
+/* During DAWN / GALLOWS, drop the side columns' frosting ~6 points (82% -> 76%)
+   so the cinematic reads more strongly THROUGH them during the dramatic beats.
+   76% over a 6px blur keeps 13–16px light text comfortably legible. The middle
+   column (own panel / role card) is left at full opacity so the player's role +
+   night action never lose contrast at the moment they matter most. */
+[data-stage='dawn'] .game-shell > .game-col.panel,
+[data-stage='dawn'] .game-shell > .panel,
+[data-stage='gallows'] .game-shell > .game-col.panel,
+[data-stage='gallows'] .game-shell > .panel {
+  background: linear-gradient(
+    180deg,
+    color-mix(in srgb, var(--c-panel) 76%, transparent) 0%,
+    color-mix(in srgb, var(--c-panel-2) 76%, transparent) 100%
+  );
+  transition: background 0.9s ease;
+}
+
+/* Respect reduced motion: never animate the stage transform/opacity for users
+   who ask for less motion (the canvas itself only mounts at 'full', but if the
+   OS flag flips mid-session the gate unmounts it; this is belt-and-suspenders). */
+@media (prefers-reduced-motion: reduce) {
+  .anim-stage {
+    transition: none;
+    transform: none;
+  }
+  [data-stage='dawn'] .anim-stage,
+  [data-stage='gallows'] .anim-stage,
+  [data-stage='night'] .anim-stage,
+  [data-stage='day'] .anim-stage {
+    transform: none;
+  }
 }
 
 /* --- Game screen -------------------------------------------------------- */
@@ -366,13 +453,19 @@ label {
   gap: 12px;
 }
 
-/* Phase banner */
+/* Phase banner — frosted to match the panels; this is the headline element that
+   sits closest to the cinematic, so let it read through a touch more (80%). */
 .phase-banner {
   text-align: center;
   padding: 12px 16px;
   border: 1px solid var(--c-line);
   border-radius: var(--radius);
-  background: linear-gradient(180deg, var(--c-panel), var(--c-panel-2));
+  background: linear-gradient(
+    180deg,
+    color-mix(in srgb, var(--c-panel) 80%, transparent),
+    color-mix(in srgb, var(--c-panel-2) 80%, transparent)
+  );
+  backdrop-filter: blur(6px);
   position: relative;
   overflow: hidden;
 }
@@ -444,7 +537,9 @@ label {
   flex: 1;
   overflow-y: auto;
   padding: 6px 8px;
-  background: var(--c-ink);
+  /* Dense running text — keep this inner surface near-opaque (88%) so chat stays
+     fully legible; the surrounding frosted panel already carries the ambiance. */
+  background: color-mix(in srgb, var(--c-ink) 88%, transparent);
   border: 1px solid var(--c-line-soft);
   border-radius: var(--radius);
   min-height: 180px;
@@ -492,7 +587,8 @@ label {
   padding: 7px 9px;
   border: 1px solid var(--c-line-soft);
   border-radius: var(--radius);
-  background: var(--c-ink-2);
+  /* Slightly translucent (84%) so the cinematic glows between seat rows. */
+  background: color-mix(in srgb, var(--c-ink-2) 84%, transparent);
 }
 .seat.dead {
   opacity: 0.6;
@@ -528,11 +624,16 @@ label {
   flex-wrap: wrap;
 }
 
-/* Role card */
+/* Role card — frosted glass so the cinematic glows behind the role identity. */
 .role-card {
   border: 1px solid var(--c-brass-dim);
   border-radius: var(--radius);
-  background: linear-gradient(180deg, var(--c-panel) 0%, var(--c-ink-2) 100%);
+  background: linear-gradient(
+    180deg,
+    color-mix(in srgb, var(--c-panel) 84%, transparent) 0%,
+    color-mix(in srgb, var(--c-ink-2) 84%, transparent) 100%
+  );
+  backdrop-filter: blur(6px);
   padding: 14px;
 }
 .role-name {
@@ -1371,4 +1472,122 @@ label {
   border: 1px solid var(--c-line-soft);
   border-radius: var(--radius);
   padding: 8px 10px;
+}
+
+/* ---------------------------------------------------------------------------
+   Public role glossary — "The Cast" (Glossary.tsx).
+   Sits above the in-game overlays (trial ~40, game-over/toasts ~50-60) as a
+   top-level modal. Art-deco noir, driven entirely by theme.css custom props.
+   --------------------------------------------------------------------------- */
+.glossary-overlay {
+  /* Above every other overlay/modal/toast in the app. */
+  z-index: 70;
+  align-items: flex-start;
+}
+.glossary-modal {
+  width: 100%;
+  max-width: 880px;
+  max-height: calc(100vh - 40px);
+  display: flex;
+  flex-direction: column;
+  border: 1px solid var(--c-brass-dim);
+  box-shadow: var(--shadow);
+  overflow: hidden;
+}
+.glossary-header {
+  padding: 16px 18px 12px;
+  border-bottom: 1px solid var(--c-line-soft);
+  background: linear-gradient(180deg, var(--c-panel) 0%, var(--c-ink-2) 100%);
+}
+.glossary-title {
+  font-family: var(--font-display);
+  font-size: calc(26px * var(--scale));
+  color: var(--c-brass);
+  letter-spacing: 0.08em;
+  margin: 0;
+}
+.glossary-close {
+  flex: 0 0 auto;
+  align-self: flex-start;
+}
+.glossary-toolbar {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin-top: 12px;
+}
+.glossary-search {
+  flex: 1 1 auto;
+  padding: 7px 12px;
+  border: 1px solid var(--c-line);
+  background: var(--c-ink);
+  color: var(--c-text);
+  border-radius: 999px;
+  font-size: calc(13px * var(--scale));
+}
+.glossary-search:focus {
+  outline: none;
+  border-color: var(--c-brass);
+}
+.glossary-count {
+  flex: 0 0 auto;
+  font-size: calc(12px * var(--scale));
+  white-space: nowrap;
+}
+.glossary-body {
+  overflow-y: auto;
+  padding: 8px 18px 20px;
+}
+.glossary-empty {
+  padding: 28px 0;
+  text-align: center;
+}
+.glossary-section {
+  margin-top: 18px;
+}
+.glossary-section-head {
+  margin-bottom: 12px;
+}
+.glossary-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(280px, 1fr));
+  gap: 12px;
+}
+.glossary-entry {
+  border: 1px solid var(--c-line);
+  border-left: 2px solid var(--c-brass-dim);
+  border-radius: var(--radius);
+  background: linear-gradient(180deg, var(--c-panel) 0%, var(--c-ink-2) 100%);
+  padding: 12px 14px;
+}
+.glossary-entry-head {
+  align-items: baseline;
+  gap: 8px;
+}
+.glossary-entry-name {
+  font-size: calc(18px * var(--scale));
+}
+.glossary-sub {
+  margin-top: 10px;
+  font-size: calc(11px * var(--scale));
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--c-brass-dim);
+}
+.glossary-abilities {
+  margin: 4px 0 0;
+  padding-left: 18px;
+  font-size: calc(13px * var(--scale));
+  color: var(--c-text);
+}
+.glossary-abilities li {
+  margin: 2px 0;
+}
+.glossary-win {
+  margin-top: 4px;
+}
+@media (max-width: 560px) {
+  .glossary-grid {
+    grid-template-columns: 1fr;
+  }
 }

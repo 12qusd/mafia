@@ -75,6 +75,10 @@ body,
 }
 
 body {
+  /* Base ink fill lives on <body> (beneath the fixed cinematic canvas). When the
+     three.js stage is mounted it composites over this; when it is not (reduced/
+     off/no-WebGL) this ink is the floor under the translucent panels + .deco-bg
+     scene tint, so the noir look is identical either way. */
   background: var(--c-ink);
   color: var(--c-text);
   font-family: var(--font-body);
@@ -101,7 +105,14 @@ button {
   font-size: calc(14px * var(--scale));
 }
 
-/* --- Art-deco background motif (pure CSS, no assets) --------------------- */
+/* --- Art-deco background motif (pure CSS, no assets) ---------------------
+ * IMPORTANT (cinematic visibility): .deco-bg must NOT paint an opaque var(--c-ink)
+ * fill. The fixed three.js canvas (.anim-stage, z-index:0) sits behind the
+ * in-flow app-shell; an opaque deco-bg fill would wall it off entirely (the #1
+ * complaint). Instead .deco-bg carries only the translucent art-deco tint and the
+ * day/night scene gradients — the opaque ink floor lives on <body> (beneath the
+ * canvas). With no canvas mounted, body's ink shows through these same translucent
+ * layers, so the static noir look is unchanged. */
 .deco-bg {
   position: relative;
   min-height: 100%;
@@ -111,11 +122,11 @@ button {
       135deg,
       rgba(255, 255, 255, 0.012) 0 2px,
       transparent 2px 22px
-    ),
-    var(--c-ink);
+    );
 }
 
-/* Scene tinting (BUILD_SPEC §13.2 day/night ambiance). */
+/* Scene tinting (BUILD_SPEC §13.2 day/night ambiance). Translucent gradients only
+   (no opaque ink trailer) so the cinematic canvas composites through them. */
 [data-scene='night'] {
   --c-ink: #07060d;
   --c-panel: #15131f;
@@ -123,16 +134,13 @@ button {
 [data-scene='night'] .deco-bg {
   background:
     radial-gradient(1000px 500px at 50% 120%, rgba(63, 125, 110, 0.08), transparent 60%),
-    radial-gradient(900px 480px at 50% -10%, rgba(40, 40, 90, 0.16), transparent 60%),
-    var(--c-ink);
+    radial-gradient(900px 480px at 50% -10%, rgba(40, 40, 90, 0.16), transparent 60%);
 }
 [data-scene='day'] .deco-bg {
   background:
-    radial-gradient(1100px 560px at 50% -10%, rgba(224, 182, 92, 0.1), transparent 60%),
-    var(--c-ink);
+    radial-gradient(1100px 560px at 50% -10%, rgba(224, 182, 92, 0.1), transparent 60%);
 }
 [data-scene='dusk'] .deco-bg {
   background:
-    radial-gradient(1100px 560px at 50% -10%, rgba(163, 52, 58, 0.1), transparent 60%),
-    var(--c-ink);
+    radial-gradient(1100px 560px at 50% -10%, rgba(163, 52, 58, 0.1), transparent 60%);
 }

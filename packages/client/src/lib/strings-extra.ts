@@ -181,6 +181,12 @@ export const GAME = {
   retractVote: 'Take it back',
   skipDay: 'Skip the day',
   votesNeeded: (n: number) => `${n} to put on trial`,
+  // Compact threshold line shown over the vote area during DAY_VOTING.
+  voteThreshold: (n: number) => `${n} ${n === 1 ? 'voice' : 'voices'} to put a soul on trial`,
+  // Running tally of one candidate against the trial threshold, e.g. "3 / 5".
+  tallyOfThreshold: (have: number, need: number) => `${have} / ${need}`,
+  // Running skip tally vs the same threshold (a skip majority ends the day).
+  skipThreshold: (have: number, need: number) => `${have} / ${need} to call it a day`,
   tally: (n: number) => `${n}`,
   mayorMark: 'Mayor',
   afkBadge: 'Away',
@@ -216,6 +222,62 @@ export const GAME = {
   report: 'Report',
   mute: 'Mute',
   unmute: 'Unmute',
+} as const;
+
+/**
+ * Public role glossary copy ("The Cast"). Every role card and its mechanics are
+ * open to the whole table by design, so no one can fake-verify by asking "what
+ * does your card say" — the canonical text lives in `@nocturne/shared` and is
+ * shown identically here and on a player's own hand. ORIGINAL noir register.
+ */
+export const GLOSSARY = {
+  open: 'Roles',
+  openTitle: 'The cast — every role, open to the whole table',
+  heading: 'The Cast',
+  sub: 'Every hand in the deck, laid face-up. No card here is a secret.',
+  searchPlaceholder: 'Search a name or faction…',
+  noMatches: 'No role answers to that name.',
+  close: 'Close',
+  closeTitle: 'Close the glossary',
+  count: (n: number) => `${n} roles`,
+  shown: (shown: number, total: number) =>
+    shown === total ? `${total} roles` : `${shown} of ${total} roles`,
+  winCondition: 'How they win',
+  abilities: 'What they do',
+  // --- Faction section headers (grouping order set in the component) --------
+  sections: {
+    TOWN: 'The Town',
+    MAFIA: 'The Mafia',
+    TRIAD: 'The Triad',
+    VAMPIRE: 'The Coven',
+    CULT: 'The Cult',
+    NEUTRAL_KILLING: 'Lone Killers',
+    NEUTRAL_BENIGN: 'Neutrals',
+  } as Record<Faction, string>,
+  // --- Ability-summary phrasings (derived from the RoleDefinition) ---------
+  abilityNone: 'No special move — they live and die by the vote.',
+  // Night-action verbs (machine kind → noir phrasing).
+  nightVerb: {
+    investigate: 'works one neighbor in the dark for what they can learn',
+    protect: 'stands a private watch over one soul through the night',
+    roleblock: 'keeps one target too busy to make their own move',
+    kill: 'goes out into the dark to put one target down',
+    frame: 'dresses one target up to read guilty',
+    control: 'gives the order — the kill is theirs to aim, hands clean',
+    none: '',
+  } as Record<string, string>,
+  dayReveal: 'May step into the light by day, their word carrying the weight of three.',
+  dayJail: 'Hauls one neighbor to the cell by day, to question — or to execute — by night.',
+  // Use-count phrasings.
+  usesUnlimited: 'as often as the nights allow',
+  usesOnce: 'just once all game',
+  usesN: (n: number) => `up to ${n} times all game`,
+  usesSelf: (n: number) => `${n === 1 ? 'once' : `${n} times`} on themselves`,
+  // Trait flags.
+  traitNightImmune: 'Shrugs off ordinary violence in the dark.',
+  traitRoleblockImmune: 'Cannot be kept from their work — no distraction holds them.',
+  traitUnique: 'Only one ever sits at a table.',
+  traitNoVisit: 'Acts without leaving the house — a lookout never sees them come or go.',
 } as const;
 
 /** Profile card / account dashboard copy (goal 1). */

@@ -4,6 +4,7 @@
  * with Continue; the queue drains from the store.
  */
 
+import { useEffect } from 'react';
 import { getRole } from '@nocturne/shared';
 import { strings } from '@nocturne/shared';
 import { useStore } from '../store/store.js';
@@ -15,11 +16,36 @@ import { sanitizeInline, sanitizeText } from '../lib/sanitize.js';
 // Stable empty reference (avoids the Zustand v5 fresh-array selector loop, #185).
 const NO_FEED: readonly never[] = [];
 
+/** Whether the user prefers reduced motion (no auto-advance when true). */
+function prefersReducedMotion(): boolean {
+  try {
+    return globalThis.matchMedia?.('(prefers-reduced-motion: reduce)').matches ?? false;
+  } catch {
+    return false;
+  }
+}
+
+/** Base dwell before a death auto-advances (UI-only timer, deterministic-free). */
+export const DEATH_AUTOADVANCE_MS = 6000;
+
 export function DeathFeed({ seatNameFor }: { seatNameFor: (seat: number) => string }) {
   const feed = useStore((s) => s.game?.deathFeed ?? NO_FEED);
   const dismiss = useStore((s) => s.dismissDeath);
 
   const item = feed[0];
+
+  // Gentle auto-advance: after a few seconds the current death dismisses itself
+  // so a stack of dawn deaths drains without a click per body. The manual
+  // Continue button always remains. Reduced-motion users get NO auto-advance
+  // (they read at their own pace and tap Continue). The timer is re-armed per
+  // item via the item's seat key, and torn down on unmount / manual dismiss.
+  useEffect(() => {
+    if (!item) return;
+    if (prefersReducedMotion()) return;
+    const t = setTimeout(() => dismiss(), DEATH_AUTOADVANCE_MS);
+    return () => clearTimeout(t);
+  }, [item, dismiss]);
+
   if (!item) return null;
 
   const name = sanitizeInline(seatNameFor(item.seat));

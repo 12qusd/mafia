@@ -29,6 +29,7 @@ function baseState(): StoreState {
     seancePending: false,
     silencedToday: false,
     toasts: [],
+    whisperArm: null,
     debug: { state: null, traces: [], events: [] },
   };
 }

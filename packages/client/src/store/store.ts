@@ -40,6 +40,11 @@ interface StoreActions {
   dismissToast(id: number): void;
   /** Push a local info toast. */
   pushInfo(detail: string): void;
+  /**
+   * Arm (or clear) a click-to-whisper target seat. Roster name-clicks set it;
+   * the ChatPane consumes it into its whisper-compose state and clears it.
+   */
+  setWhisperArm(seat: number | null): void;
   /** Reset to a clean post-game / disconnected lobby view. */
   resetGame(): void;
   /** Hard reset everything (logout / leave). */
@@ -89,6 +94,7 @@ const initialState: StoreState = {
   seancePending: false,
   silencedToday: false,
   toasts: [],
+  whisperArm: null,
   debug: emptyDebug(),
 };
 
@@ -133,6 +139,10 @@ export const useStore = create<Store>((set, get) => ({
     set((s) => ({ toasts: [...s.toasts, { id: allocId(), code: 'info', detail }] }));
   },
 
+  setWhisperArm(seat) {
+    set({ whisperArm: seat });
+  },
+
   resetGame() {
     set({
       game: null,
@@ -145,6 +155,7 @@ export const useStore = create<Store>((set, get) => ({
       jailedThisNight: false,
       seancePending: false,
       silencedToday: false,
+      whisperArm: null,
       debug: emptyDebug(),
     });
   },

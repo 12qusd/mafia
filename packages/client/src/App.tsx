@@ -4,7 +4,7 @@
  * display settings to the document root, and renders the scene-tinted shell.
  */
 
-import { useEffect } from 'react';
+import { useEffect, useState } from 'react';
 import { Routes, Route, Navigate, Link } from 'react-router-dom';
 import { strings } from '@nocturne/shared';
 import { conn } from './ws/connection.js';
@@ -12,6 +12,8 @@ import { useStore } from './store/store.js';
 import { refreshMe } from './lib/me.js';
 import { Toasts } from './components/Toasts.js';
 import { ForceUpdateModal } from './components/ForceUpdateModal.js';
+import { Glossary } from './components/Glossary.js';
+import { GLOSSARY } from './lib/strings-extra.js';
 import { sceneForPhase } from './lib/scene.js';
 import { HomeScreen } from './screens/HomeScreen.js';
 import { JoinScreen } from './screens/JoinScreen.js';
@@ -25,6 +27,9 @@ import { ReplayScreen } from './screens/ReplayScreen.js';
 export function App() {
   const settings = useStore((s) => s.settings);
   const phase = useStore((s) => s.game?.phase ?? null);
+  // Public role glossary ("The Cast") — open from the topbar on every screen so
+  // any player can read every role's canonical card (anti fake-verify, §13.1).
+  const [glossaryOpen, setGlossaryOpen] = useState(false);
 
   // Open the connection once, and bootstrap the signed-in identity (goal 4/8).
   useEffect(() => {
@@ -59,6 +64,14 @@ export function App() {
             <Link className="linkbtn" to="/setups">
               Setups
             </Link>
+            <button
+              type="button"
+              className="linkbtn"
+              onClick={() => setGlossaryOpen(true)}
+              title={GLOSSARY.openTitle}
+            >
+              {GLOSSARY.open}
+            </button>
             <Link className="linkbtn" to="/settings">
               Settings
             </Link>
@@ -78,6 +91,7 @@ export function App() {
       </div>
       <Toasts />
       <ForceUpdateModal />
+      <Glossary open={glossaryOpen} onClose={() => setGlossaryOpen(false)} />
     </div>
   );
 }

@@ -164,9 +164,12 @@ export function GameScreen() {
           alive={alive}
           spectator={spectator}
           onWhisper={(seat) => {
-            // Clicking a name in the list arms a whisper via the chat input;
-            // surfaced as info since the input lives in the other column.
-            useStore.getState().pushInfo(GAME.whisperingTo(seatNameFor(seat)));
+            // Clicking a name in the roster arms a whisper. The ChatPane (left
+            // column) reads `whisperArm`, switches to whisper-compose for that
+            // seat, focuses its input, and clears the arm. Whispers are still
+            // gated to living↔living day-phase by the server; an inert arm in a
+            // disabled context simply does nothing on send.
+            useStore.getState().setWhisperArm(seat);
           }}
         />
       </div>

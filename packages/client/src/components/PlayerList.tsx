@@ -52,9 +52,27 @@ export function PlayerList({
   const canVote = voting && alive && !spectator;
   const skipWeight = votesBySeat.filter((v) => v.target === 'skip').length;
 
+  // Weighted-majority threshold the engine uses to put a seat on trial / call a
+  // skip day: floor(livingVoteWeight / 2) + 1 (engine `majorityThreshold`).
+  // Vote weight is 1 per living seat, 0 for a stump. A REVEALED MAYOR weighs 3,
+  // but `PublicSeat` carries no mayor-revealed flag (role/faction are populated
+  // only on death/reveal-by-death), so the client cannot see a live reveal and
+  // APPROXIMATES at 1 per living non-stump seat. With a revealed Mayor seated
+  // the true threshold can be one higher; the display is a floor, not a lie.
+  const livingVoteWeight = useMemo(
+    () => seats.reduce((sum, s) => (s.alive && !stumped.has(s.seat) ? sum + 1 : sum), 0),
+    [seats, stumped],
+  );
+  const trialThreshold = Math.floor(livingVoteWeight / 2) + 1;
+
   return (
     <div className="panel panel-pad game-col" style={{ overflow: 'hidden' }}>
       <DecoHead>{GAME.seatHeading}</DecoHead>
+      {voting && livingVoteWeight > 0 && (
+        <div className="vote-threshold faint" style={{ marginBottom: 6, fontSize: '0.82em' }}>
+          {GAME.voteThreshold(trialThreshold)}
+        </div>
+      )}
       <div className="seat-list">
         {seats.map((s) => {
           const isSelf = s.seat === ownSeat;
@@ -111,7 +129,14 @@ export function PlayerList({
                 </div>
               </div>
               <div className="row" style={{ gap: 6 }}>
-                {voting && weight > 0 && <span className="seat-tally">{weight}</span>}
+                {voting && weight > 0 && (
+                  <span
+                    className="seat-tally"
+                    title={GAME.voteThreshold(trialThreshold)}
+                  >
+                    {GAME.tallyOfThreshold(weight, trialThreshold)}
+                  </span>
+                )}
                 {canVote && s.alive && !isSelf && !isStump && (
                   <button
                     className={`btn btn-sm ${myVote ? 'btn-active' : ''}`}
@@ -125,6 +150,12 @@ export function PlayerList({
           );
         })}
       </div>
+
+      {voting && skipWeight > 0 && (
+        <div className="vote-threshold faint" style={{ marginTop: 8, fontSize: '0.8em' }}>
+          {GAME.skipThreshold(skipWeight, trialThreshold)}
+        </div>
+      )}
 
       {canVote && (
         <button

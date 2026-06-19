@@ -248,6 +248,13 @@ export interface StoreState {
 
   // --- Ephemeral UI -------------------------------------------------------
   toasts: Toast[];
+  /**
+   * A seat the player clicked in the roster to whisper to (local pending UI
+   * state, §13.2 — like `nightTarget`, never server-sent). The ChatPane reads
+   * this to switch into whisper-compose targeting that seat, then clears it via
+   * `setWhisperArm(null)` once consumed. Null when nothing is armed.
+   */
+  whisperArm: number | null;
 
   // --- TEST MODE god-view (host of a test lobby only) ---------------------
   debug: DebugView;

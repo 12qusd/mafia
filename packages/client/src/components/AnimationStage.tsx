@@ -19,9 +19,11 @@
  */
 
 import { lazy, Suspense, useEffect, useState } from 'react';
+import type { Phase } from '@nocturne/shared';
 import { useStore } from '../store/store.js';
 import {
   effectiveAnimationLevel,
+  moodForPhase,
   prefersReducedMotion,
   shouldMountCanvas,
 } from '../lib/anim.js';
@@ -47,6 +49,7 @@ function webglAvailable(): boolean {
 
 export function AnimationStage() {
   const animations = useStore((s) => s.settings.animations);
+  const phase = useStore((s) => s.game?.phase ?? null) as Phase | null;
 
   // Track prefers-reduced-motion live so toggling the OS setting takes effect.
   const [reduced, setReduced] = useState<boolean>(prefersReducedMotion());
@@ -66,7 +69,30 @@ export function AnimationStage() {
   const level = effectiveAnimationLevel(animations, reduced);
 
   // The single gate: only at 'full', with a real WebGL context available.
-  if (!shouldMountCanvas(level) || !webglAvailable()) return null;
+  const mount = shouldMountCanvas(level) && webglAvailable();
+
+  // Cinematic-moment driver: while the canvas IS mounted, mirror the current
+  // phase's mood onto `data-stage` on the document root. CSS keys off this to let
+  // the stage "breathe" forward (raise stage opacity/scale, ease panels back) on
+  // the dramatic beats (night / dawn reveals / gallows) and recede for maximum
+  // legibility during day discussion/voting. The attribute is set ONLY when the
+  // cinematic exists, and is cleared on unmount / when animations are turned off,
+  // so cinematic mode never lingers without a canvas behind it. Purely cosmetic,
+  // pointer-events untouched — input is never affected.
+  useEffect(() => {
+    if (typeof document === 'undefined') return;
+    const el = document.documentElement;
+    if (!mount) {
+      delete el.dataset['stage'];
+      return;
+    }
+    el.dataset['stage'] = moodForPhase(phase);
+    return () => {
+      delete el.dataset['stage'];
+    };
+  }, [mount, phase]);
+
+  if (!mount) return null;
 
   return (
     <div className="anim-stage" aria-hidden="true">

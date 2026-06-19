@@ -87,11 +87,15 @@ export function ChatPane(props: ChatPaneProps) {
   const allChat = useStore((s) => s.chat);
   const whisperMeta = useStore((s) => s.whisperMeta);
   const settings = useStore((s) => s.settings);
+  // A roster name-click arms a whisper target here (cross-column hand-off, H6).
+  const whisperArm = useStore((s) => s.whisperArm);
+  const setWhisperArm = useStore((s) => s.setWhisperArm);
 
   const [active, setActive] = useState<ChatChannel>(activeDefault);
   const [text, setText] = useState('');
   const [whisperTarget, setWhisperTarget] = useState<number | null>(null);
   const logRef = useRef<HTMLDivElement>(null);
+  const inputRef = useRef<HTMLInputElement>(null);
 
   // If the active tab is no longer entitled, fall back.
   useEffect(() => {
@@ -147,7 +151,23 @@ export function ChatPane(props: ChatPaneProps) {
     if (!onWhisper) return;
     setWhisperTarget(seat);
     setText((t) => (t.startsWith('/w ') ? t : whisperPrefix(seat)));
+    inputRef.current?.focus();
   }
+
+  // Consume a roster-armed whisper target (set by a PlayerList name-click, H6).
+  // Only honoured where whispers exist (`onWhisper` present, i.e. in-game); the
+  // arm is cleared either way so a stale seat never lingers. Server-side rules
+  // (day-phase, living↔living, whispersEnabled) still gate the actual send. The
+  // arming is inlined (not via `armWhisper`) so the effect's deps stay honest.
+  useEffect(() => {
+    if (whisperArm === null) return;
+    if (onWhisper) {
+      setWhisperTarget(whisperArm);
+      setText((t) => (t.startsWith('/w ') ? t : whisperPrefix(whisperArm)));
+      inputRef.current?.focus();
+    }
+    setWhisperArm(null);
+  }, [whisperArm, onWhisper, setWhisperArm]);
 
   return (
     <div className="chat-pane">
@@ -217,6 +237,7 @@ export function ChatPane(props: ChatPaneProps) {
 
       <div className="chat-input-row">
         <input
+          ref={inputRef}
           className="grow"
           value={text}
           disabled={!activeCanSpeak}
