@@ -503,7 +503,16 @@ const SECTIONS: { id: Section; label: string }[] = [
 /** The Director panel proper — assumes a non-null `debug.state` (god audience). */
 export function DirectorPanel({ state, roomId }: { state: DebugState; roomId: string | null }) {
   const traces = useStore((s) => s.debug.traces);
-  const [collapsed, setCollapsed] = useState(false);
+  // Default-collapsed on small screens so the test-mode god view doesn't bury the
+  // actual game panes on mobile (it's a dev tool; tap Expand to use it). Desktop
+  // keeps it open.
+  const [collapsed, setCollapsed] = useState(() => {
+    try {
+      return globalThis.matchMedia?.('(max-width: 820px)').matches ?? false;
+    } catch {
+      return false;
+    }
+  });
   const [section, setSection] = useState<Section>('board');
 
   const name = useCallback((seat: number) => seatName(state, seat), [state]);

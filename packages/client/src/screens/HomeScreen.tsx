@@ -231,7 +231,7 @@ function CreateLobbyCard() {
         <SetupPicker value={setupId} onChange={setSetupId} />
       </div>
       <div className="toggle">
-        <span>
+        <span className="toggle-label">
           {HOME.testModeLabel} <TestBadge />
         </span>
         <Switch on={testMode} label={HOME.testModeLabel} onChange={setTestMode} />

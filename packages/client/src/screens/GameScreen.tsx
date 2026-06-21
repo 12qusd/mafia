@@ -9,7 +9,7 @@
  * (§13 resilience).
  */
 
-import { useMemo } from 'react';
+import { useMemo, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { getRole, type ChatChannel } from '@nocturne/shared';
 import { strings } from '@nocturne/shared';
@@ -29,6 +29,7 @@ import { DirectorGate } from '../components/DirectorPanel.js';
 import { AdminPanel } from '../components/AdminPanel.js';
 import { AnimationStage } from '../components/AnimationStage.js';
 import { TestBadge } from '../components/common.js';
+import { GAME_MOBILE_PANES, type GameMobilePane } from '../components/gameMobilePanes.js';
 import { sendChat, sendWhisper } from '../ws/actions.js';
 
 export function GameScreen() {
@@ -104,6 +105,13 @@ export function GameScreen() {
   // decides per-channel; we pass a coarse gate too.
   const speakAnywhere = tabChannels.some((ch) => canSpeakIn(ch, ctx));
 
+  // MOBILE-ONLY pane switcher (≤820px). Desktop renders ALL three columns at
+  // once (the grid); on a phone CSS shows only the column matching `mobilePane`
+  // and reveals the segmented tab bar + a sticky mini phase banner. This state
+  // never affects the desktop DOM (every column is still rendered; CSS hides the
+  // two that aren't active), so logic/handlers/tests are untouched.
+  const [mobilePane, setMobilePane] = useState<GameMobilePane>('role');
+
   return (
     <>
       <AnimationStage />
@@ -117,9 +125,31 @@ export function GameScreen() {
           <span className="muted">{GAME.reconnecting}</span>
         </div>
       )}
-      <div className="game-shell">
+
+      {/* Sticky mini phase banner — mobile only (hidden on desktop via CSS). It
+          keeps the phase + countdown pinned above the swappable panes. */}
+      <div className="game-mobile-topbar" aria-hidden="false">
+        <PhaseBanner phase={game.phase} dayNumber={game.dayNumber} endsAt={game.endsAt} />
+        <div className="game-mobile-tabs" role="tablist" aria-label="Game views">
+          {GAME_MOBILE_PANES.map((p) => (
+            <button
+              key={p.id}
+              type="button"
+              role="tab"
+              aria-selected={mobilePane === p.id}
+              aria-label={p.aria}
+              className={`game-mobile-tab ${mobilePane === p.id ? 'active' : ''}`}
+              onClick={() => setMobilePane(p.id)}
+            >
+              {p.label}
+            </button>
+          ))}
+        </div>
+      </div>
+
+      <div className={`game-shell game-mobile-pane-${mobilePane}`}>
         {/* Left: chat */}
-        <div className="game-col panel panel-pad" style={{ overflow: 'hidden' }}>
+        <div className="game-col panel panel-pad game-pane game-pane-chat" style={{ overflow: 'hidden' }}>
           {spectator && <div className="pill" style={{ marginBottom: 8 }}>{GAME.spectating}</div>}
           <ChatPane
             channels={tabChannels}
@@ -136,7 +166,7 @@ export function GameScreen() {
         </div>
 
         {/* Middle: phase banner + own panel + private log */}
-        <div className="game-col" style={{ overflowY: 'auto' }}>
+        <div className="game-col game-pane game-pane-role" style={{ overflowY: 'auto' }}>
           <PhaseBanner phase={game.phase} dayNumber={game.dayNumber} endsAt={game.endsAt} />
           {own && !spectator ? (
             <OwnPanel seats={game.seats} phase={game.phase} />
@@ -150,6 +180,7 @@ export function GameScreen() {
 
         {/* Right: player list */}
         <PlayerList
+          className="game-pane game-pane-table"
           seats={game.seats}
           phase={game.phase}
           ownSeat={own?.seat ?? null}

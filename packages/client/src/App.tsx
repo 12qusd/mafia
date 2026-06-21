@@ -5,7 +5,7 @@
  */
 
 import { useEffect, useState } from 'react';
-import { Routes, Route, Navigate, Link } from 'react-router-dom';
+import { Routes, Route, Navigate, Link, useLocation } from 'react-router-dom';
 import { strings } from '@nocturne/shared';
 import { conn } from './ws/connection.js';
 import { useStore } from './store/store.js';
@@ -30,6 +30,15 @@ export function App() {
   // Public role glossary ("The Cast") — open from the topbar on every screen so
   // any player can read every role's canonical card (anti fake-verify, §13.1).
   const [glossaryOpen, setGlossaryOpen] = useState(false);
+  // Mobile nav drawer (collapsed under the topbar on narrow screens). Hidden on
+  // desktop entirely via CSS; the hamburger only appears at the mobile breakpoint.
+  const [navOpen, setNavOpen] = useState(false);
+  const location = useLocation();
+
+  // Close the mobile drawer whenever the route changes (a nav tap navigated).
+  useEffect(() => {
+    setNavOpen(false);
+  }, [location.pathname]);
 
   // Open the connection once, and bootstrap the signed-in identity (goal 4/8).
   useEffect(() => {
@@ -54,7 +63,23 @@ export function App() {
       <div className="app-shell">
         <div className="topbar">
           <span className="brand">{strings.UI.appName}</span>
-          <nav className="row">
+          {/* Hamburger — mobile only (hidden on desktop via CSS). Toggles the
+              nav drawer; on desktop the nav row is always shown inline. */}
+          <button
+            type="button"
+            className="nav-toggle"
+            aria-label={navOpen ? 'Close menu' : 'Open menu'}
+            aria-expanded={navOpen}
+            aria-controls="topbar-nav"
+            onClick={() => setNavOpen((v) => !v)}
+          >
+            <span className="nav-toggle-bars" aria-hidden="true">
+              <span />
+              <span />
+              <span />
+            </span>
+          </button>
+          <nav id="topbar-nav" className={`topbar-nav row ${navOpen ? 'open' : ''}`}>
             <Link className="linkbtn" to="/">
               Tables
             </Link>
@@ -67,7 +92,10 @@ export function App() {
             <button
               type="button"
               className="linkbtn"
-              onClick={() => setGlossaryOpen(true)}
+              onClick={() => {
+                setGlossaryOpen(true);
+                setNavOpen(false);
+              }}
               title={GLOSSARY.openTitle}
             >
               {GLOSSARY.open}

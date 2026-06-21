@@ -24,6 +24,7 @@ export function PlayerList({
   alive,
   spectator,
   onWhisper,
+  className = '',
 }: {
   seats: PublicSeat[];
   phase: Phase;
@@ -36,6 +37,8 @@ export function PlayerList({
   alive: boolean;
   spectator: boolean;
   onWhisper: (seat: number) => void;
+  /** Extra classes for the root (e.g. the mobile-pane wrapper). Presentational. */
+  className?: string;
 }) {
   const muted = useStore((s) => s.settings.mutedSeats);
   const toggleMute = useStore((s) => s.toggleMute);
@@ -89,7 +92,7 @@ export function PlayerList({
   const trialThreshold = Math.floor(livingVoteWeight / 2) + 1;
 
   return (
-    <div className="panel panel-pad game-col" style={{ overflow: 'hidden' }}>
+    <div className={`panel panel-pad game-col ${className}`} style={{ overflow: 'hidden' }}>
       <DecoHead>{GAME.seatHeading}</DecoHead>
       {voting && livingVoteWeight > 0 && (
         <div className="vote-threshold faint" style={{ marginBottom: 6, fontSize: '0.82em' }}>
