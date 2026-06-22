@@ -40,8 +40,9 @@ text) must be original; the mechanics lineage is legally safe.
 - **MVP scope:** 15 roles (Sheriff, Investigator, Lookout, Doctor, Escort, Jailor, Vigilante,
   Mayor, Citizen / Godfather, Mafioso, Consort, Framer / Serial Killer, Jester, plus
   Executioner & Survivor as flex), one day type (majority + trial), 3 curated setups,
-  7–15 player auto-scaling lobbies. Witch / Bus Driver / Cult / Triad / the host setup editor
-  are deliberately deferred.
+  7–15 player auto-scaling lobbies. **The roster has since expanded to 50 roles** (batches A–F
+  plus the Triad, Vampire, and Cult factions; Witch and Transporter/"Bus Driver" are now in) —
+  see `DECISIONS.md` and `docs/ADDING_ROLES.md`. The host setup editor remains deferred.
 - **Sequencing:** browser launch → community seeding → Steam Playtest/Next Fest → Steam release.
   Windows + web before macOS.
 - **Naming:** "NOCTURNE" is a placeholder. The shipping title needs a trademark sweep — no
