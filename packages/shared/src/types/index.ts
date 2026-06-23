@@ -14,4 +14,5 @@ export * from './setup.js';
 export * from './lobby.js';
 export * from './defaults.js';
 export * from './points.js';
+export * from './glicko.js';
 export * from './achievements.js';

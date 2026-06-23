@@ -17,7 +17,7 @@ import { sanitizeInline } from '../lib/sanitize.js';
 import { loadGuestName, loadToken } from '../lib/storage.js';
 import { refreshMe } from '../lib/me.js';
 import * as api from '../lib/api.js';
-import { createLobby, joinLobby, quickPlay, leaveQueue } from '../ws/actions.js';
+import { createLobby, joinLobby, quickPlay, rankedPlay, leaveQueue } from '../ws/actions.js';
 import type { LobbyListItem } from '../lib/api.js';
 
 export function HomeScreen() {
@@ -39,13 +39,31 @@ export function HomeScreen() {
       </div>
 
       <div className="quickplay">
-        <button
-          className="btn btn-primary btn-quickplay"
-          disabled={!ready}
-          onClick={() => quickPlay()}
-        >
-          {HOME.quickPlay}
-        </button>
+        <div className="quickplay-row">
+          <button
+            className="btn btn-primary btn-quickplay"
+            disabled={!ready}
+            onClick={() => quickPlay()}
+          >
+            {HOME.quickPlay}
+          </button>
+          <button
+            className="btn btn-ranked btn-quickplay"
+            disabled={!ready}
+            onClick={() => {
+              // Ranked needs a registered account. Guests get a clear prompt to
+              // sign in rather than a server rejection toast.
+              if (!me || me.isGuest) {
+                pushInfo(HOME.rankedSignInPrompt);
+                return;
+              }
+              rankedPlay();
+            }}
+            title={!me || me.isGuest ? HOME.rankedSignInPrompt : HOME.rankedSub}
+          >
+            {HOME.ranked}
+          </button>
+        </div>
         <p className="quickplay-sub">{HOME.quickPlaySub}</p>
       </div>
 
@@ -76,13 +94,16 @@ function QuickPlayOverlay() {
   const matchmaking = useStore((s) => s.matchmaking);
   if (!matchmaking) return null;
   const matched = matchmaking.state === 'matched';
+  const ranked = matchmaking.mode === 'ranked';
+  const searchTitle = ranked ? HOME.rankedSearching : HOME.quickPlaySearching;
+  const searchSub = ranked ? HOME.rankedSearchingSub : HOME.quickPlaySearchingSub;
   return (
-    <div className="overlay" role="dialog" aria-modal="true" aria-label={HOME.quickPlaySearching}>
+    <div className="overlay" role="dialog" aria-modal="true" aria-label={searchTitle}>
       <div className="modal quickplay-modal">
         <div className="panel panel-pad">
           <div className="qp-spinner" aria-hidden="true" />
-          <h2 className="qp-title">{matched ? HOME.quickPlayMatched : HOME.quickPlaySearching}</h2>
-          <p className="qp-sub">{matched ? '' : HOME.quickPlaySearchingSub}</p>
+          <h2 className="qp-title">{matched ? HOME.quickPlayMatched : searchTitle}</h2>
+          <p className="qp-sub">{matched ? '' : searchSub}</p>
           {!matched && matchmaking.position !== null && matchmaking.queued !== null && (
             <p className="qp-position">
               {HOME.quickPlayPosition(matchmaking.position, matchmaking.queued)}

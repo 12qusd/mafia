@@ -51,6 +51,8 @@ export interface PointsAwardState {
   breakdown: PointsBreakdown;
   stats: UserStatsSummary;
   newAchievements: string[];
+  /** MMR change from this match (ranked games only; null for casual). */
+  rankedDelta: number | null;
 }
 
 /** Connection lifecycle (BUILD_SPEC §8 reconnection). */
@@ -196,6 +198,8 @@ export interface MatchmakingState {
   eta: number | null;
   /** The matchmaking lobby/room id once matched. */
   lobbyId: string | null;
+  /** Which queue this is ('casual' | 'ranked'); drives the overlay copy. */
+  mode: 'casual' | 'ranked';
 }
 
 /**

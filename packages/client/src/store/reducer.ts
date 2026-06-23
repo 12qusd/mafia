@@ -378,6 +378,7 @@ export function reduce(state: StoreState, msg: ServerMessage): Partial<StoreStat
           breakdown: msg.breakdown,
           stats: msg.stats,
           newAchievements: msg.newAchievements,
+          rankedDelta: msg.rankedDelta ?? null,
         },
       };
       if (state.me && state.me.id === msg.stats.userId) {
@@ -440,7 +441,8 @@ export function reduce(state: StoreState, msg: ServerMessage): Partial<StoreStat
     }
 
     case 'queue_status': {
-      // Quick-play matchmaking feedback (§13.2: store only server-sent data).
+      // Matchmaking feedback (§13.2: store only server-sent data). `mode`
+      // distinguishes the casual vs ranked queue for the overlay copy.
       if (msg.state === 'cancelled') {
         return { matchmaking: null };
       }
@@ -451,6 +453,7 @@ export function reduce(state: StoreState, msg: ServerMessage): Partial<StoreStat
           queued: msg.queued ?? null,
           eta: msg.eta ?? null,
           lobbyId: msg.lobbyId ?? null,
+          mode: msg.mode ?? 'casual',
         },
       };
     }

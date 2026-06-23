@@ -84,6 +84,7 @@ function stubHost(overrides: Partial<MatchmakerHost> = {}): {
     },
     disposeMatchmakingLobby: () => {},
     llmAvailable: false,
+    ratingFor: () => 1500,
     ...overrides,
   };
   return { host, formed, started };
@@ -147,6 +148,37 @@ describe('Matchmaker queue / window / cancel', () => {
     expect(mm.queued).toBe(0);
     await new Promise((r) => setTimeout(r, 80));
     expect(formed.length).toBe(0);
+  });
+
+  it('RANKED bucketing keeps a far-off MMR player out of the first table (then forms theirs)', async () => {
+    // Three close-MMR players + one far outlier. The first table takes the close
+    // cluster around the anchor; the outlier waits, then forms its own (with bots).
+    const ratings: Record<string, number> = { a: 1500, b: 1540, c: 1560, far: 2400 };
+    const formedLobbies: string[] = [];
+    const { host } = stubHost({ ratingFor: (id) => ratings[id] ?? 1500 });
+    const wrapped: MatchmakerHost = {
+      ...host,
+      createMatchmakingLobby: async (conn) => {
+        const res = await host.createMatchmakingLobby(conn, 'x');
+        if ('lobby' in res) formedLobbies.push(res.lobby.id);
+        return res;
+      },
+    };
+    // Tight base tolerance so 'far' (2400) is well outside the ~150 window.
+    const mm = new Matchmaker(wrapped, TINY, 'ranked');
+    mm.enqueue(fakeConn('a').conn);
+    mm.enqueue(fakeConn('b').conn);
+    mm.enqueue(fakeConn('c').conn);
+    mm.enqueue(fakeConn('far').conn);
+    expect(mm.queued).toBe(4);
+
+    // After the first window the close cluster (a,b,c) forms; 'far' remains.
+    await new Promise((r) => setTimeout(r, 60));
+    expect(formedLobbies.length).toBeGreaterThanOrEqual(1);
+    // 'far' was not consumed by the first (tight) table; it eventually forms its
+    // own table once its wait widens the tolerance (cold-start: always forms).
+    await new Promise((r) => setTimeout(r, 120));
+    expect(mm.queued).toBe(0);
   });
 
   it('backfills bots up to the target (humans + bots = TARGET) and starts', async () => {
@@ -334,6 +366,19 @@ describe('Quick-Play end-to-end (real server + real bots)', () => {
     const over = await human.waitFor('game_over', 1000);
     expect(over).toBeTruthy();
     expect(Array.isArray(over['winners'])).toBe(true);
+
+    human.ws.close();
+  }, 20000);
+
+  it('RANKED quick_play is account-gated: a guest is rejected with not_authenticated', async () => {
+    stack = await bootRealServer();
+    const human = await connectHuman(stack.wsUrl);
+    await human.waitFor('welcome'); // auto-minted guest identity
+
+    // A guest asking for ranked is rejected so the client can prompt to sign in.
+    human.ws.send(JSON.stringify({ v: 1, type: 'quick_play', mode: 'ranked' }));
+    const err = await human.waitFor('error', 2000);
+    expect(err['code']).toBe('not_authenticated');
 
     human.ws.close();
   }, 20000);

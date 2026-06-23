@@ -6,7 +6,7 @@
 import { getRole } from '@nocturne/shared';
 import { Link, useNavigate } from 'react-router-dom';
 import { useStore } from '../store/store.js';
-import { DecoHead, FactionTag } from './common.js';
+import { DecoHead, FactionTag, RankBadge } from './common.js';
 import { PointsCelebration } from './PointsCelebration.js';
 import { GAME, WINNER_LABEL, OUTCOME_LABEL, POINTS } from '../lib/strings-extra.js';
 import { sanitizeInline } from '../lib/sanitize.js';
@@ -46,7 +46,27 @@ export function GameOver() {
 
         {mine && (
           <div className={`win-loss ${mine.outcome === 'win' ? 'win' : 'loss'}`}>
-            {GAME.yourResult}: {OUTCOME_LABEL[mine.outcome]} — you were the {getRole(mine.role).name}
+            {GAME.yourResult}: {OUTCOME_LABEL[mine.outcome]} — you were the{' '}
+            {getRole(mine.role).name}
+          </div>
+        )}
+
+        {award && award.rankedDelta !== null && award.stats.ranked && (
+          <div className="ranked-delta-row">
+            <DecoHead>{POINTS.rankedHeading}</DecoHead>
+            <div className="ranked-delta">
+              <span className={`ranked-delta-val ${award.rankedDelta >= 0 ? 'up' : 'down'}`}>
+                {POINTS.rankedDelta(award.rankedDelta)}
+              </span>
+              <RankBadge
+                rankKey={award.stats.ranked.rank}
+                rankName={award.stats.ranked.rankName}
+                size="sm"
+              />
+              <span className="faint">
+                {POINTS.rankedTo(award.stats.ranked.rankName, award.stats.ranked.mmr)}
+              </span>
+            </div>
           </div>
         )}
 
@@ -68,7 +88,10 @@ export function GameOver() {
               .slice()
               .sort((a, b) => a.seat - b.seat)
               .map((r) => (
-                <tr key={r.seat} style={r.seat === ownSeat ? { color: 'var(--c-amber)' } : undefined}>
+                <tr
+                  key={r.seat}
+                  style={r.seat === ownSeat ? { color: 'var(--c-amber)' } : undefined}
+                >
                   <td>{r.seat + 1}</td>
                   <td>{nameFor(r.seat)}</td>
                   <td>{getRole(r.role).name}</td>

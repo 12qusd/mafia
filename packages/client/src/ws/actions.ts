@@ -64,12 +64,21 @@ export function startGame(): void {
   conn.send({ v: V, type: 'start_game' });
 }
 
-/** Enter the quick-play queue (matchmaking + bot backfill). */
+/** Enter the casual quick-play queue (matchmaking + bot backfill). */
 export function quickPlay(): void {
-  conn.send({ v: V, type: 'quick_play' });
+  conn.send({ v: V, type: 'quick_play', mode: 'casual' });
 }
 
-/** Leave the quick-play queue before a match forms. */
+/**
+ * Enter the RANKED queue (season MMR; bot backfill). Account-gated: a guest is
+ * rejected by the server with `not_authenticated`, surfaced as a toast prompting
+ * the player to sign in.
+ */
+export function rankedPlay(): void {
+  conn.send({ v: V, type: 'quick_play', mode: 'ranked' });
+}
+
+/** Leave the matchmaking queue (casual or ranked) before a match forms. */
 export function leaveQueue(): void {
   conn.send({ v: V, type: 'leave_queue' });
 }

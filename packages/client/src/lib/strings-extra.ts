@@ -24,6 +24,11 @@ export const HOME = {
   heroSub: 'Find your table. Read the room. Survive the night.',
   quickPlay: 'Quick Play',
   quickPlaySub: 'Sit down now — we deal you in within seconds.',
+  ranked: 'Ranked',
+  rankedSub: 'Play for the standings. Win, climb, make your name.',
+  rankedSignInPrompt: 'Sign in to play ranked — guests have no record to keep.',
+  rankedSearching: 'Finding you a ranked table…',
+  rankedSearchingSub: 'Matching you to your own kind. Bots fill the empty chairs.',
   quickPlaySearching: 'Finding you a table…',
   quickPlaySearchingSub: 'Holding a seat while the others arrive.',
   quickPlayMatched: 'Table found — dealing you in…',
@@ -302,9 +307,14 @@ export const PROFILE = {
   signOut: 'Sign out',
   viewLeaderboard: 'See the leaderboard',
   noStats: 'No record yet — play a ranked game to start your dossier.',
+  ranked: 'Ranked standing',
+  rankLabel: 'Rank',
+  mmrLabel: 'MMR',
+  rankedGames: 'Ranked games',
+  rankedUnranked: 'Unranked — play a ranked game to earn your standing.',
 } as const;
 
-/** Leaderboard screen copy (goal 2). */
+/** Leaderboard screen copy (goal 2 + ranked play). */
 export const LEADERBOARD = {
   heading: 'The standings',
   sub: 'Who owns this town.',
@@ -316,15 +326,23 @@ export const LEADERBOARD = {
   empty: 'No names on the board yet. Be the first to make a reputation.',
   you: 'You',
   loading: 'Counting the takings…',
+  tabCasual: 'Reputation',
+  tabRanked: 'Ranked (MMR)',
+  mmr: 'MMR',
+  standing: 'Standing',
+  rankedEmpty: 'No ranked play yet this season. Be the first to climb.',
 } as const;
 
-/** Game-over points celebration copy (goal 3). */
+/** Game-over points celebration copy (goal 3 + ranked play). */
 export const POINTS = {
   heading: 'The payout',
   total: 'Total earned',
   newAchievements: 'New commendations',
   tierUp: (name: string) => `You made ${name}.`,
   viewReplay: 'Watch the replay',
+  rankedHeading: 'Ranked',
+  rankedDelta: (delta: number) => `${delta >= 0 ? '+' : ''}${Math.round(delta)} MMR`,
+  rankedTo: (name: string, mmr: number) => `${name} · ${Math.round(mmr)} MMR`,
 } as const;
 
 /** Custom setup builder copy (goal 4). */

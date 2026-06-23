@@ -1596,6 +1596,121 @@ label {
   box-shadow: 0 0 12px rgba(201, 164, 90, 0.4);
 }
 
+/* Competitive RANK badge (ranked play) — distinct shape/spade pip from the
+   lifetime-points tier badge, with its own per-rank color ramp. */
+.rank-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  padding: 3px 12px;
+  border-radius: 4px; /* squared vs the tier pill — reads as a different system */
+  font-family: var(--font-display);
+  font-size: var(--fs-sm);
+  font-weight: 600;
+  letter-spacing: var(--ls-wide);
+  text-transform: uppercase;
+  border: 1px solid currentColor;
+  background: color-mix(in srgb, currentColor 14%, transparent);
+  white-space: nowrap;
+}
+.rank-badge.rank-sm {
+  font-size: var(--fs-xs);
+  padding: 2px 8px;
+}
+.rank-pip {
+  font-size: 0.8em;
+}
+.rank-mmr {
+  margin-left: 4px;
+  opacity: 0.85;
+  font-variant-numeric: tabular-nums;
+}
+.rank-stray {
+  color: var(--c-text-dim);
+}
+.rank-runner {
+  color: var(--c-verdigris);
+}
+.rank-fixer {
+  color: var(--f-town);
+}
+.rank-shadow {
+  color: #7c83b9;
+}
+.rank-enforcer {
+  color: var(--c-amber);
+}
+.rank-consigliere {
+  color: var(--c-brass);
+}
+.rank-don {
+  color: var(--c-brass);
+  box-shadow: 0 0 14px rgba(201, 164, 90, 0.45);
+}
+
+/* Quick Play + Ranked sit side by side; stack on narrow screens. */
+.quickplay-row {
+  display: flex;
+  gap: var(--sp-3);
+  width: 100%;
+}
+.quickplay-row .btn-quickplay {
+  flex: 1;
+}
+.btn-ranked {
+  border-color: var(--c-brass);
+  color: var(--c-brass);
+  background: color-mix(in srgb, var(--c-brass) 10%, transparent);
+}
+.btn-ranked:hover:not(:disabled) {
+  background: color-mix(in srgb, var(--c-brass) 20%, transparent);
+}
+@media (max-width: 520px) {
+  .quickplay-row {
+    flex-direction: column;
+  }
+}
+
+/* Leaderboard Casual/Ranked toggle. */
+.lb-tabs {
+  display: flex;
+  justify-content: center;
+  gap: var(--sp-2);
+  margin-bottom: var(--sp-2);
+}
+
+/* Game-over ranked MMR delta line. */
+.ranked-delta-row {
+  width: 100%;
+}
+.ranked-delta {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex-wrap: wrap;
+  gap: var(--sp-3);
+}
+.ranked-delta-val {
+  font-family: var(--font-display);
+  font-weight: 700;
+  font-size: var(--fs-lg);
+  font-variant-numeric: tabular-nums;
+}
+.ranked-delta-val.up {
+  color: var(--c-verdigris);
+}
+.ranked-delta-val.down {
+  color: var(--c-danger, #c0556b);
+}
+
+/* Profile head can carry both a tier and a rank badge. */
+.profile-badges {
+  display: flex;
+  align-items: center;
+  gap: var(--sp-2);
+  flex-wrap: wrap;
+}
+
 /* Profile "dossier" card. */
 .profile-card .profile-head {
   display: flex;

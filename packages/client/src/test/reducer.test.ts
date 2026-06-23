@@ -597,6 +597,7 @@ describe('reduce: quick-play matchmaking (queue_status)', () => {
       queued: 3,
       eta: 1_700_000_000,
       lobbyId: null,
+      mode: 'casual',
     });
   });
 
@@ -614,6 +615,19 @@ describe('reduce: quick-play matchmaking (queue_status)', () => {
     expect(s.matchmaking).toMatchObject({ state: 'matched', lobbyId: 'L1' });
     s = apply(s, { v: PROTOCOL_VERSION, type: 'queue_status', state: 'cancelled' });
     expect(s.matchmaking).toBeNull();
+  });
+
+  it('carries the ranked mode through for the overlay copy', () => {
+    let s = baseState();
+    s = apply(s, {
+      v: PROTOCOL_VERSION,
+      type: 'queue_status',
+      state: 'searching',
+      position: 1,
+      queued: 1,
+      mode: 'ranked',
+    });
+    expect(s.matchmaking?.mode).toBe('ranked');
   });
 
   it('entering a lobby or game clears the matchmaking overlay', () => {

@@ -270,6 +270,25 @@ export function computeMatchPoints(input: MatchPlayerScoreInput): PointsBreakdow
 // User stats summary (wire shape for /api/me, leaderboard, points_awarded)
 // --------------------------------------------------------------------------
 
+/**
+ * Ranked standing carried inline on {@link UserStatsSummary} (ranked play). MMR
+ * + RD + the derived rank (key/name from the RANK ladder, computed server-side
+ * so the client never recomputes thresholds) + season-scoped games/wins. The
+ * ranked rank is SEPARATE from the lifetime-points `tier`.
+ */
+export const RankedSummarySchema = z.object({
+  mmr: z.number(),
+  rd: z.number(),
+  /** Rank key (glicko.RANK_TIERS.key), derived from mmr. */
+  rank: z.string(),
+  /** Rank display name (glicko.RANK_TIERS.name). */
+  rankName: z.string(),
+  games: z.number().int(),
+  wins: z.number().int(),
+  seasonId: z.string(),
+});
+export type RankedSummary = z.infer<typeof RankedSummarySchema>;
+
 export const UserStatsSummarySchema = z.object({
   userId: z.string(),
   username: z.string(),
@@ -281,5 +300,12 @@ export const UserStatsSummarySchema = z.object({
   daysDeadWatched: z.number().int(),
   achievements: z.array(z.string()),
   tier: z.string(),
+  /**
+   * Competitive RANKED standing for the current season (ranked play). Optional
+   * and additive: present only for registered users with a ranked rating; absent
+   * for players who have never played ranked (so the points-only flow is
+   * unchanged). The lifetime-points `tier` above is SEPARATE from this.
+   */
+  ranked: RankedSummarySchema.optional(),
 });
 export type UserStatsSummary = z.infer<typeof UserStatsSummarySchema>;

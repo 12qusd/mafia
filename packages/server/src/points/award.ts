@@ -19,6 +19,7 @@ import {
 } from '@nocturne/shared';
 import type { Store, MatchPlayerRecord } from '../db/types.js';
 import type { Room } from '../room/room.js';
+import { buildRankedSummary } from '../ranked/award.js';
 import { log } from '../log.js';
 
 export interface AwardInput {
@@ -27,6 +28,14 @@ export interface AwardInput {
   matchId: string;
   players: MatchPlayerRecord[];
   finalDay: number;
+  /**
+   * RANKED matches only: per-user MMR delta from this match (ranked play). When
+   * present, each player's `points_awarded` frame carries `rankedDelta` and their
+   * stats summary carries the updated `ranked` standing.
+   */
+  rankedDeltas?: Map<string, number>;
+  /** The season id ranked ratings were scoped to (ranked matches only). */
+  rankedSeasonId?: string;
 }
 
 function isRealUser(id: string): boolean {
@@ -114,7 +123,7 @@ export function detectAchievements(
 }
 
 export async function awardMatchPoints(input: AwardInput): Promise<void> {
-  const { store, room, matchId, players, finalDay } = input;
+  const { store, room, matchId, players, finalDay, rankedDeltas, rankedSeasonId } = input;
 
   for (const p of players) {
     if (!isRealUser(p.userOrGuestId)) continue;
@@ -151,8 +160,7 @@ export async function awardMatchPoints(input: AwardInput): Promise<void> {
       });
 
       const won = p.outcome === 'win';
-      const daysDead =
-        p.survived || p.deathDay === null ? 0 : Math.max(0, finalDay - p.deathDay);
+      const daysDead = p.survived || p.deathDay === null ? 0 : Math.max(0, finalDay - p.deathDay);
 
       const at = Date.now();
       await store.addToUserStats(
@@ -180,6 +188,11 @@ export async function awardMatchPoints(input: AwardInput): Promise<void> {
       const stats = await store.getUserStats(userId);
       const achievements = await store.getUserAchievements(userId);
       const totalPoints = stats?.totalPoints ?? prev.totalPoints + breakdown.total;
+      // RANKED standing rides along on the summary for ranked matches so the
+      // profile/dossier and game-over screen render the new MMR + rank inline.
+      const ranked = rankedSeasonId
+        ? await buildRankedSummary(store, userId, rankedSeasonId)
+        : null;
       const summary: UserStatsSummary = {
         userId,
         username: room.nameForSeat(p.seat) ?? userId,
@@ -190,8 +203,10 @@ export async function awardMatchPoints(input: AwardInput): Promise<void> {
         daysDeadWatched: stats?.daysDeadWatched ?? 0,
         achievements,
         tier: tierForPoints(totalPoints).key,
+        ...(ranked ? { ranked } : {}),
       };
 
+      const rankedDelta = rankedDeltas?.get(userId);
       room.sendToSeat(p.seat, {
         v: 1,
         type: 'points_awarded',
@@ -199,6 +214,7 @@ export async function awardMatchPoints(input: AwardInput): Promise<void> {
         breakdown,
         stats: summary,
         newAchievements: newlyUnlocked,
+        ...(rankedDelta !== undefined ? { rankedDelta } : {}),
       });
     } catch (err) {
       log.error('failed to award points', { userId, err: String(err) });

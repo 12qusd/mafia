@@ -163,10 +163,17 @@ export const GameOverSchema = envelope('game_over', {
 export const PointsAwardedSchema = envelope('points_awarded', {
   matchId: z.string(),
   breakdown: PointsBreakdownSchema,
-  /** The player's updated lifetime stats after this match's award. */
+  /** The player's updated lifetime stats after this match's award (carries the
+   *  updated `ranked` standing inline for ranked matches). */
   stats: UserStatsSummarySchema,
   /** Achievement keys newly unlocked this match (subset of breakdown). */
   newAchievements: z.array(z.string()),
+  /**
+   * The MMR change from THIS match (ranked games only; absent for casual). Lets
+   * the game-over screen show a "+18 MMR" / "−12 MMR" line next to the points
+   * payout. Server-computed; leak-safe (post-game, the player's own delta).
+   */
+  rankedDelta: z.number().optional(),
 });
 
 // seat_status {seat, connected, afk}
@@ -218,6 +225,9 @@ export const QueueStatusSchema = envelope('queue_status', {
   queued: z.number().int().min(0).optional(),
   eta: z.number().int().optional(),
   lobbyId: z.string().optional(),
+  /** Which queue this status is for ('casual' | 'ranked'); drives overlay copy.
+   *  Absent ⇒ casual (back-compat). */
+  mode: z.enum(['casual', 'ranked']).optional(),
 });
 
 /**

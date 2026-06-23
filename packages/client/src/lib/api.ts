@@ -105,7 +105,9 @@ export async function register(
   email?: string,
 ): Promise<AuthResponse> {
   return applyAuth(
-    narrowAuth(await postJson('/api/register', { username, password, ...(email ? { email } : {}) })),
+    narrowAuth(
+      await postJson('/api/register', { username, password, ...(email ? { email } : {}) }),
+    ),
   );
 }
 
@@ -202,6 +204,51 @@ export async function fetchLeaderboard(limit = 50): Promise<LeaderboardEntry[]> 
       totalPoints: num(e['totalPoints']),
       gamesPlayed: num(e['gamesPlayed']),
       gamesWon: num(e['gamesWon']),
+    }));
+  } catch {
+    return [];
+  }
+}
+
+// ---------------------------------------------------------------------------
+// Ranked play (MMR leaderboard + per-user rank)
+// ---------------------------------------------------------------------------
+
+/** One row of the ranked (MMR) leaderboard. */
+export interface RankedLeaderboardEntry {
+  userId: string;
+  username: string;
+  mmr: number;
+  rd: number;
+  /** Rank key (RANK_TIERS.key), derived server-side from mmr. */
+  rank: string;
+  /** Rank display name (RANK_TIERS.name). */
+  rankName: string;
+  gamesPlayed: number;
+  gamesWon: number;
+}
+
+/**
+ * `GET /api/leaderboard/ranked` — top MMR for the current season + mode. Each
+ * entry carries the derived rank so the client renders the ladder badge. [] on
+ * any failure (no season, no persistence, network error).
+ */
+export async function fetchRankedLeaderboard(limit = 50): Promise<RankedLeaderboardEntry[]> {
+  try {
+    const data = await getJson(
+      `/api/leaderboard/ranked?limit=${encodeURIComponent(String(limit))}`,
+    );
+    const list = isObj(data) ? data['entries'] : undefined;
+    if (!Array.isArray(list)) return [];
+    return list.filter(isObj).map((e) => ({
+      userId: str(e['userId']) ?? '',
+      username: str(e['username']) ?? '',
+      mmr: num(e['mmr']),
+      rd: num(e['rd']),
+      rank: str(e['rank']) ?? 'stray',
+      rankName: str(e['rankName']) ?? '',
+      gamesPlayed: num(e['games']),
+      gamesWon: num(e['wins']),
     }));
   } catch {
     return [];
@@ -334,9 +381,7 @@ export async function fetchCustomSetups(): Promise<CustomSetupRecord[]> {
 }
 
 /** The result of attempting to save a custom setup (goal 4). */
-export type SaveSetupResult =
-  | { ok: true; id: string }
-  | { ok: false; errors: string[] };
+export type SaveSetupResult = { ok: true; id: string } | { ok: false; errors: string[] };
 
 /**
  * `POST /api/setups/custom` — save a custom setup. On a 400 `invalid_setup`,
@@ -360,7 +405,8 @@ export async function saveCustomSetup(name: string, setup: GameSetup): Promise<S
     return { ok: false, errors: data['errors'].filter((e): e is string => typeof e === 'string') };
   }
   if (res.status === 401) return { ok: false, errors: ['You must be signed in to save a setup.'] };
-  if (res.status === 403) return { ok: false, errors: ['Registered accounts only — guests cannot save setups.'] };
+  if (res.status === 403)
+    return { ok: false, errors: ['Registered accounts only — guests cannot save setups.'] };
   return { ok: false, errors: [`The house refused the setup (${res.status}).`] };
 }
 

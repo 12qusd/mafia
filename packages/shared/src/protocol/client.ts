@@ -61,13 +61,20 @@ export const KickSchema = envelope('kick', {
 // start_game {}
 export const StartGameSchema = envelope('start_game', {});
 
-// quick_play {}  — enter the public quick-play matchmaking queue. The server
-// forms a full table within seconds: real queuers join, AI bots backfill the
-// remaining seats, and the game AUTO-STARTS (no host "Deal" click). Works for
-// guests (the matchmaking lobby is private). See `queue_status` (server.ts).
-export const QuickPlaySchema = envelope('quick_play', {});
+// quick_play {mode?}  — enter a matchmaking queue. The server forms a full table
+// within seconds: real queuers join, AI bots backfill the remaining seats, and
+// the game AUTO-STARTS (no host "Deal" click). See `queue_status` (server.ts).
+//  - mode 'casual' (default): the classic quick-play queue. Guests allowed (the
+//    matchmaking lobby is private). No MMR.
+//  - mode 'ranked': forms a RANKED game (mode='ranked', tagged with the current
+//    season). MMR-bucketed (loose, widening) but always backfills with bots and
+//    always forms. REQUIRES a registered account — guests are rejected
+//    ('not_authenticated') so the client can prompt to sign in.
+export const QuickPlaySchema = envelope('quick_play', {
+  mode: z.enum(['casual', 'ranked']).optional(),
+});
 
-// leave_queue {}  — leave the quick-play queue before a match forms.
+// leave_queue {}  — leave the matchmaking queue (either mode) before a match forms.
 export const LeaveQueueSchema = envelope('leave_queue', {});
 
 // chat {channel, text}

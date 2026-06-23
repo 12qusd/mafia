@@ -2038,3 +2038,109 @@ the game playable with zero population.
   (+5 protocol round-trips, +3 client reducer, +6 matchmaker incl. a real-server
   E2E proving a SOLO quick_play forms+starts+TERMINATES a 7p game with bots).
   `npx eslint .` clean (exit 0). Leak sweep 0/200.
+
+---
+
+## Ranked Play (MMR + matchmaking + seasons + ranked leaderboards)
+
+Built on the existing ratings/seasons/ranked_results foundation (already in the
+Store + schema) and the Quick-Play matchmaker. Competitive ranking is SEPARATE
+from the lifetime-points ladder (`POINTS_TIERS` drifter→kingpin): different math,
+different names, different wire fields.
+
+### (a) Glicko-2 rating math (`packages/shared/src/types/glicko.ts`, pure + tested)
+- Full Glicko-2 (Glickman 2013): `toGlicko2`/`fromGlicko2` scale conversions
+  (factor 173.7178) + `updateRating(player, opponents[])` over a rating period of
+  one or more results, including the Illinois-algorithm volatility solve and the
+  "did-not-compete" RD-inflation rule. System constant **tau = 0.5**. Pure: no
+  I/O, no Date.now, no Math.random.
+- VALIDATED against Glickman's published worked example: player (1500, 200, 0.06),
+  tau 0.5, win vs (1400,30) / loss vs (1550,100) / loss vs (1700,300) ⇒
+  rating≈1464.06, rd≈151.52, vol≈0.05999. `glicko.test.ts` asserts these to the
+  reference decimals, plus monotonicity (win up / loss down, beating a stronger
+  field gains more) and the rank ladder.
+
+### (b) Match → MMR model (`packages/server/src/ranked/rate.ts`, pure; `award.ts`, persistence)
+- At onGameOver, RANKED matches only. Partition the match's HUMAN players
+  (non-`guest:`, non-bot) into WINNERS (seat outcome === 'win') and LOSERS
+  (anything else: loss/draw/left).
+- Each human plays ONE Glicko-2 rating period vs a single synthetic opponent =
+  the AVERAGE rating of the OPPOSING human group (opponent RD = that group's mean
+  RD): winners vs losers' mean (score 1), losers vs winners' mean (score 0).
+- If a side has ZERO humans (solo human carried by bots, or an all-human sweep),
+  the opponent falls back to a fixed BOT baseline (rating 1500, rd 350) with the
+  appropriate score — so a lone human still moves, just vs the baseline.
+- **Bot-heavy dampening (exact formula):** `humanDensity = humanCount / totalSeats`
+  (clamped to (0,1]). Each human's rating/rd/vol DELTA is scaled linearly by
+  density: `after = before + (raw - before) * density`. A 1-human/6-bot game
+  (density 1/7) moves MMR ≈ 1/7 of an all-human game; an all-human game moves it
+  fully. Linear is simple, monotonic, easy to reason about.
+- Bots get NO rating; guests excluded (no account ⇒ no MMR) — filtered in
+  `award.ts` by the `guest:` prefix, exactly as points are. TEST-mode games never
+  count. Persist per human: `upsertRating` (games+1, wins+win?1:0, scoped to the
+  CURRENT season) and `writeRankedResults` (mmr_before/after, rd_before/after,
+  delta, mode='ranked', match_id, user_id; (match,user) idempotent). Seedless +
+  pure rating math ⇒ deterministic given the inputs.
+
+### (c) Ranked queue / protocol
+- Chose to EXTEND `quick_play` with an optional `mode: 'casual' | 'ranked'`
+  (default casual) rather than a new message — fewer moving parts, the queue
+  overlay/flow is identical. `queue_status` gains an optional `mode` so the
+  overlay shows ranked copy. The LobbyManager runs TWO Matchmaker instances
+  (`matchmaker` casual, `rankedMatchmaker` ranked); the matchmaker is mode-aware
+  and tags its games via `startMatchmadeGame(lobbyId, mode)`.
+- **Account gating:** ranked requires a registered account — `quickPlay(conn,
+  'ranked')` rejects guests with `not_authenticated` (the client prompts to sign
+  in) and requires a persistent store + an open season.
+- **MMR bucketing:** the ranked matchmaker anchors on the longest-waiting queuer
+  and forms a table from the closest-MMR cluster within a tolerance that WIDENS
+  with wait time (base 150 + 50/sec). It ALWAYS backfills with bots and ALWAYS
+  forms (cold-start rule): a lone or far-apart player still gets a table once its
+  tolerance widens. A synchronous `mmrCache` (refreshed on enqueue / at game over)
+  feeds bucketing; casual ignores it.
+
+### (d) Seasons
+- `LobbyManager.ensureSeason('Season 1')` is called on boot (app.ts, after the
+  manager is built) and caches the current season id. Ranked matches + ratings +
+  results are tagged with it (`room.seasonId`, persisted on the match record).
+  Season rollover / soft-reset is a documented STUB — we only guarantee exactly
+  one current season exists. No persistent store (NO_DB) ⇒ ranked is unavailable
+  (ensureSeason is a no-op; the queue rejects with `cannot_start`).
+
+### (e) Rank tiers + display (`glicko.ts` — `rankForMmr` / `nextRankThreshold`)
+- 7-rung noir ladder, ORIGINAL and DISTINCT from the points tiers:
+  **Stray Cat (0) · Bagman (1300) · Fixer (1500) · Shadow (1700) · Enforcer
+  (1900) · Consigliere (2100) · The Don (2300).** Floor-keyed, total over all MMR.
+  `rankForMmr(mmr)` ⇒ {key, name, index}; `nextRankThreshold` ⇒ next rung or null.
+- Wire: `UserRankSummary` (glicko.ts) + a zod `RankedSummary` carried inline on
+  `UserStatsSummary.ranked` ({mmr, rd, rank, rankName, games, wins, seasonId},
+  rank derived server-side). `points_awarded` gains an optional `rankedDelta`.
+- Displayed: a `RankBadge` (spade pip, squared shape, per-rank color ramp —
+  visually distinct from the round `TierBadge`) on the profile/dossier (rank +
+  MMR stats) and the game-over screen (a "+18 MMR" / "−12 MMR" delta line + new
+  rank), and the Leaderboard's new **Casual (Reputation) / Ranked (MMR)** toggle.
+  A Ranked button sits next to Quick Play on the home screen (guest ⇒ sign-in
+  prompt). Copy in `lib/strings-extra.ts` (shared strings untouched); new
+  `.rank-*` / `.btn-ranked` / `.lb-tabs` / `.ranked-delta` CSS.
+
+### (f) Endpoints
+- `GET /api/leaderboard/ranked?limit=` — top MMR for the current season + ranked
+  mode, joined to usernames, each row carrying the derived rank.
+- `GET /api/rank/:userId` — public ranked standing for a user (current season).
+- `/api/me` now includes the caller's `ranked` standing inline on `stats` when
+  they have a rating this season.
+
+### §5 leak invariant — UNCHANGED and re-proven
+- Ranked games are NORMAL games tagged mode='ranked' + bots; MMR updates are
+  POST-game DB writes, never frames. Nothing new reaches a socket in-game. Leak
+  sweep `NO_DB=1 node packages/bots/dist/cli/leakcheck.js` → **0 leaks / 200 games.**
+
+### Gate (all GREEN; nothing committed, no pm2 restart)
+- `pnpm --filter @nocturne/shared build` + `pnpm -r build` clean (5 packages).
+  `pnpm -r test`: shared 210, engine 225, client 167, server 91, bots 36 — pass.
+  New tests: Glicko-2 vs reference values (glicko.test.ts), the match→MMR model
+  (rate.test.ts: winners gain/losers lose, density dampening, solo-vs-bots tiny
+  delta, opposing-average), the ranked award (award.test.ts: humans-only ratings
+  + ranked_results, guest/bot exclusion, idempotent ledger, rank-from-MMR),
+  ranked queue bucketing + the guest-rejected-from-ranked E2E (matchmaker.test.ts),
+  and a ranked queue_status reducer case. `npx eslint .` clean (exit 0).

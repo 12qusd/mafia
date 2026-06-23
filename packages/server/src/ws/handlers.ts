@@ -64,7 +64,7 @@ export class MessageHandlers {
       case 'start_game':
         return this.onStartGame(conn);
       case 'quick_play':
-        return this.onQuickPlay(conn);
+        return this.onQuickPlay(conn, msg);
       case 'leave_queue':
         return this.onLeaveQueue(conn);
       case 'chat':
@@ -282,12 +282,17 @@ export class MessageHandlers {
 
   // --- Quick-Play matchmaking (cold-start bot backfill) --------------------
 
-  private async onQuickPlay(conn: Connection): Promise<void> {
+  private async onQuickPlay(
+    conn: Connection,
+    msg: Extract<ClientMessage, { type: 'quick_play' }>,
+  ): Promise<void> {
     if (conn.identity && (await this.ctx.identity.isBanned(conn.identity))) {
       replyError(conn, 'forbidden', 'banned');
       return;
     }
-    const err = this.ctx.manager.quickPlay(conn);
+    // mode defaults to 'casual'; 'ranked' is account-gated inside quickPlay
+    // (guests get 'not_authenticated' → the client prompts to sign in).
+    const err = this.ctx.manager.quickPlay(conn, msg.mode ?? 'casual');
     if (err) replyError(conn, err as ErrorCode);
   }
 

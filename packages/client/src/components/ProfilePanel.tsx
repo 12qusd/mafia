@@ -12,7 +12,7 @@ import { useEffect, useState } from 'react';
 import { Link } from 'react-router-dom';
 import { ACHIEVEMENTS_BY_KEY } from '@nocturne/shared';
 import { useStore } from '../store/store.js';
-import { DecoHead, TierBadge } from './common.js';
+import { DecoHead, TierBadge, RankBadge } from './common.js';
 import { PROFILE } from '../lib/strings-extra.js';
 import { sanitizeInline } from '../lib/sanitize.js';
 import * as api from '../lib/api.js';
@@ -65,17 +65,36 @@ export function ProfilePanel() {
 
       <div className="profile-head">
         <div className="profile-name">{sanitizeInline(me.name)}</div>
-        <TierBadge totalPoints={stats?.totalPoints ?? 0} />
+        <div className="profile-badges">
+          <TierBadge totalPoints={stats?.totalPoints ?? 0} />
+          {stats?.ranked && (
+            <RankBadge
+              rankKey={stats.ranked.rank}
+              rankName={stats.ranked.rankName}
+              mmr={stats.ranked.mmr}
+            />
+          )}
+        </div>
       </div>
 
       {stats ? (
         <>
           <div className="profile-stats">
-            <Stat label={PROFILE.totalPoints} value={`${stats.totalPoints} ${PROFILE.points}`} hero />
+            <Stat
+              label={PROFILE.totalPoints}
+              value={`${stats.totalPoints} ${PROFILE.points}`}
+              hero
+            />
             <Stat label={PROFILE.gamesPlayed} value={String(stats.gamesPlayed)} />
             <Stat label={PROFILE.gamesWon} value={String(stats.gamesWon)} />
             <Stat label={PROFILE.winRate} value={winRate(stats.gamesWon, stats.gamesPlayed)} />
             <Stat label={PROFILE.survived} value={String(stats.gamesSurvived)} />
+            {stats.ranked && (
+              <>
+                <Stat label={PROFILE.mmrLabel} value={String(stats.ranked.mmr)} />
+                <Stat label={PROFILE.rankLabel} value={stats.ranked.rankName} />
+              </>
+            )}
           </div>
 
           <div className="spread">

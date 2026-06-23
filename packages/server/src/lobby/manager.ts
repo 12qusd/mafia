@@ -24,12 +24,18 @@ import type { BotManager } from '../bots/manager.js';
 import { newId, newInviteCode, newSeed } from '../ids.js';
 import { log } from '../log.js';
 import { Lobby, resolveConfig } from './lobby.js';
-import { Matchmaker, type MatchmakerHost, type MatchmakerTimings } from './matchmaker.js';
+import {
+  Matchmaker,
+  type MatchmakerHost,
+  type MatchmakerTimings,
+  type QueueMode,
+} from './matchmaker.js';
 import { Room, type ScheduleFn } from '../room/room.js';
 import { fingerprintMatch } from '../audit/fingerprint.js';
 import { awardMatchPoints } from '../points/award.js';
 import { buildUserStatsSummary } from '../points/stats.js';
-import type { AdminAction } from '@nocturne/shared';
+import { awardRankedRatings, RANKED_MODE } from '../ranked/award.js';
+import { DEFAULT_RATING, type AdminAction } from '@nocturne/shared';
 
 export interface ManagerDeps {
   engine: Engine;
@@ -75,15 +81,54 @@ export class LobbyManager {
   /** identity id → lobby/room id they currently occupy. */
   private readonly identityScope = new Map<string, string>();
   private draining = false;
-  /** Quick-play matchmaking queue + auto-forming (cold-start backfill). */
+  /** Quick-play (casual) matchmaking queue + auto-forming (cold-start backfill). */
   readonly matchmaker: Matchmaker;
+  /** Ranked matchmaking queue: forms season-tagged ranked games, MMR-bucketed. */
+  readonly rankedMatchmaker: Matchmaker;
+  /**
+   * Current ranked season id, cached after {@link ensureSeason}. Ranked matches
+   * and MMR updates are scoped to it. Null until the season is ensured on boot.
+   */
+  private currentSeasonId: string | null = null;
+  /**
+   * Best-effort MMR cache (identityId → mmr) for synchronous ranked bucketing.
+   * Refreshed when a player enters the ranked queue; defaults to {@link DEFAULT_RATING}.
+   */
+  private readonly mmrCache = new Map<string, number>();
 
   constructor(private readonly deps: ManagerDeps) {
-    this.matchmaker = new Matchmaker(this.makeMatchmakerHost(), this.deps.matchmakingTimings);
+    this.matchmaker = new Matchmaker(
+      this.makeMatchmakerHost(),
+      this.deps.matchmakingTimings,
+      'casual',
+    );
+    this.rankedMatchmaker = new Matchmaker(
+      this.makeMatchmakerHost(),
+      this.deps.matchmakingTimings,
+      'ranked',
+    );
+  }
+
+  /**
+   * Ensure a current ranked season exists and cache its id (called on boot).
+   * Idempotent. Without a persistent store this is a no-op (ranked needs accounts).
+   */
+  async ensureSeason(name: string): Promise<void> {
+    try {
+      const season = await this.deps.store.ensureCurrentSeason(name);
+      this.currentSeasonId = season.id;
+    } catch (err) {
+      log.warn('could not ensure ranked season', { err: String(err) });
+    }
   }
 
   get isDraining(): boolean {
     return this.draining;
+  }
+
+  /** The current ranked season id, or null if none has been ensured (ranked play). */
+  get seasonId(): string | null {
+    return this.currentSeasonId;
   }
 
   // --- Lobby creation / joining (§7.2, §7.3) -------------------------------
@@ -442,11 +487,17 @@ export class LobbyManager {
    * the match `mode='quickplay'` for persistence, and it re-checks `canStart()`
    * itself (the matchmaker only calls it when the lobby has filled).
    */
-  startMatchmadeGame(lobby: Lobby): { room: Room } | { error: string } {
+  startMatchmadeGame(lobby: Lobby, mode: QueueMode = 'casual'): { room: Room } | { error: string } {
     if (this.draining) return { error: 'cannot_start' };
     if (lobby.status !== 'waiting') return { error: 'cannot_start' };
     if (!this.lobbies.has(lobby.id)) return { error: 'lobby_not_found' };
     if (!lobby.canStart()) return { error: 'cannot_start' };
+    // Ranked games are tagged 'ranked' + the current season; casual tables keep
+    // the legacy 'quickplay' tag. A ranked game with no season cannot count.
+    if (mode === 'ranked') {
+      if (!this.currentSeasonId) return { error: 'cannot_start' };
+      return this.formGame(lobby, { mode: RANKED_MODE, seasonId: this.currentSeasonId });
+    }
     return this.formGame(lobby, { mode: 'quickplay' });
   }
 
@@ -456,7 +507,10 @@ export class LobbyManager {
    * {@link startMatchmadeGame}. Preconditions (host/canStart) are validated by
    * the caller; this method assumes the lobby is startable.
    */
-  private formGame(lobby: Lobby, opts: { mode?: string }): { room: Room } | { error: string } {
+  private formGame(
+    lobby: Lobby,
+    opts: { mode?: string; seasonId?: string },
+  ): { room: Room } | { error: string } {
     const players = lobby.playerConnections();
     const roster = players.map((c) => ({
       identityId: c.identityId as string,
@@ -480,8 +534,10 @@ export class LobbyManager {
     );
     room.onGameOver = (r) => void this.onGameOver(r);
     // Queue mode is persisted with the MatchRecord (§10); quickplay for
-    // matchmade tables, undefined (casual) otherwise.
+    // matchmade tables, undefined (casual) otherwise. Ranked tables also carry
+    // the season id so MMR updates at game over are season-scoped.
     if (opts.mode) room.mode = opts.mode;
+    if (opts.seasonId) room.seasonId = opts.seasonId;
     // TEST MODE: the host becomes the god audience (debug_* in addition to
     // normal play). Set before init so begin()'s initial snapshot reaches them.
     if (lobby.config.testMode) room.godIdentityId = lobby.hostId;
@@ -524,19 +580,46 @@ export class LobbyManager {
 
   // --- Quick-Play matchmaking (cold-start bot backfill) --------------------
 
-  /** Enter the quick-play queue. The matchmaker forms a full table + auto-starts. */
-  quickPlay(conn: Connection): string | null {
+  /**
+   * Enter a matchmaking queue. The matchmaker forms a full table + auto-starts.
+   *  - 'casual' (default): the classic quick-play queue; guests allowed.
+   *  - 'ranked': requires a REGISTERED account (guests rejected with
+   *    'not_authenticated' so the client prompts to sign in) and a persistent
+   *    store with a current season; forms season-tagged ranked games.
+   */
+  quickPlay(conn: Connection, mode: QueueMode = 'casual'): string | null {
     if (this.draining) return 'cannot_start';
     if (!conn.identityId) return 'not_authenticated';
-    // Already in a lobby/room? Quick-play is a front-door action only.
+    // Already in a lobby/room? Matchmaking is a front-door action only.
     if (this.identityScope.has(conn.identityId)) return 'already_in_lobby';
+    if (mode === 'ranked') {
+      // Ranked requires a real account and an open season.
+      if (conn.identity?.isGuest !== false) return 'not_authenticated';
+      if (!this.deps.store.persistent || !this.currentSeasonId) return 'cannot_start';
+      // Warm the MMR cache for bucketing (best-effort; default until resolved).
+      this.refreshMmrCache(conn.identityId);
+      this.rankedMatchmaker.enqueue(conn);
+      return null;
+    }
     this.matchmaker.enqueue(conn);
     return null;
   }
 
-  /** Leave the quick-play queue before a match forms. */
+  /** Leave whichever matchmaking queue the player is in before a match forms. */
   leaveQueue(conn: Connection): void {
     this.matchmaker.leave(conn);
+    this.rankedMatchmaker.leave(conn);
+  }
+
+  /** Refresh the MMR cache for an identity (async; best-effort for bucketing). */
+  private refreshMmrCache(identityId: string): void {
+    if (!this.currentSeasonId) return;
+    void this.deps.store
+      .getRating(identityId, RANKED_MODE, this.currentSeasonId)
+      .then((row) => {
+        if (row) this.mmrCache.set(identityId, row.mmr);
+      })
+      .catch(() => {});
   }
 
   /**
@@ -561,10 +644,10 @@ export class LobbyManager {
       },
       lobbyPlayerCount: (lobbyId) => this.lobbies.get(lobbyId)?.playerCount ?? 0,
       lobbyIsWaiting: (lobbyId) => this.lobbies.get(lobbyId)?.status === 'waiting',
-      startMatchmadeGame: (lobbyId) => {
+      startMatchmadeGame: (lobbyId, mode) => {
         const lobby = this.lobbies.get(lobbyId);
         if (!lobby) return { error: 'lobby_not_found' };
-        const res = this.startMatchmadeGame(lobby);
+        const res = this.startMatchmadeGame(lobby, mode);
         return 'error' in res ? { error: res.error } : { ok: true };
       },
       disposeMatchmakingLobby: (lobbyId) => {
@@ -589,6 +672,7 @@ export class LobbyManager {
         this.disposeLobby(lobby);
       },
       llmAvailable: this.deps.llmAvailable === true,
+      ratingFor: (identityId) => this.mmrCache.get(identityId) ?? DEFAULT_RATING,
     };
   }
 
@@ -629,12 +713,33 @@ export class LobbyManager {
         outcome: 'completed',
         serverBuild: this.deps.serverBuild,
         fingerprint,
-        // Queue mode (§10): 'quickplay' for matchmade tables, omitted otherwise.
+        // Queue mode (§10): 'quickplay' for matchmade tables, 'ranked' for
+        // ranked games (with the season id), omitted otherwise.
         ...(room.mode ? { mode: room.mode } : {}),
+        ...(room.seasonId ? { seasonId: room.seasonId } : {}),
         players: rec.players,
         events,
         chat,
       });
+      // RANKED (ranked play): update MMR for each HUMAN player BEFORE points, so
+      // the per-player MMR delta + new ranked standing ride along on the
+      // `points_awarded` frame. Guests/bots get no rating (filtered inside).
+      // TEST-mode games never count.
+      let rankedDeltas: Map<string, number> | undefined;
+      let rankedSeasonId: string | undefined;
+      if (!room.isTestMode && room.mode === RANKED_MODE && room.seasonId) {
+        rankedDeltas = await awardRankedRatings({
+          store: this.deps.store,
+          matchId,
+          players: rec.players,
+          seasonId: room.seasonId,
+        });
+        rankedSeasonId = room.seasonId;
+        // Keep the bucketing cache fresh for the next queue.
+        for (const [userId] of rankedDeltas) {
+          this.refreshMmrCache(userId);
+        }
+      }
       // Award points & achievements to registered players (goal 4). Guests and
       // TEST-mode games are excluded inside awardMatchPoints. The engine stays
       // pure — all scoring is computed here, server-side.
@@ -645,6 +750,8 @@ export class LobbyManager {
           matchId,
           players: rec.players,
           finalDay: rec.finalDay,
+          ...(rankedDeltas ? { rankedDeltas } : {}),
+          ...(rankedSeasonId ? { rankedSeasonId } : {}),
         });
       }
     } catch (err) {
@@ -705,8 +812,9 @@ export class LobbyManager {
   onDisconnect(conn: Connection): void {
     const identityId = conn.identityId;
     if (!identityId) return;
-    // A queued (not-yet-seated) quick-play player: drop them from the queue.
+    // A queued (not-yet-seated) matchmaking player: drop them from either queue.
     this.matchmaker.onDisconnect(identityId);
+    this.rankedMatchmaker.onDisconnect(identityId);
     const scopeId = this.identityScope.get(identityId);
     if (!scopeId) return;
     const room = this.rooms.get(scopeId);
@@ -752,8 +860,9 @@ export class LobbyManager {
 
   startDrain(): void {
     this.draining = true;
-    // Cancel the quick-play queue: no new tables form while draining.
+    // Cancel both matchmaking queues: no new tables form while draining.
     this.matchmaker.dispose();
+    this.rankedMatchmaker.dispose();
     // Reject new lobbies; let running games finish. Dispose empty lobbies.
     for (const lobby of [...this.lobbies.values()]) {
       if (lobby.status === 'waiting') {
@@ -776,6 +885,7 @@ export class LobbyManager {
 
   disposeAll(): void {
     this.matchmaker.dispose();
+    this.rankedMatchmaker.dispose();
     this.deps.bots?.disposeAll();
     for (const r of this.rooms.values()) r.dispose();
     this.rooms.clear();

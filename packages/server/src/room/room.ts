@@ -98,6 +98,10 @@ export class Room implements AudienceProvider {
    * undefined (casual). System-triggered start sets this before `begin()`.
    */
   mode: string | undefined = undefined;
+  /** Ranked season this match counted toward (ranked play). Set alongside
+   * `mode='ranked'`; undefined for casual/quickplay. Persisted with the match
+   * record and used to scope MMR updates at game over. */
+  seasonId: string | undefined = undefined;
   /** Ordered action log for persistence/replay (§4.3). */
   readonly actionLog: { seq: number; phase: string; event: unknown }[] = [];
   private seq = 0;

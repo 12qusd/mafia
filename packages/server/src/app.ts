@@ -83,6 +83,11 @@ export async function buildApp(cfg: ServerConfig): Promise<BuiltApp> {
     llmAvailable: llmConfig !== null,
   });
 
+  // Ranked play: ensure exactly one current season exists and cache its id so
+  // ranked matches + MMR are season-scoped. A no-op without a persistent store
+  // (ranked requires accounts). Season rollover/soft-reset is a documented stub.
+  await manager.ensureSeason('Season 1');
+
   const ctx: GatewayContext = { cfg, store, identity, manager, moderation, telemetry, nameOf };
 
   // Capture names when identities are bound (the gateway calls onIdentityBound).

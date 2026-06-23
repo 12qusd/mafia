@@ -87,6 +87,9 @@ export const DEFAULT_TIMINGS: MatchmakerTimings = {
   botJoinTimeoutMs: BOT_JOIN_TIMEOUT_MS,
 };
 
+/** Which queue a matchmaker drives. Ranked forms ranked games + bucketing. */
+export type QueueMode = 'casual' | 'ranked';
+
 /** Minimal surface the matchmaker needs from the LobbyManager. */
 export interface MatchmakerHost {
   /** Whether the server is draining (no new tables form). Read live. */
@@ -109,18 +112,41 @@ export interface MatchmakerHost {
   lobbyPlayerCount(lobbyId: string): number;
   /** Whether the lobby still exists and is waiting. */
   lobbyIsWaiting(lobbyId: string): boolean;
-  /** System-triggered start of a filled matchmaking lobby (no host click). */
-  startMatchmadeGame(lobbyId: string): { ok: true } | { error: string };
+  /**
+   * System-triggered start of a filled matchmaking lobby (no host click). `mode`
+   * selects the queue tag: 'casual' starts a quickplay-tagged game, 'ranked'
+   * starts a season-tagged ranked game with MMR updates at game over.
+   */
+  startMatchmadeGame(lobbyId: string, mode: QueueMode): { ok: true } | { error: string };
   /** Tear down a matchmaking lobby that failed to form (drops bots too). */
   disposeMatchmakingLobby(lobbyId: string): void;
   /** Whether LLM bots are available (LLM_BASE_URL configured). */
   llmAvailable: boolean;
+  /**
+   * Best-effort current MMR for an identity (ranked bucketing). Casual ignores
+   * this; ranked sorts the queue by it. Returns the default (~1500) for a player
+   * with no ranked rating yet.
+   */
+  ratingFor(identityId: string): number;
 }
 
 interface QueueEntry {
   conn: Connection;
   identityId: string;
+  /** Epoch ms this entry was enqueued (drives ranked bucket widening). */
+  since: number;
 }
+
+/**
+ * Ranked MMR bucketing (loose, widening). When a ranked table forms, queuers are
+ * sorted by MMR and the first table takes the closest cluster. The tolerance
+ * starts tight and WIDENS with the time the head-of-queue has waited, so at low
+ * population a lone (or far-apart) player still always forms a table (per the
+ * cold-start rule — bots backfill the rest). Casual ignores all of this.
+ */
+export const RANKED_BUCKET_BASE = 150;
+/** Extra MMR tolerance added per second the head-of-queue has waited. */
+export const RANKED_BUCKET_WIDEN_PER_SEC = 50;
 
 export class Matchmaker {
   private readonly queue: QueueEntry[] = [];
@@ -128,12 +154,16 @@ export class Matchmaker {
   /** Guard against re-entrant form attempts. */
   private forming = false;
   private readonly timings: MatchmakerTimings;
+  /** Which queue this instance drives ('casual' | 'ranked'). */
+  readonly mode: QueueMode;
 
   constructor(
     private readonly host: MatchmakerHost,
     timings?: Partial<MatchmakerTimings>,
+    mode: QueueMode = 'casual',
   ) {
     this.timings = { ...DEFAULT_TIMINGS, ...timings };
+    this.mode = mode;
   }
 
   /** Arm the fill window on real timers; broadcasts status with the eta. */
@@ -170,7 +200,7 @@ export class Matchmaker {
     if (existing) {
       existing.conn = conn; // reconnect / duplicate: keep newest socket.
     } else {
-      this.queue.push({ conn, identityId });
+      this.queue.push({ conn, identityId, since: Date.now() });
     }
 
     if (this.queue.length >= TABLE_CAP) {
@@ -221,6 +251,44 @@ export class Matchmaker {
     }
   }
 
+  /**
+   * Pick the entrants for the next table and remove them from the queue.
+   *  - casual: the first {@link TABLE_CAP} queuers (FIFO, current behavior).
+   *  - ranked: an MMR cluster around the LONGEST-WAITING anchor, within a
+   *    tolerance that widens with the anchor's wait time. The anchor is always
+   *    included, so a lone/far-apart player still forms a table (bots backfill).
+   */
+  private selectTable(): QueueEntry[] {
+    if (this.queue.length === 0) return [];
+    if (this.mode === 'casual') {
+      return this.queue.splice(0, TABLE_CAP);
+    }
+    // Ranked: anchor on the player who has waited longest (queue is FIFO, so the
+    // head). Tolerance widens with how long they've waited.
+    const anchor = this.queue[0] as QueueEntry;
+    const waitedMs = Math.max(0, Date.now() - anchor.since);
+    const tol = RANKED_BUCKET_BASE + (waitedMs / 1000) * RANKED_BUCKET_WIDEN_PER_SEC;
+    const anchorMmr = this.host.ratingFor(anchor.identityId);
+    // Order remaining candidates by MMR distance to the anchor, take the closest
+    // within tolerance up to the cap (the anchor itself is always first).
+    const withDist = this.queue.map((e) => ({
+      e,
+      dist: Math.abs(this.host.ratingFor(e.identityId) - anchorMmr),
+    }));
+    withDist.sort((a, b) => a.dist - b.dist);
+    const chosen: QueueEntry[] = [];
+    for (const { e, dist } of withDist) {
+      if (e === anchor || dist <= tol) chosen.push(e);
+      if (chosen.length >= TABLE_CAP) break;
+    }
+    // Remove chosen from the queue (keep the rest in FIFO order).
+    const chosenSet = new Set(chosen);
+    for (let i = this.queue.length - 1; i >= 0; i--) {
+      if (chosenSet.has(this.queue[i] as QueueEntry)) this.queue.splice(i, 1);
+    }
+    return chosen;
+  }
+
   /** Send each queued player their current position + queue size. */
   private broadcastStatus(eta: number | undefined): void {
     const queued = this.queue.length;
@@ -248,7 +316,7 @@ export class Matchmaker {
   private async formTable(): Promise<void> {
     if (this.forming) return;
     this.cancelWindow();
-    const entrants = this.queue.splice(0, TABLE_CAP);
+    const entrants = this.selectTable();
     if (entrants.length === 0) return;
     if (this.host.isDraining()) {
       for (const e of entrants) this.sendCancelled(e.conn);
@@ -342,7 +410,7 @@ export class Matchmaker {
         const full = count >= target;
         const expired = Date.now() >= deadline;
         if ((full || expired) && count >= MIN_PLAYERS) {
-          const res = this.host.startMatchmadeGame(lobbyId);
+          const res = this.host.startMatchmadeGame(lobbyId, this.mode);
           if ('error' in res) {
             // Could not start (e.g. not enough players joined): tear down so we
             // never strand a half-formed lobby.

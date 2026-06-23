@@ -10,6 +10,7 @@ import { z } from 'zod';
 import { DISPLAY_NAME_MAX } from '@nocturne/shared';
 import type { GatewayContext } from '../ws/context.js';
 import { buildUserStatsSummary } from '../points/stats.js';
+import { buildRankedSummary } from '../ranked/award.js';
 
 const COOKIE = 'nocturne_session';
 
@@ -76,11 +77,16 @@ export function registerAuthRoutes(app: FastifyInstance, ctx: GatewayContext): v
     const token = readToken(req);
     const identity = await ctx.identity.resolveToken(token);
     if (!identity) return reply.code(401).send({ error: 'not_authenticated' });
-    // Registered users get their progression stats inline (goal 4).
+    // Registered users get their progression stats inline (goal 4), plus their
+    // current-season ranked standing when they have one (ranked play).
     const stats =
       !identity.isGuest && ctx.store.persistent
         ? await buildUserStatsSummary(ctx.store, identity.id)
         : null;
+    if (stats && ctx.manager.seasonId) {
+      const ranked = await buildRankedSummary(ctx.store, identity.id, ctx.manager.seasonId);
+      if (ranked) stats.ranked = ranked;
+    }
     return reply.send({
       id: identity.id,
       name: identity.name,
@@ -94,11 +100,18 @@ export function registerAuthRoutes(app: FastifyInstance, ctx: GatewayContext): v
   app.post('/api/guest', async (_req, reply) => {
     const guest = ctx.identity.createGuest();
     reply.setCookie(COOKIE, guest.token, cookieOpts);
-    return reply.send({ guestId: guest.identity.id, name: guest.identity.name, token: guest.token });
+    return reply.send({
+      guestId: guest.identity.id,
+      name: guest.identity.name,
+      token: guest.token,
+    });
   });
 }
 
-function readToken(req: { cookies?: Record<string, string | undefined>; headers: Record<string, unknown> }): string | undefined {
+function readToken(req: {
+  cookies?: Record<string, string | undefined>;
+  headers: Record<string, unknown>;
+}): string | undefined {
   const cookie = req.cookies?.[COOKIE];
   if (cookie) return cookie;
   const auth = req.headers['authorization'];

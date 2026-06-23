@@ -3,7 +3,7 @@
  * shown as color + icon + label (colorblind requirement).
  */
 
-import { getRole, tierForPoints, type Faction, type RoleId } from '@nocturne/shared';
+import { getRole, tierForPoints, rankForMmr, type Faction, type RoleId } from '@nocturne/shared';
 import { FactionIcon } from './Icons.js';
 import { FACTION_LABEL } from '../lib/strings-extra.js';
 
@@ -51,12 +51,60 @@ export function TestBadge() {
  * standing reads at a glance; the tier *name* is always shown alongside the
  * color, so this is never a color-only signal.
  */
-export function TierBadge({ totalPoints, size = 'md' }: { totalPoints: number; size?: 'sm' | 'md' }) {
+export function TierBadge({
+  totalPoints,
+  size = 'md',
+}: {
+  totalPoints: number;
+  size?: 'sm' | 'md';
+}) {
   const tier = tierForPoints(totalPoints);
   return (
-    <span className={`tier-badge tier-${tier.key} ${size === 'sm' ? 'tier-sm' : ''}`} title={`${tier.name} · ${tier.minPoints}+ pts`}>
-      <span className="tier-pip" aria-hidden="true">◆</span>
+    <span
+      className={`tier-badge tier-${tier.key} ${size === 'sm' ? 'tier-sm' : ''}`}
+      title={`${tier.name} · ${tier.minPoints}+ pts`}
+    >
+      <span className="tier-pip" aria-hidden="true">
+        ◆
+      </span>
       {tier.name}
+    </span>
+  );
+}
+
+/**
+ * Competitive RANK badge (ranked play). Derives the rank from MMR via the shared
+ * ladder — DISTINCT from the lifetime-points {@link TierBadge}. Either pass an
+ * `mmr` (badge computes the rank) or a precomputed `rankKey`/`rankName` (from the
+ * wire). Color is per-rank class; the rank name is always shown alongside it
+ * (never a color-only signal). Optionally shows the MMR.
+ */
+export function RankBadge({
+  mmr,
+  rankKey,
+  rankName,
+  showMmr = false,
+  size = 'md',
+}: {
+  mmr?: number;
+  rankKey?: string;
+  rankName?: string;
+  showMmr?: boolean;
+  size?: 'sm' | 'md';
+}) {
+  const derived = mmr !== undefined ? rankForMmr(mmr) : null;
+  const key = rankKey ?? derived?.key ?? 'stray';
+  const name = rankName ?? derived?.name ?? '';
+  return (
+    <span
+      className={`rank-badge rank-${key} ${size === 'sm' ? 'rank-sm' : ''}`}
+      title={mmr !== undefined ? `${name} · ${Math.round(mmr)} MMR` : name}
+    >
+      <span className="rank-pip" aria-hidden="true">
+        ♠
+      </span>
+      {name}
+      {showMmr && mmr !== undefined && <span className="rank-mmr">{Math.round(mmr)}</span>}
     </span>
   );
 }
