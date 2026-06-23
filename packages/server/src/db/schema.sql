@@ -378,3 +378,81 @@ CREATE TABLE IF NOT EXISTS dm_messages (
   created_at timestamptz NOT NULL DEFAULT now()
 );
 CREATE INDEX IF NOT EXISTS dm_messages_thread_idx ON dm_messages (thread_id, created_at);
+
+-- --------------------------------------------------------------------------
+-- Forums: a phpBB-style message board — categories → boards → threads
+-- (topics) → posts (Forums feature). Additive + idempotent; HTTP-only, never
+-- in the game hot path. Guests are read-only; account-only writes are enforced
+-- server-side; muted/banned users cannot post.
+-- --------------------------------------------------------------------------
+
+-- Top-level categories (the header bars on the index). Ordered by sort.
+CREATE TABLE IF NOT EXISTS forum_categories (
+  id         uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+  slug       text UNIQUE NOT NULL,
+  name       text NOT NULL,
+  sort       int NOT NULL DEFAULT 0,
+  created_at timestamptz NOT NULL DEFAULT now()
+);
+
+-- Boards within a category. Ordered by sort within their category.
+CREATE TABLE IF NOT EXISTS forum_boards (
+  id          uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+  category_id uuid NOT NULL REFERENCES forum_categories(id) ON DELETE CASCADE,
+  slug        text UNIQUE NOT NULL,
+  name        text NOT NULL,
+  description text NOT NULL DEFAULT '',
+  sort        int NOT NULL DEFAULT 0,
+  created_at  timestamptz NOT NULL DEFAULT now()
+);
+CREATE INDEX IF NOT EXISTS forum_boards_category_idx ON forum_boards (category_id, sort);
+
+-- Threads (topics) within a board. last_post_at + last_poster_id track the most
+-- recent reply so board/index reads avoid scanning posts.
+CREATE TABLE IF NOT EXISTS forum_threads (
+  id            uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+  board_id      uuid NOT NULL REFERENCES forum_boards(id) ON DELETE CASCADE,
+  author_id     uuid NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+  title         text NOT NULL,
+  locked        boolean NOT NULL DEFAULT false,
+  pinned        boolean NOT NULL DEFAULT false,
+  views         int NOT NULL DEFAULT 0,
+  post_count    int NOT NULL DEFAULT 0,
+  created_at    timestamptz NOT NULL DEFAULT now(),
+  last_post_at  timestamptz NOT NULL DEFAULT now(),
+  last_poster_id uuid NULL
+);
+-- Board listing: pinned first, then newest activity.
+CREATE INDEX IF NOT EXISTS forum_threads_board_idx
+  ON forum_threads (board_id, pinned DESC, last_post_at DESC);
+
+-- Posts within a thread, ascending by created_at on read.
+CREATE TABLE IF NOT EXISTS forum_posts (
+  id         uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+  thread_id  uuid NOT NULL REFERENCES forum_threads(id) ON DELETE CASCADE,
+  author_id  uuid NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+  body       text NOT NULL,
+  created_at timestamptz NOT NULL DEFAULT now(),
+  edited_at  timestamptz NULL
+);
+CREATE INDEX IF NOT EXISTS forum_posts_thread_idx ON forum_posts (thread_id, created_at);
+
+-- Seed the default categories (idempotent on slug).
+INSERT INTO forum_categories (slug, name, sort) VALUES
+  ('the-family',  'The Family',  0),
+  ('the-game',    'The Game',    1),
+  ('after-hours', 'After Hours', 2)
+ON CONFLICT (slug) DO NOTHING;
+
+-- Seed the default boards under their categories (idempotent on slug).
+INSERT INTO forum_boards (category_id, slug, name, description, sort)
+SELECT c.id, b.slug, b.name, b.description, b.sort
+FROM (VALUES
+  ('the-family',  'announcements', 'Announcements',     'Word from the bosses.',              0),
+  ('the-family',  'introductions', 'New in Town',        'Introduce yourself to the family.',  1),
+  ('the-game',    'strategy',      'Strategy & Roles',   'Tactics, role talk, setups.',        0),
+  ('the-game',    'results',       'Results & Replays',  'Post your games and tells.',         1),
+  ('after-hours', 'offtopic',      'The Speakeasy',      'Anything goes after dark.',          0)
+) AS b(category_slug, slug, name, description, sort)
+JOIN forum_categories c ON c.slug = b.category_slug
+ON CONFLICT (slug) DO NOTHING;

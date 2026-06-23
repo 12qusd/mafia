@@ -31,6 +31,12 @@ import type {
   RoomMessageRow,
   DmMessageRow,
   FriendshipStatus,
+  ForumBoardRow,
+  ForumIndexCategory,
+  ForumIndexBoard,
+  ForumThreadListRow,
+  ForumThreadView,
+  ForumPostRow,
 } from './types.js';
 
 interface PgUser {
@@ -1220,6 +1226,380 @@ export class PgStore implements Store {
     );
     const r = rows[0];
     return r ? [r.user_lo, r.user_hi] : null;
+  }
+
+  // --- Forums ---------------------------------------------------------------
+
+  async listForumIndex(): Promise<ForumIndexCategory[]> {
+    // One query joins boards to their category + per-board aggregates and the
+    // latest post (thread title + author + time). Categories/boards order by sort.
+    const { rows } = await this.pool.query<{
+      category_slug: string;
+      category_name: string;
+      category_sort: number;
+      board_slug: string | null;
+      board_name: string | null;
+      board_description: string | null;
+      board_sort: number | null;
+      thread_count: string | null;
+      post_count: string | null;
+      last_thread_id: string | null;
+      last_thread_title: string | null;
+      last_post_at: Date | null;
+      last_post_username: string | null;
+    }>(
+      `SELECT
+         c.slug AS category_slug,
+         c.name AS category_name,
+         c.sort AS category_sort,
+         b.slug AS board_slug,
+         b.name AS board_name,
+         b.description AS board_description,
+         b.sort AS board_sort,
+         (SELECT count(*) FROM forum_threads t WHERE t.board_id = b.id) AS thread_count,
+         COALESCE((SELECT sum(t.post_count) FROM forum_threads t WHERE t.board_id = b.id), 0) AS post_count,
+         lp.thread_id AS last_thread_id,
+         lp.thread_title AS last_thread_title,
+         lp.created_at AS last_post_at,
+         lp.username AS last_post_username
+       FROM forum_categories c
+       LEFT JOIN forum_boards b ON b.category_id = c.id
+       LEFT JOIN LATERAL (
+         SELECT p.created_at, t.id AS thread_id, t.title AS thread_title, u.username
+         FROM forum_posts p
+         JOIN forum_threads t ON t.id = p.thread_id
+         JOIN users u ON u.id = p.author_id
+         WHERE t.board_id = b.id
+         ORDER BY p.created_at DESC, p.id DESC
+         LIMIT 1
+       ) lp ON true
+       ORDER BY c.sort, b.sort`,
+    );
+    const byCategory = new Map<string, ForumIndexCategory>();
+    const order: string[] = [];
+    for (const r of rows) {
+      let cat = byCategory.get(r.category_slug);
+      if (!cat) {
+        cat = {
+          category: { slug: r.category_slug, name: r.category_name, sort: r.category_sort },
+          boards: [],
+        };
+        byCategory.set(r.category_slug, cat);
+        order.push(r.category_slug);
+      }
+      if (r.board_slug === null) continue; // category with no boards
+      const board: ForumIndexBoard = {
+        slug: r.board_slug,
+        name: r.board_name ?? '',
+        description: r.board_description ?? '',
+        sort: r.board_sort ?? 0,
+        threadCount: Number(r.thread_count ?? 0),
+        postCount: Number(r.post_count ?? 0),
+        lastPost:
+          r.last_thread_id && r.last_post_at
+            ? {
+                threadId: r.last_thread_id,
+                threadTitle: r.last_thread_title ?? '',
+                at: r.last_post_at.getTime(),
+                username: r.last_post_username ?? '',
+              }
+            : null,
+      };
+      cat.boards.push(board);
+    }
+    return order.map((slug) => byCategory.get(slug) as ForumIndexCategory);
+  }
+
+  private mapBoard(r: {
+    id: string;
+    category_id: string;
+    slug: string;
+    name: string;
+    description: string;
+    sort: number;
+    created_at: Date;
+  }): ForumBoardRow {
+    return {
+      id: r.id,
+      categoryId: r.category_id,
+      slug: r.slug,
+      name: r.name,
+      description: r.description,
+      sort: r.sort,
+      createdAt: r.created_at.getTime(),
+    };
+  }
+
+  async getBoardBySlug(slug: string): Promise<ForumBoardRow | null> {
+    const { rows } = await this.pool.query<{
+      id: string;
+      category_id: string;
+      slug: string;
+      name: string;
+      description: string;
+      sort: number;
+      created_at: Date;
+    }>(
+      `SELECT id, category_id, slug, name, description, sort, created_at
+       FROM forum_boards WHERE slug = $1`,
+      [slug],
+    );
+    return rows[0] ? this.mapBoard(rows[0]) : null;
+  }
+
+  async listThreads(
+    boardId: string,
+    opts: { limit: number; offset: number },
+  ): Promise<{ threads: ForumThreadListRow[]; total: number }> {
+    const limit = Math.max(1, Math.min(opts.limit, 50));
+    const offset = Math.max(0, opts.offset);
+    const { rows } = await this.pool.query<{
+      id: string;
+      title: string;
+      author_id: string;
+      author_name: string;
+      locked: boolean;
+      pinned: boolean;
+      views: number;
+      post_count: number;
+      created_at: Date;
+      last_post_at: Date;
+      last_poster_name: string | null;
+    }>(
+      `SELECT t.id, t.title, t.author_id, au.username AS author_name,
+              t.locked, t.pinned, t.views, t.post_count, t.created_at, t.last_post_at,
+              lpu.username AS last_poster_name
+       FROM forum_threads t
+       JOIN users au ON au.id = t.author_id
+       LEFT JOIN users lpu ON lpu.id = t.last_poster_id
+       WHERE t.board_id = $1
+       ORDER BY t.pinned DESC, t.last_post_at DESC
+       LIMIT $2 OFFSET $3`,
+      [boardId, limit, offset],
+    );
+    const totalQ = await this.pool.query<{ count: string }>(
+      `SELECT count(*) FROM forum_threads WHERE board_id = $1`,
+      [boardId],
+    );
+    const threads = rows.map((r) => ({
+      id: r.id,
+      title: r.title,
+      authorId: r.author_id,
+      authorName: r.author_name,
+      locked: r.locked,
+      pinned: r.pinned,
+      views: r.views,
+      postCount: r.post_count,
+      createdAt: r.created_at.getTime(),
+      lastPostAt: r.last_post_at.getTime(),
+      lastPosterName: r.last_poster_name,
+    }));
+    return { threads, total: Number(totalQ.rows[0]?.count ?? 0) };
+  }
+
+  async createThread(
+    boardId: string,
+    authorId: string,
+    title: string,
+    body: string,
+  ): Promise<{ threadId: string; postId: string }> {
+    const client = await this.pool.connect();
+    try {
+      await client.query('BEGIN');
+      const threadId = newId();
+      const postId = newId();
+      await client.query(
+        `INSERT INTO forum_threads
+           (id, board_id, author_id, title, post_count, last_poster_id)
+         VALUES ($1, $2, $3, $4, 1, $3)`,
+        [threadId, boardId, authorId, title],
+      );
+      await client.query(
+        `INSERT INTO forum_posts (id, thread_id, author_id, body) VALUES ($1, $2, $3, $4)`,
+        [postId, threadId, authorId, body],
+      );
+      await client.query('COMMIT');
+      return { threadId, postId };
+    } catch (err) {
+      await client.query('ROLLBACK');
+      throw err;
+    } finally {
+      client.release();
+    }
+  }
+
+  async getThread(threadId: string): Promise<ForumThreadView | null> {
+    const { rows } = await this.pool.query<{
+      id: string;
+      board_id: string;
+      board_slug: string;
+      board_name: string;
+      title: string;
+      author_id: string;
+      author_name: string;
+      locked: boolean;
+      pinned: boolean;
+      views: number;
+      post_count: number;
+      created_at: Date;
+    }>(
+      `SELECT t.id, t.board_id, b.slug AS board_slug, b.name AS board_name, t.title,
+              t.author_id, au.username AS author_name,
+              t.locked, t.pinned, t.views, t.post_count, t.created_at
+       FROM forum_threads t
+       JOIN forum_boards b ON b.id = t.board_id
+       JOIN users au ON au.id = t.author_id
+       WHERE t.id = $1`,
+      [threadId],
+    );
+    const r = rows[0];
+    if (!r) return null;
+    return {
+      id: r.id,
+      boardId: r.board_id,
+      boardSlug: r.board_slug,
+      boardName: r.board_name,
+      title: r.title,
+      authorId: r.author_id,
+      authorName: r.author_name,
+      locked: r.locked,
+      pinned: r.pinned,
+      views: r.views,
+      postCount: r.post_count,
+      createdAt: r.created_at.getTime(),
+    };
+  }
+
+  async incrementThreadViews(threadId: string): Promise<void> {
+    await this.pool.query(`UPDATE forum_threads SET views = views + 1 WHERE id = $1`, [threadId]);
+  }
+
+  async listPosts(
+    threadId: string,
+    opts: { limit: number; offset: number },
+  ): Promise<{ posts: ForumPostRow[]; total: number }> {
+    const limit = Math.max(1, Math.min(opts.limit, 50));
+    const offset = Math.max(0, opts.offset);
+    const { rows } = await this.pool.query<{
+      id: string;
+      author_id: string;
+      author_name: string;
+      author_joined: Date | null;
+      body: string;
+      created_at: Date;
+      edited_at: Date | null;
+    }>(
+      `SELECT p.id, p.author_id, u.username AS author_name, u.created_at AS author_joined,
+              p.body, p.created_at, p.edited_at
+       FROM forum_posts p
+       JOIN users u ON u.id = p.author_id
+       WHERE p.thread_id = $1
+       ORDER BY p.created_at, p.id
+       LIMIT $2 OFFSET $3`,
+      [threadId, limit, offset],
+    );
+    const totalQ = await this.pool.query<{ count: string }>(
+      `SELECT count(*) FROM forum_posts WHERE thread_id = $1`,
+      [threadId],
+    );
+    const posts = rows.map((r) => ({
+      id: r.id,
+      authorId: r.author_id,
+      authorName: r.author_name,
+      authorJoined: r.author_joined ? r.author_joined.getTime() : null,
+      body: r.body,
+      createdAt: r.created_at.getTime(),
+      editedAt: r.edited_at ? r.edited_at.getTime() : null,
+    }));
+    return { posts, total: Number(totalQ.rows[0]?.count ?? 0) };
+  }
+
+  async createPost(
+    threadId: string,
+    authorId: string,
+    body: string,
+  ): Promise<{ postId: string } | null> {
+    const client = await this.pool.connect();
+    try {
+      await client.query('BEGIN');
+      // Lock the thread row; bail (null) if it is missing or locked.
+      const t = await client.query<{ locked: boolean }>(
+        `SELECT locked FROM forum_threads WHERE id = $1 FOR UPDATE`,
+        [threadId],
+      );
+      const row = t.rows[0];
+      if (!row || row.locked) {
+        await client.query('ROLLBACK');
+        return null;
+      }
+      const postId = newId();
+      const ins = await client.query<{ created_at: Date }>(
+        `INSERT INTO forum_posts (id, thread_id, author_id, body)
+         VALUES ($1, $2, $3, $4) RETURNING created_at`,
+        [postId, threadId, authorId, body],
+      );
+      await client.query(
+        `UPDATE forum_threads
+         SET post_count = post_count + 1, last_post_at = $2, last_poster_id = $3
+         WHERE id = $1`,
+        [threadId, ins.rows[0]?.created_at, authorId],
+      );
+      await client.query('COMMIT');
+      return { postId };
+    } catch (err) {
+      await client.query('ROLLBACK');
+      throw err;
+    } finally {
+      client.release();
+    }
+  }
+
+  async editPost(
+    postId: string,
+    editorId: string,
+    isAdmin: boolean,
+    body: string,
+  ): Promise<boolean> {
+    // Only the author (or an admin) may edit; sets edited_at.
+    const res = isAdmin
+      ? await this.pool.query(
+          `UPDATE forum_posts SET body = $2, edited_at = now() WHERE id = $1`,
+          [postId, body],
+        )
+      : await this.pool.query(
+          `UPDATE forum_posts SET body = $3, edited_at = now()
+           WHERE id = $1 AND author_id = $2`,
+          [postId, editorId, body],
+        );
+    return (res.rowCount ?? 0) > 0;
+  }
+
+  async setThreadFlags(
+    threadId: string,
+    flags: { locked?: boolean; pinned?: boolean },
+  ): Promise<boolean> {
+    const sets: string[] = [];
+    const params: unknown[] = [threadId];
+    if (flags.locked !== undefined) {
+      params.push(flags.locked);
+      sets.push(`locked = $${params.length}`);
+    }
+    if (flags.pinned !== undefined) {
+      params.push(flags.pinned);
+      sets.push(`pinned = $${params.length}`);
+    }
+    if (sets.length === 0) {
+      // No-op flags: just confirm the thread exists.
+      const { rowCount } = await this.pool.query(`SELECT 1 FROM forum_threads WHERE id = $1`, [
+        threadId,
+      ]);
+      return (rowCount ?? 0) > 0;
+    }
+    const res = await this.pool.query(
+      `UPDATE forum_threads SET ${sets.join(', ')} WHERE id = $1`,
+      params,
+    );
+    return (res.rowCount ?? 0) > 0;
   }
 
   async close(): Promise<void> {

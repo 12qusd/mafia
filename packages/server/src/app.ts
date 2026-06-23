@@ -25,6 +25,7 @@ import { registerPublicRoutes } from './http/public-routes.js';
 import { registerSetupRoutes } from './http/setups-routes.js';
 import { registerPreferencesRoutes } from './http/preferences-routes.js';
 import { registerSocialRoutes } from './http/social-routes.js';
+import { registerForumRoutes } from './http/forum-routes.js';
 import { registerAdminRoutes } from './http/admin-routes.js';
 import { registerTestRoutes } from './http/test-routes.js';
 import { BotManager, type BotLlmConfig } from './bots/manager.js';
@@ -130,6 +131,7 @@ export async function buildApp(cfg: ServerConfig): Promise<BuiltApp> {
   registerSetupRoutes(app, ctx);
   registerPreferencesRoutes(app, ctx);
   registerSocialRoutes(app, ctx);
+  registerForumRoutes(app, ctx);
   registerAdminRoutes(app, ctx);
   registerTestRoutes(app, ctx);
 

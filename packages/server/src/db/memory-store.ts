@@ -10,6 +10,7 @@ import type { GameSetup } from '@nocturne/shared';
 import { newId } from '../ids.js';
 import { log } from '../log.js';
 import { DEFAULT_ROOMS } from './default-rooms.js';
+import { DEFAULT_FORUM } from './default-forum.js';
 import type {
   Store,
   UserRow,
@@ -33,6 +34,11 @@ import type {
   RoomMessageRow,
   DmMessageRow,
   FriendshipStatus,
+  ForumBoardRow,
+  ForumIndexCategory,
+  ForumThreadListRow,
+  ForumThreadView,
+  ForumPostRow,
 } from './types.js';
 
 /** Internal friendship record (one per unordered pair). */
@@ -51,6 +57,39 @@ interface MemDmThread {
   userLo: string;
   userHi: string;
   lastAt: number;
+}
+
+/** Internal forum category record. */
+interface MemForumCategory {
+  id: string;
+  slug: string;
+  name: string;
+  sort: number;
+}
+
+/** Internal forum thread record (last_post_* track most-recent activity). */
+interface MemForumThread {
+  id: string;
+  boardId: string;
+  authorId: string;
+  title: string;
+  locked: boolean;
+  pinned: boolean;
+  views: number;
+  postCount: number;
+  createdAt: number;
+  lastPostAt: number;
+  lastPosterId: string | null;
+}
+
+/** Internal forum post record. */
+interface MemForumPost {
+  id: string;
+  threadId: string;
+  authorId: string;
+  body: string;
+  createdAt: number;
+  editedAt: number | null;
 }
 
 export class MemoryStore implements Store {
@@ -77,6 +116,13 @@ export class MemoryStore implements Store {
   private readonly roomMessages: RoomMessageRow[] = [];
   private readonly dmThreads: MemDmThread[] = [];
   private readonly dmMessages: DmMessageRow[] = [];
+  // --- Forums (process-lifetime only) --------------------------------------
+  private readonly forumCategories: MemForumCategory[] = [];
+  private readonly forumBoards: ForumBoardRow[] = [];
+  private readonly forumThreads: MemForumThread[] = [];
+  private readonly forumPosts: MemForumPost[] = [];
+  /** Optional per-user join dates so forum posts can carry authorJoined in tests. */
+  private readonly userJoined = new Map<string, number>();
   /** Monotonic clock so same-millisecond posts keep a stable, increasing order. */
   private clockSeq = 0;
 
@@ -96,6 +142,23 @@ export class MemoryStore implements Store {
         createdAt: now,
       });
     }
+    // Seed the same default forum categories + boards the SQL schema seeds, so
+    // the forum index works identically in NO_DB/guests-only mode (Forums feature).
+    for (const c of DEFAULT_FORUM) {
+      const categoryId = newId();
+      this.forumCategories.push({ id: categoryId, slug: c.slug, name: c.name, sort: c.sort });
+      for (const b of c.boards) {
+        this.forumBoards.push({
+          id: newId(),
+          categoryId,
+          slug: b.slug,
+          name: b.name,
+          description: b.description,
+          sort: b.sort,
+          createdAt: now,
+        });
+      }
+    }
   }
 
   /**
@@ -111,6 +174,10 @@ export class MemoryStore implements Store {
   /** Test/seed helper: associate a display name with a synthetic user id. */
   setUsernameForTest(userId: string, username: string): void {
     this.usernames.set(userId, username);
+  }
+  /** Test/seed helper: record a join date (epoch ms) for a synthetic user id. */
+  setUserJoinedForTest(userId: string, at: number): void {
+    this.userJoined.set(userId, at);
   }
 
   /**
@@ -661,6 +728,207 @@ export class MemoryStore implements Store {
   async dmThreadParticipants(threadId: string): Promise<[string, string] | null> {
     const t = this.dmThreads.find((x) => x.id === threadId);
     return t ? [t.userLo, t.userHi] : null;
+  }
+
+  // --- Forums ---------------------------------------------------------------
+
+  /** Most-recent post in a board (across all its threads), or null. */
+  private latestPostForBoard(boardId: string): {
+    threadId: string;
+    threadTitle: string;
+    at: number;
+    username: string;
+  } | null {
+    const threadIds = new Set(
+      this.forumThreads.filter((t) => t.boardId === boardId).map((t) => t.id),
+    );
+    let best: MemForumPost | null = null;
+    for (const p of this.forumPosts) {
+      if (!threadIds.has(p.threadId)) continue;
+      if (!best || p.createdAt > best.createdAt) best = p;
+    }
+    if (!best) return null;
+    const thread = this.forumThreads.find((t) => t.id === best!.threadId);
+    if (!thread) return null;
+    return {
+      threadId: thread.id,
+      threadTitle: thread.title,
+      at: best.createdAt,
+      username: this.nameFor(best.authorId),
+    };
+  }
+
+  async listForumIndex(): Promise<ForumIndexCategory[]> {
+    return [...this.forumCategories]
+      .sort((a, b) => a.sort - b.sort)
+      .map((c) => {
+        const boards = this.forumBoards
+          .filter((b) => b.categoryId === c.id)
+          .sort((a, b) => a.sort - b.sort)
+          .map((b) => {
+            const threads = this.forumThreads.filter((t) => t.boardId === b.id);
+            const postCount = threads.reduce((sum, t) => sum + t.postCount, 0);
+            return {
+              slug: b.slug,
+              name: b.name,
+              description: b.description,
+              sort: b.sort,
+              threadCount: threads.length,
+              postCount,
+              lastPost: this.latestPostForBoard(b.id),
+            };
+          });
+        return { category: { slug: c.slug, name: c.name, sort: c.sort }, boards };
+      });
+  }
+
+  async getBoardBySlug(slug: string): Promise<ForumBoardRow | null> {
+    const b = this.forumBoards.find((x) => x.slug === slug);
+    return b ? { ...b } : null;
+  }
+
+  async listThreads(
+    boardId: string,
+    opts: { limit: number; offset: number },
+  ): Promise<{ threads: ForumThreadListRow[]; total: number }> {
+    const limit = Math.max(1, Math.min(opts.limit, 50));
+    const offset = Math.max(0, opts.offset);
+    const all = this.forumThreads
+      .filter((t) => t.boardId === boardId)
+      // Pinned first, then last_post_at desc.
+      .sort((a, b) => {
+        if (a.pinned !== b.pinned) return a.pinned ? -1 : 1;
+        return b.lastPostAt - a.lastPostAt;
+      });
+    const total = all.length;
+    const threads = all.slice(offset, offset + limit).map((t) => ({
+      id: t.id,
+      title: t.title,
+      authorId: t.authorId,
+      authorName: this.nameFor(t.authorId),
+      locked: t.locked,
+      pinned: t.pinned,
+      views: t.views,
+      postCount: t.postCount,
+      createdAt: t.createdAt,
+      lastPostAt: t.lastPostAt,
+      lastPosterName: t.lastPosterId ? this.nameFor(t.lastPosterId) : null,
+    }));
+    return { threads, total };
+  }
+
+  async createThread(
+    boardId: string,
+    authorId: string,
+    title: string,
+    body: string,
+  ): Promise<{ threadId: string; postId: string }> {
+    const at = this.now();
+    const threadId = newId();
+    const postId = newId();
+    this.forumThreads.push({
+      id: threadId,
+      boardId,
+      authorId,
+      title,
+      locked: false,
+      pinned: false,
+      views: 0,
+      postCount: 1,
+      createdAt: at,
+      lastPostAt: at,
+      lastPosterId: authorId,
+    });
+    this.forumPosts.push({ id: postId, threadId, authorId, body, createdAt: at, editedAt: null });
+    return { threadId, postId };
+  }
+
+  async getThread(threadId: string): Promise<ForumThreadView | null> {
+    const t = this.forumThreads.find((x) => x.id === threadId);
+    if (!t) return null;
+    const board = this.forumBoards.find((b) => b.id === t.boardId);
+    return {
+      id: t.id,
+      boardId: t.boardId,
+      boardSlug: board?.slug ?? '',
+      boardName: board?.name ?? '',
+      title: t.title,
+      authorId: t.authorId,
+      authorName: this.nameFor(t.authorId),
+      locked: t.locked,
+      pinned: t.pinned,
+      views: t.views,
+      postCount: t.postCount,
+      createdAt: t.createdAt,
+    };
+  }
+
+  async incrementThreadViews(threadId: string): Promise<void> {
+    const t = this.forumThreads.find((x) => x.id === threadId);
+    if (t) t.views += 1;
+  }
+
+  async listPosts(
+    threadId: string,
+    opts: { limit: number; offset: number },
+  ): Promise<{ posts: ForumPostRow[]; total: number }> {
+    const limit = Math.max(1, Math.min(opts.limit, 50));
+    const offset = Math.max(0, opts.offset);
+    const all = this.forumPosts
+      .filter((p) => p.threadId === threadId)
+      .sort((a, b) => a.createdAt - b.createdAt);
+    const total = all.length;
+    const posts = all.slice(offset, offset + limit).map((p) => ({
+      id: p.id,
+      authorId: p.authorId,
+      authorName: this.nameFor(p.authorId),
+      authorJoined: this.userJoined.get(p.authorId) ?? null,
+      body: p.body,
+      createdAt: p.createdAt,
+      editedAt: p.editedAt,
+    }));
+    return { posts, total };
+  }
+
+  async createPost(
+    threadId: string,
+    authorId: string,
+    body: string,
+  ): Promise<{ postId: string } | null> {
+    const t = this.forumThreads.find((x) => x.id === threadId);
+    if (!t || t.locked) return null;
+    const at = this.now();
+    const postId = newId();
+    this.forumPosts.push({ id: postId, threadId, authorId, body, createdAt: at, editedAt: null });
+    t.postCount += 1;
+    t.lastPostAt = at;
+    t.lastPosterId = authorId;
+    return { postId };
+  }
+
+  async editPost(
+    postId: string,
+    editorId: string,
+    isAdmin: boolean,
+    body: string,
+  ): Promise<boolean> {
+    const p = this.forumPosts.find((x) => x.id === postId);
+    if (!p) return false;
+    if (!isAdmin && p.authorId !== editorId) return false;
+    p.body = body;
+    p.editedAt = this.now();
+    return true;
+  }
+
+  async setThreadFlags(
+    threadId: string,
+    flags: { locked?: boolean; pinned?: boolean },
+  ): Promise<boolean> {
+    const t = this.forumThreads.find((x) => x.id === threadId);
+    if (!t) return false;
+    if (flags.locked !== undefined) t.locked = flags.locked;
+    if (flags.pinned !== undefined) t.pinned = flags.pinned;
+    return true;
   }
 
   async close(): Promise<void> {}

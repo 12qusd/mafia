@@ -2287,3 +2287,53 @@ exempting it is safe; every other command still requires hello.
 **server 109** (+18 social) / bots 36; `npx eslint .` exit 0; leak sweep 0/200.
 Verified live end-to-end (friend request→reverse-accept, shoutbox post, scoped-
 cooldown DM, public profile) + desktop/mobile screenshots, 0 console errors.
+
+---
+
+## Forums — phpBB-style boards (categories → boards → threads → posts)
+
+The retro community layer extended with a classic message board. HTTP-only with
+its own tables — never touches the engine, transport, WS protocol, or §5 leak path.
+Public reads (index, boards, threads, posts); account-only writes (new thread / post
+/ edit) → 403 for guests, 403 'silenced' for muted/banned; thread lock/pin is
+admin-only.
+
+### Data + store
+- Tables (additive/idempotent): `forum_categories`, `forum_boards`
+  (category-scoped), `forum_threads` (locked/pinned/views/post_count + denormalized
+  last_post_at/last_poster_id), `forum_posts` (body + edited_at). Seeded structure
+  (via `db/default-forum.ts`, shared with MemoryStore): 3 categories (The Family /
+  The Game / After Hours), 5 boards (Announcements, New in Town, Strategy & Roles,
+  Results & Replays, The Speakeasy). `createThread` writes the thread + its opening
+  post atomically (one PG transaction); `createPost` appends + bumps post_count +
+  last_post. Full surface on both stores; MemoryStore seeds the same structure so
+  the index + tests run guests-only under NO_DB.
+
+### Routes (all /api/forum)
+`GET forum` (index), `GET boards/:slug?page=`, `POST boards/:slug/threads`,
+`GET threads/:id?page=` (views++), `POST threads/:id/posts`, `POST posts/:id/edit`
+(author-or-admin), `POST threads/:id/moderate` (admin lock/pin).
+
+### Client
+`/forum` (category bars + board tables: Topics/Posts/Last-post), `/forum/:boardSlug`
+(thread table + New Topic composer + pagination), `/forum/thread/:id` (author
+side-panels + reply composer + inline self-edit + breadcrumb). "Forums" topbar link;
+author names link to `/u/:username`. Multiline post bodies render with
+`white-space: pre-wrap`; all text sanitized. Mobile: tables collapse to stacked
+cards at 820px.
+
+### Hardening (found during the screenshot pass; applied to forum + social)
+- **Per-(user, scope) cooldown** — thread create keys on `board:<slug>`, replies on
+  `thread:<id>`. Replying in one thread no longer blocks a new topic or a post in
+  another thread (the same coarse-bucket bug fixed earlier for social shoutbox↔DM).
+- **UUID guard on id params** — a non-uuid id (crawler / dead link hitting
+  `/api/forum/threads/garbage`, or a DM to a malformed user id) returns a clean 404
+  instead of letting Postgres throw `invalid input syntax for type uuid` → 500. On
+  write routes the auth/admin gate runs BEFORE the uuid check so a non-admin never
+  learns whether an id is valid.
+
+### Gate (all GREEN)
+`pnpm -r build` clean; tests shared 210 / engine 232 / client 167 / **server 127**
+(+18 forum) / bots 36; `npx eslint .` exit 0; leak sweep 0/200. Verified live
+end-to-end (create thread, reply, view-count, scoped cooldown, garbage-id→404,
+admin gate) + desktop/mobile screenshots, 0 console errors.

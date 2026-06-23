@@ -466,6 +466,69 @@ export const FRIENDS = {
   addExists: 'Already on the books.',
 } as const;
 
+/** Forums copy (Forums feature) — a phpBB-style message board, noir register. */
+export const FORUM = {
+  heading: 'The Boards',
+  sub: 'Word gets around. Pull up a chair and say your piece.',
+  est: 'Est. 1928',
+  // Index columns.
+  colBoard: 'Board',
+  colTopics: 'Topics',
+  colPosts: 'Posts',
+  colLastPost: 'Last post',
+  colTopic: 'Topic',
+  colReplies: 'Replies',
+  colViews: 'Views',
+  boardEmpty: 'No topics here yet. Be the first to start one.',
+  noLastPost: 'No posts yet',
+  by: 'by',
+  // Board screen.
+  newTopic: 'New Topic',
+  newTopicHeading: 'Start a topic',
+  titleLabel: 'Topic title',
+  titlePlaceholder: 'A line that says it all (120)…',
+  bodyLabel: 'Your message',
+  bodyPlaceholder: 'Say your piece (8000)…',
+  post: 'Post',
+  posting: 'Posting…',
+  cancel: 'Cancel',
+  pinned: 'Pinned',
+  locked: 'Locked',
+  signInToPost: 'Sign in with an account to start topics and reply — guests can only read.',
+  startedBy: (name: string) => `started by ${name}`,
+  // Thread screen.
+  breadcrumbForum: 'Forum',
+  reply: 'Reply',
+  replyHeading: 'Post a reply',
+  replyPlaceholder: 'Write a reply (8000)…',
+  threadLocked: 'This topic is locked. No new replies.',
+  memberSince: (when: string) => `Member since ${when}`,
+  memberSinceUnknown: 'A familiar face',
+  postsCount: (n: number) => `${n} ${n === 1 ? 'post' : 'posts'}`,
+  edited: 'edited',
+  edit: 'Edit',
+  save: 'Save',
+  saving: 'Saving…',
+  editPlaceholder: 'Edit your post…',
+  // Pagination.
+  prev: '‹ Prev',
+  next: 'Next ›',
+  pageOf: (page: number, total: number) => `Page ${page} of ${total}`,
+  // Moderation (admin).
+  modPin: 'Pin',
+  modUnpin: 'Unpin',
+  modLock: 'Lock',
+  modUnlock: 'Unlock',
+  // Toasts.
+  silenced: 'You have been silenced. No posting for now.',
+  slowDown: 'Easy — one at a time.',
+  postFailed: 'That did not go through.',
+  lockedFailed: 'This topic is locked.',
+  saved: 'Post updated.',
+  loading: 'Reading the boards…',
+  notFound: 'No such board or topic in this town.',
+} as const;
+
 /** Game-over points celebration copy (goal 3 + ranked play). */
 export const POINTS = {
   heading: 'The payout',

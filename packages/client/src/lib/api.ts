@@ -1088,6 +1088,339 @@ export async function pingPresence(): Promise<void> {
   }
 }
 
+// ---------------------------------------------------------------------------
+// Forums: categories → boards → threads (topics) → posts (Forums feature)
+// ---------------------------------------------------------------------------
+
+/** The "Last post" summary on a board (forum-index column). */
+export interface ForumLastPost {
+  threadId: string;
+  threadTitle: string;
+  at: number;
+  username: string;
+}
+
+/** A board as listed on the forum index (with aggregate stats + last post). */
+export interface ForumIndexBoard {
+  slug: string;
+  name: string;
+  description: string;
+  sort: number;
+  threadCount: number;
+  postCount: number;
+  lastPost: ForumLastPost | null;
+}
+
+/** A category (header bar) with its ordered boards. */
+export interface ForumIndexCategory {
+  category: { slug: string; name: string; sort: number };
+  boards: ForumIndexBoard[];
+}
+
+/** A board header (name + description). */
+export interface ForumBoard {
+  slug: string;
+  name: string;
+  description: string;
+}
+
+/** A thread row as listed within a board. */
+export interface ForumThreadRow {
+  id: string;
+  title: string;
+  authorId: string;
+  authorName: string;
+  locked: boolean;
+  pinned: boolean;
+  views: number;
+  postCount: number;
+  createdAt: number;
+  lastPostAt: number;
+  lastPosterName: string | null;
+}
+
+/** A single thread's header (board context joined). */
+export interface ForumThread {
+  id: string;
+  boardId: string;
+  boardSlug: string;
+  boardName: string;
+  title: string;
+  authorId: string;
+  authorName: string;
+  locked: boolean;
+  pinned: boolean;
+  views: number;
+  postCount: number;
+  createdAt: number;
+}
+
+/** A single post within a thread. */
+export interface ForumPost {
+  id: string;
+  authorId: string;
+  authorName: string;
+  authorJoined: number | null;
+  body: string;
+  createdAt: number;
+  editedAt: number | null;
+}
+
+function narrowLastPost(v: unknown): ForumLastPost | null {
+  if (!isObj(v)) return null;
+  const threadId = str(v['threadId']);
+  if (threadId === undefined) return null;
+  return {
+    threadId,
+    threadTitle: str(v['threadTitle']) ?? '',
+    at: num(v['at']),
+    username: str(v['username']) ?? '',
+  };
+}
+
+function narrowIndexBoard(v: unknown): ForumIndexBoard | null {
+  if (!isObj(v)) return null;
+  const slug = str(v['slug']);
+  const name = str(v['name']);
+  if (slug === undefined || name === undefined) return null;
+  return {
+    slug,
+    name,
+    description: str(v['description']) ?? '',
+    sort: num(v['sort']),
+    threadCount: num(v['threadCount']),
+    postCount: num(v['postCount']),
+    lastPost: narrowLastPost(v['lastPost']),
+  };
+}
+
+function narrowThreadRow(v: unknown): ForumThreadRow | null {
+  if (!isObj(v)) return null;
+  const id = str(v['id']);
+  if (id === undefined) return null;
+  return {
+    id,
+    title: str(v['title']) ?? '',
+    authorId: str(v['authorId']) ?? '',
+    authorName: str(v['authorName']) ?? '',
+    locked: bool(v['locked']),
+    pinned: bool(v['pinned']),
+    views: num(v['views']),
+    postCount: num(v['postCount']),
+    createdAt: num(v['createdAt']),
+    lastPostAt: num(v['lastPostAt']),
+    lastPosterName: str(v['lastPosterName']) ?? null,
+  };
+}
+
+function narrowForumThread(v: unknown): ForumThread | null {
+  if (!isObj(v)) return null;
+  const id = str(v['id']);
+  if (id === undefined) return null;
+  return {
+    id,
+    boardId: str(v['boardId']) ?? '',
+    boardSlug: str(v['boardSlug']) ?? '',
+    boardName: str(v['boardName']) ?? '',
+    title: str(v['title']) ?? '',
+    authorId: str(v['authorId']) ?? '',
+    authorName: str(v['authorName']) ?? '',
+    locked: bool(v['locked']),
+    pinned: bool(v['pinned']),
+    views: num(v['views']),
+    postCount: num(v['postCount']),
+    createdAt: num(v['createdAt']),
+  };
+}
+
+function narrowPost(v: unknown): ForumPost | null {
+  if (!isObj(v)) return null;
+  const id = str(v['id']);
+  if (id === undefined) return null;
+  return {
+    id,
+    authorId: str(v['authorId']) ?? '',
+    authorName: str(v['authorName']) ?? '',
+    authorJoined: numOrNull(v['authorJoined']),
+    body: str(v['body']) ?? '',
+    createdAt: num(v['createdAt']),
+    editedAt: numOrNull(v['editedAt']),
+  };
+}
+
+/** `GET /api/forum` — the public forum index. [] on failure. */
+export async function fetchForumIndex(): Promise<ForumIndexCategory[]> {
+  try {
+    const d = await getJson('/api/forum');
+    const list = isObj(d) ? d['index'] : undefined;
+    if (!Array.isArray(list)) return [];
+    const out: ForumIndexCategory[] = [];
+    for (const c of list) {
+      if (!isObj(c) || !isObj(c['category'])) continue;
+      const cat = c['category'];
+      const slug = str(cat['slug']);
+      const name = str(cat['name']);
+      if (slug === undefined || name === undefined) continue;
+      const boards = Array.isArray(c['boards'])
+        ? c['boards'].map(narrowIndexBoard).filter((b): b is ForumIndexBoard => b !== null)
+        : [];
+      out.push({ category: { slug, name, sort: num(cat['sort']) }, boards });
+    }
+    return out;
+  } catch {
+    return [];
+  }
+}
+
+export interface BoardPage {
+  board: ForumBoard;
+  threads: ForumThreadRow[];
+  total: number;
+  page: number;
+  pageSize: number;
+}
+
+/** `GET /api/forum/boards/:slug?page=` — a board + its threads. Null on failure. */
+export async function fetchBoard(slug: string, page = 1): Promise<BoardPage | null> {
+  try {
+    const d = await getJson(
+      `/api/forum/boards/${encodeURIComponent(slug)}?page=${encodeURIComponent(String(page))}`,
+    );
+    if (!isObj(d) || !isObj(d['board'])) return null;
+    const b = d['board'];
+    const bSlug = str(b['slug']);
+    if (bSlug === undefined) return null;
+    const threads = Array.isArray(d['threads'])
+      ? d['threads'].map(narrowThreadRow).filter((t): t is ForumThreadRow => t !== null)
+      : [];
+    return {
+      board: { slug: bSlug, name: str(b['name']) ?? '', description: str(b['description']) ?? '' },
+      threads,
+      total: num(d['total']),
+      page: num(d['page']) || 1,
+      pageSize: num(d['pageSize']) || 30,
+    };
+  } catch {
+    return null;
+  }
+}
+
+export interface ThreadPage {
+  thread: ForumThread;
+  posts: ForumPost[];
+  total: number;
+  page: number;
+  pageSize: number;
+}
+
+/** `GET /api/forum/threads/:id?page=` — a thread + its posts. Null on failure. */
+export async function fetchThread(id: string, page = 1): Promise<ThreadPage | null> {
+  try {
+    const d = await getJson(
+      `/api/forum/threads/${encodeURIComponent(id)}?page=${encodeURIComponent(String(page))}`,
+    );
+    if (!isObj(d)) return null;
+    const thread = narrowForumThread(d['thread']);
+    if (!thread) return null;
+    const posts = Array.isArray(d['posts'])
+      ? d['posts'].map(narrowPost).filter((p): p is ForumPost => p !== null)
+      : [];
+    return {
+      thread,
+      posts,
+      total: num(d['total']),
+      page: num(d['page']) || 1,
+      pageSize: num(d['pageSize']) || 20,
+    };
+  } catch {
+    return null;
+  }
+}
+
+/** The result of creating a thread. */
+export type CreateThreadResult =
+  | { ok: true; threadId: string; postId: string }
+  | { ok: false; status: number };
+
+/** `POST /api/forum/boards/:slug/threads` { title, body }. */
+export async function createThread(
+  slug: string,
+  title: string,
+  body: string,
+): Promise<CreateThreadResult> {
+  try {
+    const res = await fetch(`/api/forum/boards/${encodeURIComponent(slug)}/threads`, {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      credentials: 'include',
+      body: JSON.stringify({ title, body }),
+    });
+    if (res.ok) {
+      const d: unknown = await res.json().catch(() => ({}));
+      const threadId = isObj(d) ? str(d['threadId']) : undefined;
+      return { ok: true, threadId: threadId ?? '', postId: (isObj(d) && str(d['postId'])) || '' };
+    }
+    return { ok: false, status: res.status };
+  } catch {
+    return { ok: false, status: 0 };
+  }
+}
+
+/** The result of creating a post / reply. */
+export type CreatePostResult = { ok: true; postId: string } | { ok: false; status: number };
+
+/** `POST /api/forum/threads/:id/posts` { body }. */
+export async function createPost(threadId: string, body: string): Promise<CreatePostResult> {
+  try {
+    const res = await fetch(`/api/forum/threads/${encodeURIComponent(threadId)}/posts`, {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      credentials: 'include',
+      body: JSON.stringify({ body }),
+    });
+    if (res.ok) {
+      const d: unknown = await res.json().catch(() => ({}));
+      return { ok: true, postId: (isObj(d) && str(d['postId'])) || '' };
+    }
+    return { ok: false, status: res.status };
+  } catch {
+    return { ok: false, status: 0 };
+  }
+}
+
+/** `POST /api/forum/posts/:id/edit` { body }. true on success. */
+export async function editPost(postId: string, body: string): Promise<boolean> {
+  try {
+    const res = await fetch(`/api/forum/posts/${encodeURIComponent(postId)}/edit`, {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      credentials: 'include',
+      body: JSON.stringify({ body }),
+    });
+    return res.ok;
+  } catch {
+    return false;
+  }
+}
+
+/** `POST /api/forum/threads/:id/moderate` { locked?, pinned? } (admin-only). true on success. */
+export async function moderateThread(
+  threadId: string,
+  flags: { locked?: boolean; pinned?: boolean },
+): Promise<boolean> {
+  try {
+    const res = await fetch(`/api/forum/threads/${encodeURIComponent(threadId)}/moderate`, {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      credentials: 'include',
+      body: JSON.stringify(flags),
+    });
+    return res.ok;
+  } catch {
+    return false;
+  }
+}
+
 /** Fetch the public lobby list; returns [] on any failure (resilient browser). */
 export async function fetchLobbies(): Promise<LobbyListItem[]> {
   try {

@@ -254,6 +254,89 @@ export interface DmMessageRow {
 /** Canonical friendship status between the caller and another user. */
 export type FriendshipStatus = 'none' | 'pending_out' | 'pending_in' | 'friends';
 
+// --------------------------------------------------------------------------
+// Forums: categories → boards → threads (topics) → posts (Forums feature —
+// HTTP-only, its own tables; never in the game hot path).
+// --------------------------------------------------------------------------
+
+/** A forum board row (a topical board under a category). */
+export interface ForumBoardRow {
+  id: string;
+  categoryId: string;
+  slug: string;
+  name: string;
+  description: string;
+  sort: number;
+  createdAt: number;
+}
+
+/** The latest post summary for a board (forum-index "Last post" column). */
+export interface ForumLastPost {
+  threadId: string;
+  threadTitle: string;
+  at: number;
+  username: string;
+}
+
+/** One board with aggregate stats + its latest post, for the forum index. */
+export interface ForumIndexBoard {
+  slug: string;
+  name: string;
+  description: string;
+  sort: number;
+  threadCount: number;
+  postCount: number;
+  lastPost: ForumLastPost | null;
+}
+
+/** One category (header bar) plus its ordered boards, for the forum index. */
+export interface ForumIndexCategory {
+  category: { slug: string; name: string; sort: number };
+  boards: ForumIndexBoard[];
+}
+
+/** A thread row as listed within a board (author + last-poster joined). */
+export interface ForumThreadListRow {
+  id: string;
+  title: string;
+  authorId: string;
+  authorName: string;
+  locked: boolean;
+  pinned: boolean;
+  views: number;
+  postCount: number;
+  createdAt: number;
+  lastPostAt: number;
+  lastPosterName: string | null;
+}
+
+/** A single thread read back for its thread page (board context joined). */
+export interface ForumThreadView {
+  id: string;
+  boardId: string;
+  boardSlug: string;
+  boardName: string;
+  title: string;
+  authorId: string;
+  authorName: string;
+  locked: boolean;
+  pinned: boolean;
+  views: number;
+  postCount: number;
+  createdAt: number;
+}
+
+/** A single post within a thread (author + their join date joined). */
+export interface ForumPostRow {
+  id: string;
+  authorId: string;
+  authorName: string;
+  authorJoined: number | null;
+  body: string;
+  createdAt: number;
+  editedAt: number | null;
+}
+
 export interface Store {
   readonly persistent: boolean;
 
@@ -425,6 +508,42 @@ export interface Store {
   ): Promise<Array<{ id: string; senderId: string; body: string; createdAt: number }>>;
   /** The two participant user ids of a thread (for authorization), or null. */
   dmThreadParticipants(threadId: string): Promise<[string, string] | null>;
+
+  // --- Forums: categories, boards, threads, posts --------------------------
+  /** The forum index: categories (ordered) with their boards + aggregate stats. */
+  listForumIndex(): Promise<ForumIndexCategory[]>;
+  /** A board by its slug, or null. */
+  getBoardBySlug(slug: string): Promise<ForumBoardRow | null>;
+  /** Threads in a board: pinned first, then last_post_at desc. `limit` ≤50. */
+  listThreads(
+    boardId: string,
+    opts: { limit: number; offset: number },
+  ): Promise<{ threads: ForumThreadListRow[]; total: number }>;
+  /** Create a thread + its opening post atomically (post_count=1, last_post_at=now). */
+  createThread(
+    boardId: string,
+    authorId: string,
+    title: string,
+    body: string,
+  ): Promise<{ threadId: string; postId: string }>;
+  /** A single thread (board context joined), or null if absent. */
+  getThread(threadId: string): Promise<ForumThreadView | null>;
+  /** Bump a thread's view counter by one. */
+  incrementThreadViews(threadId: string): Promise<void>;
+  /** Posts in a thread, ascending by created_at. `limit` ≤50. */
+  listPosts(
+    threadId: string,
+    opts: { limit: number; offset: number },
+  ): Promise<{ posts: ForumPostRow[]; total: number }>;
+  /**
+   * Append a post to a thread; null if the thread is missing or locked. Bumps the
+   * thread's post_count + last_post_at/last_poster_id.
+   */
+  createPost(threadId: string, authorId: string, body: string): Promise<{ postId: string } | null>;
+  /** Edit a post — only the author (or an admin) may; sets edited_at. */
+  editPost(postId: string, editorId: string, isAdmin: boolean, body: string): Promise<boolean>;
+  /** Admin moderation: set a thread's locked/pinned flags. */
+  setThreadFlags(threadId: string, flags: { locked?: boolean; pinned?: boolean }): Promise<boolean>;
 
   close(): Promise<void>;
 }

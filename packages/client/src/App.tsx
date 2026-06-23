@@ -26,6 +26,9 @@ import { LeaderboardScreen } from './screens/LeaderboardScreen.js';
 import { SetupsScreen } from './screens/SetupsScreen.js';
 import { ReplayScreen } from './screens/ReplayScreen.js';
 import { CommunityScreen } from './screens/CommunityScreen.js';
+import { ForumIndexScreen } from './screens/ForumIndexScreen.js';
+import { BoardScreen } from './screens/BoardScreen.js';
+import { ThreadScreen } from './screens/ThreadScreen.js';
 import { ProfileScreen } from './screens/ProfileScreen.js';
 import { FriendsScreen } from './screens/FriendsScreen.js';
 
@@ -105,6 +108,9 @@ export function App() {
             <Link className="linkbtn" to="/community">
               Community
             </Link>
+            <Link className="linkbtn" to="/forum">
+              Forums
+            </Link>
             <Link className="linkbtn" to="/friends">
               Friends
             </Link>
@@ -137,6 +143,9 @@ export function App() {
           <Route path="/game" element={<GameScreen />} />
           <Route path="/leaderboard" element={<LeaderboardScreen />} />
           <Route path="/community" element={<CommunityScreen />} />
+          <Route path="/forum" element={<ForumIndexScreen />} />
+          <Route path="/forum/thread/:id" element={<ThreadScreen />} />
+          <Route path="/forum/:boardSlug" element={<BoardScreen />} />
           <Route path="/friends" element={<FriendsScreen />} />
           <Route path="/u/:username" element={<ProfileScreen />} />
           <Route path="/setups" element={<SetupsScreen />} />

@@ -58,6 +58,9 @@ function parseLimit(raw: unknown): number {
   return Math.max(1, Math.min(Math.floor(n), 100));
 }
 
+/** User ids are uuids; a malformed id is "not found" rather than a Postgres 500. */
+const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+
 export function registerSocialRoutes(app: FastifyInstance, ctx: GatewayContext): void {
   // Per-user cooldown clocks (in-memory; reset on restart).
   const lastPostAt = new Map<string, number>();
@@ -296,6 +299,7 @@ export function registerSocialRoutes(app: FastifyInstance, ctx: GatewayContext):
       if (identity.isGuest) return reply.code(403).send({ error: 'forbidden' });
       if (!ctx.store.persistent) return reply.code(503).send({ error: 'accounts_disabled' });
       const other = req.params.otherUserId;
+      if (!UUID_RE.test(other)) return reply.code(404).send({ error: 'not_found' });
       if (other === identity.id) return reply.code(400).send({ error: 'self' });
       const threadId = await ctx.store.ensureDmThread(identity.id, other);
       const limit = parseLimit(req.query.limit);
@@ -310,6 +314,7 @@ export function registerSocialRoutes(app: FastifyInstance, ctx: GatewayContext):
     const poster = await requirePoster(readToken(req), reply);
     if (!poster) return reply; // requirePoster already sent the error.
     const other = req.params.otherUserId;
+    if (!UUID_RE.test(other)) return reply.code(404).send({ error: 'not_found' });
     if (other === poster.id) return reply.code(400).send({ error: 'self' });
     const target = await ctx.store.getUserById(other);
     if (!target) return reply.code(404).send({ error: 'not_found' });
