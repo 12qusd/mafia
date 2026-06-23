@@ -1974,3 +1974,67 @@ so it auto-absorbs the new entries; no client test asserts an achievement count)
 - Final achievement count: **79** (11 core + 50 role-win + 18 feat), all keys
   unique. No leak/determinism impact — points are server-side, computed at game
   end; the engine is untouched.
+
+## QUICK PLAY: matchmaking with bot-backfill (cold-start linchpin)
+
+The front-door "Quick Play" CTA: a player (incl. a guest) clicks once and ALWAYS
+gets a full game within seconds — concurrent human queuers share the table, AI
+bots backfill the rest, and the game AUTO-STARTS (no host "Deal" click). Makes
+the game playable with zero population.
+
+### Matchmaker (`server/src/lobby/matchmaker.ts`)
+- In-memory FIFO queue owned by the `LobbyManager` (`manager.matchmaker`). On the
+  FIRST entrant an empty queue arms a **fill window** (`FILL_WINDOW_MS = 12s`,
+  tunable) so other humans can join one table; forms immediately at the table cap
+  (`TABLE_CAP = 15`). On window expiry it FORMS: creates a forced-**private**,
+  non-test `classic-nocturne` lobby (guests allowed; NOT in the public browser),
+  moves all queued humans in, backfills bots up to `TARGET_SEATS` (=MIN_PLAYERS=7),
+  and system-starts. A solo queuer → 1 human + 6 bots = instant 7p game.
+- **Bot policy:** SCRIPTED is the reliable default + the floor (legal,
+  deterministic moves). A few LLM bots (`MAX_LLM_BACKFILL = 2`) are added ONLY
+  when `LLM_BASE_URL` is configured; `BotManager.addBots` already falls back to
+  scripted if the LLM is unreachable, so LLM trouble NEVER blocks a match.
+- **Timing seam:** the fill window + bot-join poll run on REAL timers (bots
+  connect over real loopback WS in real time), independent of the room's
+  clock/schedule seam. Tunable via `ManagerDeps.matchmakingTimings` (tests inject
+  tiny values; production omits it). Reuses `BotManager.addBots` verbatim — it
+  was already generic, not test-mode-bound (only the `testControl` caller gated
+  it). Disconnect/leave/empty-queue all cancel cleanly; a table that can't fill
+  is disposed (bots dropped) and seated humans get a `cannot_start` error.
+
+### LobbyManager refactor (system-triggered start)
+- Extracted `startGame`'s core into a private `formGame(lobby, {mode?})`. The
+  host-triggered `startGame(conn)` keeps its host/`canStart` checks then calls it;
+  the new system-triggered `startMatchmadeGame(lobby)` re-checks `canStart()` and
+  calls it with `mode:'quickplay'` — NO host-click gate. `Room.mode` (new mutable
+  field, like `godIdentityId`) flows to `writeMatch` so `MatchRecord.mode` (was
+  already optional) persists `'quickplay'` for matchmade tables, casual otherwise.
+
+### Protocol (shared) — exact shapes
+- client→server: `quick_play {}` (enter queue), `leave_queue {}`.
+- server→client: `queue_status { state:'searching'|'matched'|'cancelled',
+  position?, queued?, eta?, lobbyId? }`. Leak-safe (no secret). `searching`
+  drives the "finding a table…" overlay; `matched` (with `lobbyId`) just tells the
+  client to drop the overlay — the normal `lobby_state`/`game_started`/`your_role`
+  frames follow and `useLobbyNav` routes into the game.
+
+### Client
+- HomeScreen: a prominent brass `Quick Play` hero CTA + a noir/deco
+  "Finding you a table…" overlay (spinner, queue position, Cancel → `leave_queue`)
+  driven by a new server-sourced `matchmaking` store slice (cleared on
+  lobby_state/game_started/cancelled — store still holds only server data, §13.2).
+  New copy in `lib/strings-extra.ts` (shared strings untouched); new `.quickplay*`
+  / `.qp-*` CSS (reduced-motion aware).
+
+### §5 leak invariant — UNCHANGED and re-proven
+- Matchmade tables run the NORMAL Room/transport; bots are ordinary guest WS
+  clients with no engine access. Nothing bypasses `transport.ts`. Leak sweep
+  `NO_DB=1 node packages/bots/dist/cli/leakcheck.js` → **0 leaks / 200 games**
+  (classic-nocturne 9p AND 7p — the solo-quickplay table size).
+
+### Gate (all GREEN; nothing committed, no pm2 restart)
+- `pnpm --filter @nocturne/shared build` + `pnpm -r build` clean (all 5 packages).
+  `pnpm -r test`: shared 199, engine 225, client 166, server 76, bots 36 — pass
+  (+5 protocol round-trips, +3 client reducer, +6 matchmaker incl. a real-server
+  E2E proving a SOLO quick_play forms+starts+TERMINATES a 7p game with bots).
+  `npx eslint .` clean (exit 0). Leak sweep 0/200.

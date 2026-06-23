@@ -30,7 +30,12 @@ import {
   type Phase,
 } from '@nocturne/shared';
 import type { Engine, GameState, GameEvent } from '../engine-adapter.js';
-import { ScopedTransport, sendToSocket, type AudienceProvider, type Sendable } from '../transport.js';
+import {
+  ScopedTransport,
+  sendToSocket,
+  type AudienceProvider,
+  type Sendable,
+} from '../transport.js';
 import type { Connection } from '../ws/connection.js';
 import { log } from '../log.js';
 
@@ -87,6 +92,12 @@ export class Room implements AudienceProvider {
   private endsAt: number | null = null;
   private deadlineTimer: { cancel: () => void } | null = null;
   private over = false;
+  /**
+   * Queue this match was played in (persisted with the MatchRecord, §10). Set by
+   * the LobbyManager at start: 'quickplay' for matchmade games, otherwise left
+   * undefined (casual). System-triggered start sets this before `begin()`.
+   */
+  mode: string | undefined = undefined;
   /** Ordered action log for persistence/replay (§4.3). */
   readonly actionLog: { seq: number; phase: string; event: unknown }[] = [];
   private seq = 0;
@@ -107,7 +118,12 @@ export class Room implements AudienceProvider {
    */
   godIdentityId: string | null = null;
   /** Per-night trace history: full ResolutionTrace arrays keyed by emission. */
-  readonly traceHistory: { dayNumber: number; nightNumber: number; traces: unknown[]; deaths: { seat: SeatId; cause: string }[] }[] = [];
+  readonly traceHistory: {
+    dayNumber: number;
+    nightNumber: number;
+    traces: unknown[];
+    deaths: { seat: SeatId; cause: string }[];
+  }[] = [];
   /** Per-seat private-result history for the audit endpoint (seat → frames). */
   private readonly privateHistory = new Map<SeatId, ServerMessage[]>();
 
@@ -159,7 +175,6 @@ export class Room implements AudienceProvider {
       this.seats[seat] = binding;
       this.identityToSeat.set(r.identityId, seat);
     });
-
   }
 
   /**
@@ -341,7 +356,11 @@ export class Room implements AudienceProvider {
     // in-server fallback, which does not emit a phase_change effect.)
     if (god) {
       const after = this.engine.phaseInfo(this.state);
-      if (!phaseBefore || after.phase !== phaseBefore.phase || after.dayNumber !== phaseBefore.dayNumber) {
+      if (
+        !phaseBefore ||
+        after.phase !== phaseBefore.phase ||
+        after.dayNumber !== phaseBefore.dayNumber
+      ) {
         this.emitDebugState();
       }
     }
@@ -397,7 +416,10 @@ export class Room implements AudienceProvider {
   }
 
   /** Emit the new traces produced by a night resolution (debug_trace). */
-  private emitDebugTrace(traceCountBefore: number, deaths: { seat: SeatId; cause: string }[]): void {
+  private emitDebugTrace(
+    traceCountBefore: number,
+    deaths: { seat: SeatId; cause: string }[],
+  ): void {
     const all = this.engine.debugTraces(this.state);
     const fresh = all.slice(traceCountBefore);
     const view = this.engine.debugView(this.state);
@@ -597,7 +619,10 @@ export class Room implements AudienceProvider {
 
   endedOutcome = 'abandoned';
 
-  matchRecord(_matchId: string, _serverBuild: string): {
+  matchRecord(
+    _matchId: string,
+    _serverBuild: string,
+  ): {
     players: {
       userOrGuestId: string;
       seat: number;
@@ -712,7 +737,10 @@ export class Room implements AudienceProvider {
       actionLog: this.actionLog,
       traces: this.engine.debugTraces(this.state),
       traceHistory: this.traceHistory,
-      privateResults: [...this.privateHistory.entries()].map(([seat, frames]) => ({ seat, frames })),
+      privateResults: [...this.privateHistory.entries()].map(([seat, frames]) => ({
+        seat,
+        frames,
+      })),
       gameOver: over,
     };
   }

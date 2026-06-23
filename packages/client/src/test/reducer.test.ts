@@ -17,6 +17,7 @@ function baseState(): StoreState {
     userId: null,
     guestId: null,
     me: null,
+    matchmaking: null,
     lobby: null,
     game: null,
     own: null,
@@ -70,7 +71,16 @@ describe('reduce: game lifecycle', () => {
       type: 'your_role',
       role: 'SHERIFF',
       faction: 'TOWN',
-      abilities: [{ id: 'investigate', name: 'Investigate', timing: 'night', usesRemaining: null, targetDomain: 'living', verb: 'Investigate' }],
+      abilities: [
+        {
+          id: 'investigate',
+          name: 'Investigate',
+          timing: 'night',
+          usesRemaining: null,
+          targetDomain: 'living',
+          verb: 'Investigate',
+        },
+      ],
     });
     expect(s.own?.role).toBe('SHERIFF');
     expect(s.own?.faction).toBe('TOWN');
@@ -100,7 +110,16 @@ describe('reduce: game lifecycle', () => {
       type: 'your_role',
       role: 'GUARDIAN_ANGEL',
       faction: 'NEUTRAL_BENIGN',
-      abilities: [{ id: 'shield', name: 'Watch over', timing: 'night', usesRemaining: null, targetDomain: 'living', verb: 'Shield' }],
+      abilities: [
+        {
+          id: 'shield',
+          name: 'Watch over',
+          timing: 'night',
+          usesRemaining: null,
+          targetDomain: 'living',
+          verb: 'Shield',
+        },
+      ],
       assignedTarget: 2,
     });
     s.own = { ...s.own!, nightAbility: 'shield', nightTarget: 2, nightTarget2: null };
@@ -111,7 +130,16 @@ describe('reduce: game lifecycle', () => {
       type: 'your_role',
       role: 'SURVIVOR',
       faction: 'NEUTRAL_BENIGN',
-      abilities: [{ id: 'vest', name: 'Vest', timing: 'night', usesRemaining: 1, targetDomain: 'self', verb: 'Vest' }],
+      abilities: [
+        {
+          id: 'vest',
+          name: 'Vest',
+          timing: 'night',
+          usesRemaining: 1,
+          targetDomain: 'self',
+          verb: 'Vest',
+        },
+      ],
     });
     expect(s.own?.role).toBe('SURVIVOR');
     expect(s.own?.abilities[0]?.id).toBe('vest');
@@ -158,14 +186,29 @@ describe('reduce: phase_change (BUILD_SPEC §6.1, §6.2)', () => {
       type: 'your_role',
       role: 'DOCTOR',
       faction: 'TOWN',
-      abilities: [{ id: 'protect', name: 'Protect', timing: 'night', usesRemaining: null, targetDomain: 'living', verb: 'Heal' }],
+      abilities: [
+        {
+          id: 'protect',
+          name: 'Protect',
+          timing: 'night',
+          usesRemaining: null,
+          targetDomain: 'living',
+          verb: 'Heal',
+        },
+      ],
     });
     return s;
   }
 
   it('updates phase / day / deadline', () => {
     let s = withGame();
-    s = apply(s, { v: PROTOCOL_VERSION, type: 'phase_change', phase: 'NIGHT', dayNumber: 1, endsAt: 12345 });
+    s = apply(s, {
+      v: PROTOCOL_VERSION,
+      type: 'phase_change',
+      phase: 'NIGHT',
+      dayNumber: 1,
+      endsAt: 12345,
+    });
     expect(s.game?.phase).toBe('NIGHT');
     expect(s.game?.dayNumber).toBe(1);
     expect(s.game?.endsAt).toBe(12345);
@@ -174,7 +217,13 @@ describe('reduce: phase_change (BUILD_SPEC §6.1, §6.2)', () => {
   it('clears the night action when entering NIGHT', () => {
     let s = withGame();
     s.own = { ...s.own!, nightTarget: 2, nightAbility: 'protect' };
-    s = apply(s, { v: PROTOCOL_VERSION, type: 'phase_change', phase: 'NIGHT', dayNumber: 1, endsAt: null });
+    s = apply(s, {
+      v: PROTOCOL_VERSION,
+      type: 'phase_change',
+      phase: 'NIGHT',
+      dayNumber: 1,
+      endsAt: null,
+    });
     expect(s.own?.nightTarget).toBeNull();
     expect(s.own?.nightAbility).toBeNull();
   });
@@ -182,14 +231,26 @@ describe('reduce: phase_change (BUILD_SPEC §6.1, §6.2)', () => {
   it('clears the vote when leaving DAY_VOTING', () => {
     let s = withGame();
     s.own = { ...s.own!, vote: 1 };
-    s = apply(s, { v: PROTOCOL_VERSION, type: 'phase_change', phase: 'NIGHT', dayNumber: 1, endsAt: null });
+    s = apply(s, {
+      v: PROTOCOL_VERSION,
+      type: 'phase_change',
+      phase: 'NIGHT',
+      dayNumber: 1,
+      endsAt: null,
+    });
     expect(s.own?.vote).toBeNull();
   });
 
   it('clears trial accused when leaving trial phases', () => {
     let s = withGame();
     s.game = { ...s.game!, accusedSeat: 1 };
-    s = apply(s, { v: PROTOCOL_VERSION, type: 'phase_change', phase: 'NIGHT', dayNumber: 2, endsAt: null });
+    s = apply(s, {
+      v: PROTOCOL_VERSION,
+      type: 'phase_change',
+      phase: 'NIGHT',
+      dayNumber: 2,
+      endsAt: null,
+    });
     expect(s.game?.accusedSeat).toBeNull();
   });
 });
@@ -219,12 +280,15 @@ describe('reduce: vote_update (BUILD_SPEC §6.3, §9.2)', () => {
 
   it('ignores vote_update with no game (out-of-order safety)', () => {
     const s = baseState();
-    const patch = reduce(s, ServerMessageSchema.parse({
-      v: PROTOCOL_VERSION,
-      type: 'vote_update',
-      tallies: [],
-      votesBySeat: [],
-    }) as ServerMessage);
+    const patch = reduce(
+      s,
+      ServerMessageSchema.parse({
+        v: PROTOCOL_VERSION,
+        type: 'vote_update',
+        tallies: [],
+        votesBySeat: [],
+      }) as ServerMessage,
+    );
     expect(patch).toEqual({});
   });
 });
@@ -260,8 +324,20 @@ describe('reduce: death handling (BUILD_SPEC §6.8, §13.1)', () => {
 
   it('accumulates multiple dawn deaths in order', () => {
     let s = withGame();
-    s = apply(s, { v: PROTOCOL_VERSION, type: 'death_announce', seat: 0, role: 'DOCTOR', cause: 'mafia' });
-    s = apply(s, { v: PROTOCOL_VERSION, type: 'death_announce', seat: 2, role: 'SHERIFF', cause: 'serial_killer' });
+    s = apply(s, {
+      v: PROTOCOL_VERSION,
+      type: 'death_announce',
+      seat: 0,
+      role: 'DOCTOR',
+      cause: 'mafia',
+    });
+    s = apply(s, {
+      v: PROTOCOL_VERSION,
+      type: 'death_announce',
+      seat: 2,
+      role: 'SHERIFF',
+      cause: 'serial_killer',
+    });
     expect(s.game?.deathFeed.map((d) => d.seat)).toEqual([0, 2]);
   });
 });
@@ -269,7 +345,13 @@ describe('reduce: death handling (BUILD_SPEC §6.8, §13.1)', () => {
 describe('reduce: private_result, trial, errors, force_update', () => {
   it('appends a sheriff private result', () => {
     let s = baseState();
-    s = apply(s, { v: PROTOCOL_VERSION, type: 'game_started', seats: [seat(0)], setupId: 'x', config: {} });
+    s = apply(s, {
+      v: PROTOCOL_VERSION,
+      type: 'game_started',
+      seats: [seat(0)],
+      setupId: 'x',
+      config: {},
+    });
     s = apply(s, {
       v: PROTOCOL_VERSION,
       type: 'private_result',
@@ -283,7 +365,13 @@ describe('reduce: private_result, trial, errors, force_update', () => {
 
   it('records trial start and verdict result', () => {
     let s = baseState();
-    s = apply(s, { v: PROTOCOL_VERSION, type: 'game_started', seats: [seat(0), seat(1)], setupId: 'x', config: {} });
+    s = apply(s, {
+      v: PROTOCOL_VERSION,
+      type: 'game_started',
+      seats: [seat(0), seat(1)],
+      setupId: 'x',
+      config: {},
+    });
     s = apply(s, { v: PROTOCOL_VERSION, type: 'trial_start', accusedSeat: 1 });
     expect(s.game?.accusedSeat).toBe(1);
     s = apply(s, {
@@ -324,7 +412,16 @@ describe('reduce: private_result, trial, errors, force_update', () => {
         seats: [seat(0), seat(1), seat(2)],
         ownRole: 'JAILOR',
         ownFaction: 'TOWN',
-        abilities: [{ id: 'execute', name: 'Execute', timing: 'night', usesRemaining: 2, targetDomain: 'living', verb: 'Execute' }],
+        abilities: [
+          {
+            id: 'execute',
+            name: 'Execute',
+            timing: 'night',
+            usesRemaining: 2,
+            targetDomain: 'living',
+            verb: 'Execute',
+          },
+        ],
         privateLog: [{ kind: 'jailed' }],
         chatBacklog: [{ channel: 'day', from: 0, text: 'hi', ts: 1 }],
         lastWill: 'my will',
@@ -342,7 +439,13 @@ describe('reduce: private_result, trial, errors, force_update', () => {
 describe('reduce: text sanitization (BUILD_SPEC §11.6)', () => {
   it('strips control characters from chat text', () => {
     let s = baseState();
-    s = apply(s, { v: PROTOCOL_VERSION, type: 'game_started', seats: [seat(0)], setupId: 'x', config: {} });
+    s = apply(s, {
+      v: PROTOCOL_VERSION,
+      type: 'game_started',
+      seats: [seat(0)],
+      setupId: 'x',
+      config: {},
+    });
     s = apply(s, {
       v: PROTOCOL_VERSION,
       type: 'chat_message',
@@ -377,7 +480,14 @@ describe('reduce: points_awarded (goal 3)', () => {
 
   it('stores the award for the current match', () => {
     let s = baseState();
-    s = apply(s, { v: PROTOCOL_VERSION, type: 'points_awarded', matchId: 'm1', breakdown, stats, newAchievements: ['first_win'] });
+    s = apply(s, {
+      v: PROTOCOL_VERSION,
+      type: 'points_awarded',
+      matchId: 'm1',
+      breakdown,
+      stats,
+      newAchievements: ['first_win'],
+    });
     expect(s.pointsAward?.matchId).toBe('m1');
     expect(s.pointsAward?.breakdown.total).toBe(60);
     expect(s.pointsAward?.newAchievements).toEqual(['first_win']);
@@ -386,21 +496,48 @@ describe('reduce: points_awarded (goal 3)', () => {
   it('refreshes the cached me.stats when the award is the local account', () => {
     let s = baseState();
     s.me = { id: 'u1', name: 'Capone', isGuest: false, isAdmin: false, stats: null };
-    s = apply(s, { v: PROTOCOL_VERSION, type: 'points_awarded', matchId: 'm1', breakdown, stats, newAchievements: [] });
+    s = apply(s, {
+      v: PROTOCOL_VERSION,
+      type: 'points_awarded',
+      matchId: 'm1',
+      breakdown,
+      stats,
+      newAchievements: [],
+    });
     expect(s.me?.stats?.totalPoints).toBe(110);
   });
 
   it('does not clobber me.stats for a different account', () => {
     let s = baseState();
     s.me = { id: 'other', name: 'X', isGuest: false, isAdmin: false, stats: null };
-    s = apply(s, { v: PROTOCOL_VERSION, type: 'points_awarded', matchId: 'm1', breakdown, stats, newAchievements: [] });
+    s = apply(s, {
+      v: PROTOCOL_VERSION,
+      type: 'points_awarded',
+      matchId: 'm1',
+      breakdown,
+      stats,
+      newAchievements: [],
+    });
     expect(s.me?.stats).toBeNull();
   });
 
   it('is cleared when a new game starts', () => {
     let s = baseState();
-    s = apply(s, { v: PROTOCOL_VERSION, type: 'points_awarded', matchId: 'm1', breakdown, stats, newAchievements: [] });
-    s = apply(s, { v: PROTOCOL_VERSION, type: 'game_started', seats: [seat(0)], setupId: 'x', config: {} });
+    s = apply(s, {
+      v: PROTOCOL_VERSION,
+      type: 'points_awarded',
+      matchId: 'm1',
+      breakdown,
+      stats,
+      newAchievements: [],
+    });
+    s = apply(s, {
+      v: PROTOCOL_VERSION,
+      type: 'game_started',
+      seats: [seat(0)],
+      setupId: 'x',
+      config: {},
+    });
     expect(s.pointsAward).toBeNull();
   });
 });
@@ -440,5 +577,56 @@ describe('reduce: seat_transform stump marking (goal 8)', () => {
     expect(s.game?.seats.filter((seat) => seat.seat !== 0).every((seat) => !seat.stumped)).toBe(
       true,
     );
+  });
+});
+
+describe('reduce: quick-play matchmaking (queue_status)', () => {
+  it('searching sets the matchmaking slice with position/queued/eta', () => {
+    let s = baseState();
+    s = apply(s, {
+      v: PROTOCOL_VERSION,
+      type: 'queue_status',
+      state: 'searching',
+      position: 2,
+      queued: 3,
+      eta: 1_700_000_000,
+    });
+    expect(s.matchmaking).toEqual({
+      state: 'searching',
+      position: 2,
+      queued: 3,
+      eta: 1_700_000_000,
+      lobbyId: null,
+    });
+  });
+
+  it('matched carries the lobbyId; cancelled clears the slice', () => {
+    let s = baseState();
+    s = apply(s, {
+      v: PROTOCOL_VERSION,
+      type: 'queue_status',
+      state: 'searching',
+      position: 1,
+      queued: 1,
+    });
+    expect(s.matchmaking?.state).toBe('searching');
+    s = apply(s, { v: PROTOCOL_VERSION, type: 'queue_status', state: 'matched', lobbyId: 'L1' });
+    expect(s.matchmaking).toMatchObject({ state: 'matched', lobbyId: 'L1' });
+    s = apply(s, { v: PROTOCOL_VERSION, type: 'queue_status', state: 'cancelled' });
+    expect(s.matchmaking).toBeNull();
+  });
+
+  it('entering a lobby or game clears the matchmaking overlay', () => {
+    let s = baseState();
+    s = apply(s, { v: PROTOCOL_VERSION, type: 'queue_status', state: 'matched', lobbyId: 'L1' });
+    expect(s.matchmaking).not.toBeNull();
+    s = apply(s, {
+      v: PROTOCOL_VERSION,
+      type: 'game_started',
+      seats: [seat(0)],
+      setupId: 'classic-nocturne',
+      config: {},
+    });
+    expect(s.matchmaking).toBeNull();
   });
 });

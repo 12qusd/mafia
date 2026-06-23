@@ -12,11 +12,7 @@ import { create } from 'zustand';
 import type { ServerMessage } from '@nocturne/shared';
 import { reduce, allocId, emptyDebug } from './reducer.js';
 import type { StoreState, ConnectionStatus, MeState } from './types.js';
-import {
-  INITIAL_CLOCK_ESTIMATE,
-  updateEstimate,
-  type ClockSample,
-} from '../lib/clock.js';
+import { INITIAL_CLOCK_ESTIMATE, updateEstimate, type ClockSample } from '../lib/clock.js';
 import {
   loadSettings,
   saveSettings,
@@ -82,6 +78,7 @@ const initialState: StoreState = {
   userId: null,
   guestId: null,
   me: null,
+  matchmaking: null,
   lobby: null,
   game: null,
   own: null,

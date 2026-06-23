@@ -24,10 +24,21 @@ export function createLobby(
   setupId: string,
   config?: LobbyConfig,
 ): void {
-  conn.send({ v: V, type: 'create_lobby', name, visibility, setupId, ...(config ? { config } : {}) });
+  conn.send({
+    v: V,
+    type: 'create_lobby',
+    name,
+    visibility,
+    setupId,
+    ...(config ? { config } : {}),
+  });
 }
 
-export function joinLobby(opts: { lobbyId?: string; inviteCode?: string; asSpectator?: boolean }): void {
+export function joinLobby(opts: {
+  lobbyId?: string;
+  inviteCode?: string;
+  asSpectator?: boolean;
+}): void {
   conn.send({
     v: V,
     type: 'join_lobby',
@@ -53,6 +64,16 @@ export function startGame(): void {
   conn.send({ v: V, type: 'start_game' });
 }
 
+/** Enter the quick-play queue (matchmaking + bot backfill). */
+export function quickPlay(): void {
+  conn.send({ v: V, type: 'quick_play' });
+}
+
+/** Leave the quick-play queue before a match forms. */
+export function leaveQueue(): void {
+  conn.send({ v: V, type: 'leave_queue' });
+}
+
 export function sendChat(channel: ChatChannel, text: string): void {
   conn.send({ v: V, type: 'chat', channel, text });
 }
@@ -73,7 +94,13 @@ export function sendNightAction(ability: string, target: number | null, target2?
   // `target2` (batch E, Witch): the Witch's `witch_control` carries the PUPPET in
   // `target` and the VICTIM in `target2`. Optional and additive — omitted for every
   // single-target ability.
-  conn.send({ v: V, type: 'night_action', ability, target, ...(target2 !== undefined ? { target2 } : {}) });
+  conn.send({
+    v: V,
+    type: 'night_action',
+    ability,
+    target,
+    ...(target2 !== undefined ? { target2 } : {}),
+  });
 }
 
 export function sendDayAbility(ability: string, target?: number): void {

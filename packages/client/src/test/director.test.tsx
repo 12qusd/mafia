@@ -24,12 +24,7 @@ import type { StoreState } from '../store/types.js';
 import { useStore } from '../store/store.js';
 import { DirectorGate, describeTrace } from '../components/DirectorPanel.js';
 import { conn } from '../ws/connection.js';
-import {
-  testEndPhase,
-  testRequestState,
-  testAddBots,
-  testRemoveBot,
-} from '../ws/actions.js';
+import { testEndPhase, testRequestState, testAddBots, testRemoveBot } from '../ws/actions.js';
 
 const V = PROTOCOL_VERSION;
 
@@ -41,6 +36,7 @@ function baseState(): StoreState {
     userId: null,
     guestId: null,
     me: null,
+    matchmaking: null,
     lobby: null,
     game: null,
     own: null,
@@ -188,7 +184,10 @@ describe('describeTrace: ResolutionTrace → legible line (§6.8 audit)', () => 
       '#2 protects #2 (doctor)',
     );
     expect(
-      describeTrace({ step: 'kill', source: 'mafia', attacker: 0, target: 1, outcome: 'healed' }, name),
+      describeTrace(
+        { step: 'kill', source: 'mafia', attacker: 0, target: 1, outcome: 'healed' },
+        name,
+      ),
     ).toBe('mafia: #1 → #2 → healed');
   });
   it('renders investigations and deaths', () => {
@@ -198,9 +197,9 @@ describe('describeTrace: ResolutionTrace → legible line (§6.8 audit)', () => 
         name,
       ),
     ).toContain('sheriff #1 on #2 → suspicious');
-    expect(describeTrace({ step: 'death', seat: 1, role: 'DOCTOR', cause: 'mafia' }, name)).toContain(
-      '#2 dies',
-    );
+    expect(
+      describeTrace({ step: 'death', seat: 1, role: 'DOCTOR', cause: 'mafia' }, name),
+    ).toContain('#2 dies');
   });
 });
 
@@ -263,7 +262,13 @@ describe('test_control senders (host of a test lobby)', () => {
 
   it('add_bot with count + policy', () => {
     testAddBots(3, 'llm');
-    expect(sent[0]).toEqual({ v: V, type: 'test_control', action: 'add_bot', count: 3, policy: 'llm' });
+    expect(sent[0]).toEqual({
+      v: V,
+      type: 'test_control',
+      action: 'add_bot',
+      count: 3,
+      policy: 'llm',
+    });
   });
 
   it('remove_bot by seat and all', () => {

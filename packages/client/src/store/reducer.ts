@@ -19,13 +19,7 @@ import {
   type PrivateResultPayload,
 } from '@nocturne/shared';
 import { sanitizeText, sanitizeInline } from '../lib/sanitize.js';
-import type {
-  StoreState,
-  GameView,
-  OwnState,
-  ChatLine,
-  PrivateResultLine,
-} from './types.js';
+import type { StoreState, GameView, OwnState, ChatLine, PrivateResultLine } from './types.js';
 import { DEBUG_EVENT_CAP } from './types.js';
 
 /** Monotonic id source for client-side list keys. */
@@ -81,7 +75,12 @@ function emptyOwn(seat: number): OwnState {
 }
 
 /** Sanitize a chat record into a renderable line. */
-function toChatLine(rec: { channel: ChatRecord['channel']; from: number | 'Jailor'; text: string; ts: number }): ChatLine {
+function toChatLine(rec: {
+  channel: ChatRecord['channel'];
+  from: number | 'Jailor';
+  text: string;
+  ts: number;
+}): ChatLine {
   return {
     id: allocId(),
     channel: rec.channel,
@@ -154,7 +153,8 @@ export function reduce(state: StoreState, msg: ServerMessage): Partial<StoreStat
         name: sanitizeInline(msg.lobby.name),
         members: msg.lobby.members.map((m) => ({ ...m, name: sanitizeInline(m.name) })),
       };
-      return { lobby };
+      // Entering any lobby (incl. a matchmade one) ends the queue overlay.
+      return { lobby, matchmaking: null };
     }
 
     case 'game_started': {
@@ -168,6 +168,7 @@ export function reduce(state: StoreState, msg: ServerMessage): Partial<StoreStat
         game,
         gameOver: null,
         pointsAward: null,
+        matchmaking: null,
         chat: [],
         whisperMeta: [],
         privateLog: [],
@@ -197,9 +198,7 @@ export function reduce(state: StoreState, msg: ServerMessage): Partial<StoreStat
         abilities: msg.abilities,
         assignedTarget: msg.assignedTarget ?? null,
         ...(msg.mates ? { mates: msg.mates } : {}),
-        ...(roleChanged
-          ? { nightAbility: null, nightTarget: null, nightTarget2: null }
-          : {}),
+        ...(roleChanged ? { nightAbility: null, nightTarget: null, nightTarget2: null } : {}),
       };
       return { own };
     }
@@ -217,7 +216,9 @@ export function reduce(state: StoreState, msg: ServerMessage): Partial<StoreStat
         tallies: msg.phase === 'DAY_VOTING' ? state.game.tallies : [],
         votesBySeat: msg.phase === 'DAY_VOTING' ? state.game.votesBySeat : [],
         accusedSeat:
-          msg.phase === 'TRIAL_DEFENSE' || msg.phase === 'TRIAL_JUDGMENT' || msg.phase === 'EXECUTION'
+          msg.phase === 'TRIAL_DEFENSE' ||
+          msg.phase === 'TRIAL_JUDGMENT' ||
+          msg.phase === 'EXECUTION'
             ? state.game.accusedSeat
             : null,
       };
@@ -282,9 +283,7 @@ export function reduce(state: StoreState, msg: ServerMessage): Partial<StoreStat
       if (!state.game) return {};
       // Mark the seat dead + revealed in the public list, and queue the feed item.
       const seats = state.game.seats.map((s) =>
-        s.seat === msg.seat
-          ? { ...s, alive: false, role: msg.role }
-          : s,
+        s.seat === msg.seat ? { ...s, alive: false, role: msg.role } : s,
       );
       return {
         game: {
@@ -332,9 +331,7 @@ export function reduce(state: StoreState, msg: ServerMessage): Partial<StoreStat
         // threshold/skip math counts its weight (3) for ALL clients.
         if (state.game && revealedSeat !== null) {
           const seats = state.game.seats.map((s) =>
-            s.seat === revealedSeat
-              ? { ...s, mayorRevealed: true, role: s.role ?? 'MAYOR' }
-              : s,
+            s.seat === revealedSeat ? { ...s, mayorRevealed: true, role: s.role ?? 'MAYOR' } : s,
           );
           patch.game = { ...state.game, seats };
         }
@@ -408,7 +405,10 @@ export function reduce(state: StoreState, msg: ServerMessage): Partial<StoreStat
 
     case 'error': {
       return {
-        toasts: [...state.toasts, { id: allocId(), code: msg.code, ...(msg.detail ? { detail: msg.detail } : {}) }],
+        toasts: [
+          ...state.toasts,
+          { id: allocId(), code: msg.code, ...(msg.detail ? { detail: msg.detail } : {}) },
+        ],
       };
     }
 
@@ -437,6 +437,22 @@ export function reduce(state: StoreState, msg: ServerMessage): Partial<StoreStat
       const events = [...state.debug.events, msg];
       if (events.length > DEBUG_EVENT_CAP) events.splice(0, events.length - DEBUG_EVENT_CAP);
       return { debug: { ...state.debug, events } };
+    }
+
+    case 'queue_status': {
+      // Quick-play matchmaking feedback (§13.2: store only server-sent data).
+      if (msg.state === 'cancelled') {
+        return { matchmaking: null };
+      }
+      return {
+        matchmaking: {
+          state: msg.state,
+          position: msg.position ?? null,
+          queued: msg.queued ?? null,
+          eta: msg.eta ?? null,
+          lobbyId: msg.lobbyId ?? null,
+        },
+      };
     }
 
     case 'force_update': {
@@ -468,7 +484,9 @@ function clearPhaseSelections(own: OwnState, phase: Phase): OwnState {
 }
 
 /** Pull the discriminated payload out of a `private_result` message. */
-function extractPrivatePayload(msg: Extract<ServerMessage, { type: 'private_result' }>): PrivateResultPayload | null {
+function extractPrivatePayload(
+  msg: Extract<ServerMessage, { type: 'private_result' }>,
+): PrivateResultPayload | null {
   const parsed = PrivateResultPayloadSchema.safeParse(msg);
   return parsed.success ? parsed.data : null;
 }

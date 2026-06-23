@@ -63,6 +63,10 @@ export class MessageHandlers {
         return this.onKick(conn, msg);
       case 'start_game':
         return this.onStartGame(conn);
+      case 'quick_play':
+        return this.onQuickPlay(conn);
+      case 'leave_queue':
+        return this.onLeaveQueue(conn);
       case 'chat':
         return this.onChat(conn, msg);
       case 'whisper':
@@ -110,7 +114,12 @@ export class MessageHandlers {
     conn: Connection,
     msg: Extract<ClientMessage, { type: 'test_control' }>,
   ): Promise<void> {
-    const input: { action: string; count?: number; policy?: 'scripted' | 'llm'; seatOrAll?: number | 'all' } = {
+    const input: {
+      action: string;
+      count?: number;
+      policy?: 'scripted' | 'llm';
+      seatOrAll?: number | 'all';
+    } = {
       action: msg.action,
     };
     if (msg.action === 'add_bot') {
@@ -125,9 +134,16 @@ export class MessageHandlers {
 
   // --- hello / welcome (§9, §7.1, §8) --------------------------------------
 
-  private async onHello(conn: Connection, msg: Extract<ClientMessage, { type: 'hello' }>): Promise<void> {
+  private async onHello(
+    conn: Connection,
+    msg: Extract<ClientMessage, { type: 'hello' }>,
+  ): Promise<void> {
     if (msg.protocolVersion !== PROTOCOL_VERSION) {
-      conn.send({ v: 1, type: 'force_update', minProtocolVersion: PROTOCOL_VERSION } as ServerMessage);
+      conn.send({
+        v: 1,
+        type: 'force_update',
+        minProtocolVersion: PROTOCOL_VERSION,
+      } as ServerMessage);
       return;
     }
     let identity = await this.ctx.identity.resolveToken(msg.token);
@@ -197,7 +213,11 @@ export class MessageHandlers {
       replyError(conn, res.error as ErrorCode);
       return;
     }
-    conn.send({ v: 1, type: 'lobby_state', lobby: res.lobby.toDTO(this.ctx.nameOf) } as ServerMessage);
+    conn.send({
+      v: 1,
+      type: 'lobby_state',
+      lobby: res.lobby.toDTO(this.ctx.nameOf),
+    } as ServerMessage);
   }
 
   private async onJoinLobby(
@@ -217,20 +237,30 @@ export class MessageHandlers {
       replyError(conn, res.error as ErrorCode);
       return;
     }
-    conn.send({ v: 1, type: 'lobby_state', lobby: res.lobby.toDTO(this.ctx.nameOf) } as ServerMessage);
+    conn.send({
+      v: 1,
+      type: 'lobby_state',
+      lobby: res.lobby.toDTO(this.ctx.nameOf),
+    } as ServerMessage);
   }
 
   private onLeaveLobby(conn: Connection): void {
     this.ctx.manager.leaveLobby(conn);
   }
 
-  private onLobbyConfig(conn: Connection, msg: Extract<ClientMessage, { type: 'lobby_config' }>): void {
+  private onLobbyConfig(
+    conn: Connection,
+    msg: Extract<ClientMessage, { type: 'lobby_config' }>,
+  ): void {
     const err = this.ctx.manager.setConfig(conn, msg.config);
     if (err) replyError(conn, err as ErrorCode);
   }
 
   private onKick(conn: Connection, msg: Extract<ClientMessage, { type: 'kick' }>): void {
-    const target = typeof msg.seatOrUserId === 'number' ? this.seatToIdentity(conn, msg.seatOrUserId) : msg.seatOrUserId;
+    const target =
+      typeof msg.seatOrUserId === 'number'
+        ? this.seatToIdentity(conn, msg.seatOrUserId)
+        : msg.seatOrUserId;
     if (!target) {
       replyError(conn, 'not_in_lobby');
       return;
@@ -248,6 +278,21 @@ export class MessageHandlers {
   private onStartGame(conn: Connection): void {
     const res = this.ctx.manager.startGame(conn);
     if ('error' in res) replyError(conn, res.error as ErrorCode);
+  }
+
+  // --- Quick-Play matchmaking (cold-start bot backfill) --------------------
+
+  private async onQuickPlay(conn: Connection): Promise<void> {
+    if (conn.identity && (await this.ctx.identity.isBanned(conn.identity))) {
+      replyError(conn, 'forbidden', 'banned');
+      return;
+    }
+    const err = this.ctx.manager.quickPlay(conn);
+    if (err) replyError(conn, err as ErrorCode);
+  }
+
+  private onLeaveQueue(conn: Connection): void {
+    this.ctx.manager.leaveQueue(conn);
   }
 
   // --- In-game commands (§5.5, §6) -----------------------------------------
@@ -353,7 +398,10 @@ export class MessageHandlers {
     room.notedAction(seat);
   }
 
-  private onNightAction(conn: Connection, msg: Extract<ClientMessage, { type: 'night_action' }>): void {
+  private onNightAction(
+    conn: Connection,
+    msg: Extract<ClientMessage, { type: 'night_action' }>,
+  ): void {
     const seat = this.requireSeat(conn);
     if (seat === null) return;
     const room = this.ctx.manager.roomOf(conn)!;
@@ -375,7 +423,10 @@ export class MessageHandlers {
     room.notedAction(seat);
   }
 
-  private onDayAbility(conn: Connection, msg: Extract<ClientMessage, { type: 'day_ability' }>): void {
+  private onDayAbility(
+    conn: Connection,
+    msg: Extract<ClientMessage, { type: 'day_ability' }>,
+  ): void {
     const seat = this.requireSeat(conn);
     if (seat === null) return;
     const room = this.ctx.manager.roomOf(conn)!;
@@ -417,7 +468,10 @@ export class MessageHandlers {
     room.applyEvent({ type: 'death_note', seat, text, ts: Date.now() });
   }
 
-  private async onReport(conn: Connection, msg: Extract<ClientMessage, { type: 'report_player' }>): Promise<void> {
+  private async onReport(
+    conn: Connection,
+    msg: Extract<ClientMessage, { type: 'report_player' }>,
+  ): Promise<void> {
     const room = this.ctx.manager.roomOf(conn);
     if (!room) {
       replyError(conn, 'not_in_game');

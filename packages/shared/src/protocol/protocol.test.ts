@@ -33,6 +33,8 @@ const CLIENT_EXAMPLES: Record<string, unknown> = {
   kick_seat: { v: V, type: 'kick', seatOrUserId: 3 },
   kick_user: { v: V, type: 'kick', seatOrUserId: 'user-9' },
   start_game: { v: V, type: 'start_game' },
+  quick_play: { v: V, type: 'quick_play' },
+  leave_queue: { v: V, type: 'leave_queue' },
   chat: { v: V, type: 'chat', channel: 'day', text: 'I think 4 is mafia.' },
   whisper: { v: V, type: 'whisper', toSeat: 7, text: 'are you town?' },
   vote_seat: { v: V, type: 'vote', target: 5 },
@@ -83,7 +85,14 @@ const SERVER_EXAMPLES: Record<string, unknown> = {
     role: 'GODFATHER',
     faction: 'MAFIA',
     abilities: [
-      { id: 'control', name: 'Order the kill', timing: 'night', usesRemaining: null, targetDomain: 'living', verb: 'Order kill' },
+      {
+        id: 'control',
+        name: 'Order the kill',
+        timing: 'night',
+        usesRemaining: null,
+        targetDomain: 'living',
+        verb: 'Order kill',
+      },
     ],
     mates: [3, 5],
   },
@@ -171,6 +180,16 @@ const SERVER_EXAMPLES: Record<string, unknown> = {
   error: { v: V, type: 'error', code: 'wrong_phase', detail: 'not voting now' },
   pong: { v: V, type: 'pong', t: 99 },
   force_update: { v: V, type: 'force_update', minProtocolVersion: 2 },
+  queue_status_searching: {
+    v: V,
+    type: 'queue_status',
+    state: 'searching',
+    position: 1,
+    queued: 1,
+    eta: 1_700_000_000,
+  },
+  queue_status_matched: { v: V, type: 'queue_status', state: 'matched', lobbyId: 'lobby-1' },
+  queue_status_cancelled: { v: V, type: 'queue_status', state: 'cancelled' },
 };
 
 describe('client message schemas (§9.1)', () => {
@@ -190,6 +209,8 @@ describe('client message schemas (§9.1)', () => {
       'lobby_config',
       'kick',
       'start_game',
+      'quick_play',
+      'leave_queue',
       'chat',
       'whisper',
       'vote',
@@ -234,6 +255,7 @@ describe('server message schemas (§9.2)', () => {
       'error',
       'pong',
       'force_update',
+      'queue_status',
     ];
     for (const t of expected) expect(types.has(t)).toBe(true);
   });

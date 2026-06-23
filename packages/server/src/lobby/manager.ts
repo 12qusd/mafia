@@ -24,6 +24,7 @@ import type { BotManager } from '../bots/manager.js';
 import { newId, newInviteCode, newSeed } from '../ids.js';
 import { log } from '../log.js';
 import { Lobby, resolveConfig } from './lobby.js';
+import { Matchmaker, type MatchmakerHost, type MatchmakerTimings } from './matchmaker.js';
 import { Room, type ScheduleFn } from '../room/room.js';
 import { fingerprintMatch } from '../audit/fingerprint.js';
 import { awardMatchPoints } from '../points/award.js';
@@ -54,6 +55,17 @@ export interface ManagerDeps {
   bots?: BotManager;
   /** HMAC key for replay-integrity fingerprints (§9). */
   fingerprintSecret: string;
+  /**
+   * Whether an LLM is configured (LLM_BASE_URL set). The quick-play matchmaker
+   * uses this to decide whether to sprinkle a few LLM bots into the backfill;
+   * scripted bots are always the reliable default and the floor.
+   */
+  llmAvailable?: boolean;
+  /**
+   * Override the quick-play matchmaker timings (fill window, bot-join poll). Used
+   * by tests to make matchmaking complete in milliseconds; production omits it.
+   */
+  matchmakingTimings?: Partial<MatchmakerTimings>;
 }
 
 export class LobbyManager {
@@ -63,8 +75,12 @@ export class LobbyManager {
   /** identity id → lobby/room id they currently occupy. */
   private readonly identityScope = new Map<string, string>();
   private draining = false;
+  /** Quick-play matchmaking queue + auto-forming (cold-start backfill). */
+  readonly matchmaker: Matchmaker;
 
-  constructor(private readonly deps: ManagerDeps) {}
+  constructor(private readonly deps: ManagerDeps) {
+    this.matchmaker = new Matchmaker(this.makeMatchmakerHost(), this.deps.matchmakingTimings);
+  }
 
   get isDraining(): boolean {
     return this.draining;
@@ -141,9 +157,7 @@ export class LobbyManager {
    * Every resolved setup is validated; an invalid one (e.g. tampered custom row)
    * is rejected so it can never crash engine init().
    */
-  private async resolveSetup(
-    setupId: string,
-  ): Promise<{ setup: GameSetup } | { error: string }> {
+  private async resolveSetup(setupId: string): Promise<{ setup: GameSetup } | { error: string }> {
     let setup: GameSetup | undefined;
     if (setupId.startsWith('custom:')) {
       const row = await this.deps.store.getCustomSetup(setupId);
@@ -215,7 +229,12 @@ export class LobbyManager {
    */
   async testControl(
     conn: Connection,
-    msg: { action: string; count?: number; policy?: 'scripted' | 'llm'; seatOrAll?: number | 'all' },
+    msg: {
+      action: string;
+      count?: number;
+      policy?: 'scripted' | 'llm';
+      seatOrAll?: number | 'all';
+    },
   ): Promise<string | null> {
     const identityId = conn.identityId;
     if (!identityId) return 'not_authenticated';
@@ -412,7 +431,32 @@ export class LobbyManager {
     if (!lobby) return { error: 'not_in_lobby' };
     if (!lobby.isHost(conn.identityId as string)) return { error: 'not_host' };
     if (!lobby.canStart()) return { error: 'cannot_start' };
+    return this.formGame(lobby, {});
+  }
 
+  /**
+   * System-triggered start for a matchmade quick-play table (no host "Deal"
+   * click). The matchmaker calls this once a lobby is full (humans + bot
+   * backfill). Same locked-roster → Room → init → role-delivery path as the
+   * host-triggered {@link startGame}, but: it does NOT require a host, it sets
+   * the match `mode='quickplay'` for persistence, and it re-checks `canStart()`
+   * itself (the matchmaker only calls it when the lobby has filled).
+   */
+  startMatchmadeGame(lobby: Lobby): { room: Room } | { error: string } {
+    if (this.draining) return { error: 'cannot_start' };
+    if (lobby.status !== 'waiting') return { error: 'cannot_start' };
+    if (!this.lobbies.has(lobby.id)) return { error: 'lobby_not_found' };
+    if (!lobby.canStart()) return { error: 'cannot_start' };
+    return this.formGame(lobby, { mode: 'quickplay' });
+  }
+
+  /**
+   * Shared lock-roster → build Room → engine init → deliver roles core, reused
+   * by host-triggered {@link startGame} and system-triggered
+   * {@link startMatchmadeGame}. Preconditions (host/canStart) are validated by
+   * the caller; this method assumes the lobby is startable.
+   */
+  private formGame(lobby: Lobby, opts: { mode?: string }): { room: Room } | { error: string } {
     const players = lobby.playerConnections();
     const roster = players.map((c) => ({
       identityId: c.identityId as string,
@@ -435,6 +479,9 @@ export class LobbyManager {
       this.deps.clock,
     );
     room.onGameOver = (r) => void this.onGameOver(r);
+    // Queue mode is persisted with the MatchRecord (§10); quickplay for
+    // matchmade tables, undefined (casual) otherwise.
+    if (opts.mode) room.mode = opts.mode;
     // TEST MODE: the host becomes the god audience (debug_* in addition to
     // normal play). Set before init so begin()'s initial snapshot reaches them.
     if (lobby.config.testMode) room.godIdentityId = lobby.hostId;
@@ -471,8 +518,78 @@ export class LobbyManager {
     this.deps.telemetry.matchStarted(playerCount, playerCount, Date.now() - lobby.createdAt);
     this.lobbies.delete(lobby.id);
     if (lobby.inviteCode) this.inviteIndex.delete(lobby.inviteCode);
-    log.info('game started', { room: roomId, players: playerCount });
+    log.info('game started', { room: roomId, players: playerCount, mode: opts.mode ?? 'casual' });
     return { room };
+  }
+
+  // --- Quick-Play matchmaking (cold-start bot backfill) --------------------
+
+  /** Enter the quick-play queue. The matchmaker forms a full table + auto-starts. */
+  quickPlay(conn: Connection): string | null {
+    if (this.draining) return 'cannot_start';
+    if (!conn.identityId) return 'not_authenticated';
+    // Already in a lobby/room? Quick-play is a front-door action only.
+    if (this.identityScope.has(conn.identityId)) return 'already_in_lobby';
+    this.matchmaker.enqueue(conn);
+    return null;
+  }
+
+  /** Leave the quick-play queue before a match forms. */
+  leaveQueue(conn: Connection): void {
+    this.matchmaker.leave(conn);
+  }
+
+  /**
+   * Build the host surface the {@link Matchmaker} drives. Bundles the lobby
+   * create/join/start/bot operations against `this`, plus the clock/schedule
+   * seam so the fill window + bot-join polling are deterministic in tests.
+   */
+  private makeMatchmakerHost(): MatchmakerHost {
+    return {
+      isDraining: () => this.draining,
+      createMatchmakingLobby: (conn, setupId) =>
+        this.createLobby(conn, {
+          name: 'Quick Play',
+          visibility: 'private',
+          setupId,
+        }),
+      joinMatchmadeLobby: (conn, lobbyId) => this.joinLobby(conn, { lobbyId }),
+      addBots: async (lobbyId, inviteCode, count, policy) => {
+        const bots = this.deps.bots;
+        if (!bots) return 0;
+        return bots.addBots(lobbyId, inviteCode, count, policy);
+      },
+      lobbyPlayerCount: (lobbyId) => this.lobbies.get(lobbyId)?.playerCount ?? 0,
+      lobbyIsWaiting: (lobbyId) => this.lobbies.get(lobbyId)?.status === 'waiting',
+      startMatchmadeGame: (lobbyId) => {
+        const lobby = this.lobbies.get(lobbyId);
+        if (!lobby) return { error: 'lobby_not_found' };
+        const res = this.startMatchmadeGame(lobby);
+        return 'error' in res ? { error: res.error } : { ok: true };
+      },
+      disposeMatchmakingLobby: (lobbyId) => {
+        const lobby = this.lobbies.get(lobbyId);
+        if (!lobby) return;
+        // Tell any seated humans the table fell through (they navigated on the
+        // 'matched' frame); a `cannot_start` error surfaces as a client toast.
+        lobby.broadcast({
+          v: 1,
+          type: 'error',
+          code: 'cannot_start',
+          detail: 'could not seat a full table',
+        } as never);
+        // Clear identityScope for members so they can re-queue / re-join.
+        for (const c of lobby.allConnections()) {
+          const id = c.identityId;
+          if (id) {
+            this.identityScope.delete(id);
+            c.lobbyId = null;
+          }
+        }
+        this.disposeLobby(lobby);
+      },
+      llmAvailable: this.deps.llmAvailable === true,
+    };
   }
 
   private async onGameOver(room: Room): Promise<void> {
@@ -512,6 +629,8 @@ export class LobbyManager {
         outcome: 'completed',
         serverBuild: this.deps.serverBuild,
         fingerprint,
+        // Queue mode (§10): 'quickplay' for matchmade tables, omitted otherwise.
+        ...(room.mode ? { mode: room.mode } : {}),
         players: rec.players,
         events,
         chat,
@@ -586,6 +705,8 @@ export class LobbyManager {
   onDisconnect(conn: Connection): void {
     const identityId = conn.identityId;
     if (!identityId) return;
+    // A queued (not-yet-seated) quick-play player: drop them from the queue.
+    this.matchmaker.onDisconnect(identityId);
     const scopeId = this.identityScope.get(identityId);
     if (!scopeId) return;
     const room = this.rooms.get(scopeId);
@@ -631,10 +752,17 @@ export class LobbyManager {
 
   startDrain(): void {
     this.draining = true;
+    // Cancel the quick-play queue: no new tables form while draining.
+    this.matchmaker.dispose();
     // Reject new lobbies; let running games finish. Dispose empty lobbies.
     for (const lobby of [...this.lobbies.values()]) {
       if (lobby.status === 'waiting') {
-        lobby.broadcast({ v: 1, type: 'error', code: 'cannot_start', detail: 'server draining' } as never);
+        lobby.broadcast({
+          v: 1,
+          type: 'error',
+          code: 'cannot_start',
+          detail: 'server draining',
+        } as never);
       }
     }
   }
@@ -647,6 +775,7 @@ export class LobbyManager {
   }
 
   disposeAll(): void {
+    this.matchmaker.dispose();
     this.deps.bots?.disposeAll();
     for (const r of this.rooms.values()) r.dispose();
     this.rooms.clear();

@@ -5,13 +5,7 @@
 
 import { useEffect, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
-import {
-  strings,
-  SETUPS,
-  MIN_PLAYERS,
-  MAX_PLAYERS,
-  type LobbyVisibility,
-} from '@nocturne/shared';
+import { strings, SETUPS, MIN_PLAYERS, MAX_PLAYERS, type LobbyVisibility } from '@nocturne/shared';
 import { useStore } from '../store/store.js';
 import { conn } from '../ws/connection.js';
 import { useLobbyNav } from '../components/useLobbyNav.js';
@@ -23,7 +17,7 @@ import { sanitizeInline } from '../lib/sanitize.js';
 import { loadGuestName, loadToken } from '../lib/storage.js';
 import { refreshMe } from '../lib/me.js';
 import * as api from '../lib/api.js';
-import { createLobby, joinLobby } from '../ws/actions.js';
+import { createLobby, joinLobby, quickPlay, leaveQueue } from '../ws/actions.js';
 import type { LobbyListItem } from '../lib/api.js';
 
 export function HomeScreen() {
@@ -32,13 +26,27 @@ export function HomeScreen() {
   const userId = useStore((s) => s.userId);
   const me = useStore((s) => s.me);
   const pushInfo = useStore((s) => s.pushInfo);
+  const connection = useStore((s) => s.connection);
   const authed = !!(guestId || userId || loadToken());
+  // The WS session is live once we've received a welcome (connection 'open').
+  const ready = connection === 'open' && authed;
 
   return (
     <div className="page stack">
       <div className="hero">
         <h1>{strings.UI.appName}</h1>
         <p>{HOME.heroSub}</p>
+      </div>
+
+      <div className="quickplay">
+        <button
+          className="btn btn-primary btn-quickplay"
+          disabled={!ready}
+          onClick={() => quickPlay()}
+        >
+          {HOME.quickPlay}
+        </button>
+        <p className="quickplay-sub">{HOME.quickPlaySub}</p>
       </div>
 
       {me && <ProfilePanel />}
@@ -52,6 +60,41 @@ export function HomeScreen() {
       </div>
 
       <LobbyBrowser onJoin={(id) => joinLobby({ lobbyId: id })} pushInfo={pushInfo} />
+
+      <QuickPlayOverlay />
+    </div>
+  );
+}
+
+/**
+ * "Finding a table…" overlay, shown while the player is in the quick-play queue
+ * (`matchmaking` slice, server-sourced). A Cancel sends `leave_queue`; once a
+ * table forms the matchmaking slice clears (lobby_state/game_started arrives)
+ * and `useLobbyNav` routes into the game.
+ */
+function QuickPlayOverlay() {
+  const matchmaking = useStore((s) => s.matchmaking);
+  if (!matchmaking) return null;
+  const matched = matchmaking.state === 'matched';
+  return (
+    <div className="overlay" role="dialog" aria-modal="true" aria-label={HOME.quickPlaySearching}>
+      <div className="modal quickplay-modal">
+        <div className="panel panel-pad">
+          <div className="qp-spinner" aria-hidden="true" />
+          <h2 className="qp-title">{matched ? HOME.quickPlayMatched : HOME.quickPlaySearching}</h2>
+          <p className="qp-sub">{matched ? '' : HOME.quickPlaySearchingSub}</p>
+          {!matched && matchmaking.position !== null && matchmaking.queued !== null && (
+            <p className="qp-position">
+              {HOME.quickPlayPosition(matchmaking.position, matchmaking.queued)}
+            </p>
+          )}
+          {!matched && (
+            <button className="btn" onClick={() => leaveQueue()}>
+              {HOME.quickPlayCancel}
+            </button>
+          )}
+        </div>
+      </div>
     </div>
   );
 }
@@ -121,11 +164,7 @@ function AuthCard() {
           </div>
           <div>
             <label>{HOME.passwordLabel}</label>
-            <input
-              type="password"
-              value={password}
-              onChange={(e) => setPassword(e.target.value)}
-            />
+            <input type="password" value={password} onChange={(e) => setPassword(e.target.value)} />
           </div>
           {mode === 'register' && (
             <div>
@@ -236,7 +275,11 @@ function CreateLobbyCard() {
         </span>
         <Switch on={testMode} label={HOME.testModeLabel} onChange={setTestMode} />
       </div>
-      {testMode && <p className="faint" style={{ fontSize: '0.8em' }}>{HOME.testModeHint}</p>}
+      {testMode && (
+        <p className="faint" style={{ fontSize: '0.8em' }}>
+          {HOME.testModeHint}
+        </p>
+      )}
       <button
         className="btn btn-primary"
         disabled={name.trim().length === 0}
@@ -258,12 +301,7 @@ function CreateLobbyCard() {
   );
 }
 
-function LobbyBrowser({
-  onJoin,
-}: {
-  onJoin: (id: string) => void;
-  pushInfo: (s: string) => void;
-}) {
+function LobbyBrowser({ onJoin }: { onJoin: (id: string) => void; pushInfo: (s: string) => void }) {
   const [lobbies, setLobbies] = useState<LobbyListItem[]>([]);
   const [loading, setLoading] = useState(false);
 

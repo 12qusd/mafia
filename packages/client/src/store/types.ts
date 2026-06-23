@@ -181,6 +181,24 @@ export interface Toast {
 }
 
 /**
+ * Quick-Play matchmaking slice (server-sourced via `queue_status`, §13.2). Holds
+ * only what the server reported. `state` mirrors the wire enum:
+ *  - 'searching' — in the queue; `position`/`queued`/`eta` drive the overlay.
+ *  - 'matched'   — a table formed; the normal lobby/game frames follow, so this
+ *    just signals the UI to drop the "finding a table…" overlay.
+ * Null when the player is not queuing.
+ */
+export interface MatchmakingState {
+  state: 'searching' | 'matched';
+  position: number | null;
+  queued: number | null;
+  /** Server epoch-ms the fill window is expected to close (countdown), if known. */
+  eta: number | null;
+  /** The matchmaking lobby/room id once matched. */
+  lobbyId: string | null;
+}
+
+/**
  * TEST-MODE god-view state (`packages/shared/src/protocol/debug.ts`). Present
  * ONLY for the host of a gated test lobby (the god audience); a normal client
  * never receives `debug_*` frames, so `debug` stays at its empty initial shape
@@ -209,6 +227,10 @@ export interface StoreState {
   guestId: string | null;
   /** Signed-in account/guest from `GET /api/me` (goal 4/8). Null until fetched. */
   me: MeState | null;
+
+  // --- Matchmaking --------------------------------------------------------
+  /** Quick-play queue state (null when not queuing). Server-sourced (§13.2). */
+  matchmaking: MatchmakingState | null;
 
   // --- Lobby --------------------------------------------------------------
   lobby: Lobby | null;

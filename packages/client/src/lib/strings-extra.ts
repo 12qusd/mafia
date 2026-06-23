@@ -22,6 +22,13 @@ import {
 /** Home / auth / lobby-browser copy. */
 export const HOME = {
   heroSub: 'Find your table. Read the room. Survive the night.',
+  quickPlay: 'Quick Play',
+  quickPlaySub: 'Sit down now — we deal you in within seconds.',
+  quickPlaySearching: 'Finding you a table…',
+  quickPlaySearchingSub: 'Holding a seat while the others arrive.',
+  quickPlayMatched: 'Table found — dealing you in…',
+  quickPlayCancel: 'Cancel',
+  quickPlayPosition: (pos: number, total: number) => `You are ${pos} of ${total} at the door`,
   guestNameLabel: 'You will be seated as',
   newGuestName: 'New face',
   loginHeading: 'Sign in',
@@ -210,7 +217,7 @@ export const GAME = {
   deathNoteFound: 'A note left behind',
   gameOver: 'The dust settles',
   winners: 'The winners',
-  roleReveal: 'Everyone\'s hand',
+  roleReveal: "Everyone's hand",
   yourResult: 'Your result',
   seedLabel: 'Match seed',
   playAgain: 'Same crowd, again',

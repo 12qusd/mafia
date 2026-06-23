@@ -79,6 +79,8 @@ export async function buildApp(cfg: ServerConfig): Promise<BuiltApp> {
     testModeEnv: cfg.testModeEnv,
     bots: botManager,
     fingerprintSecret: cfg.sessionSecret,
+    // Quick-play matchmaker sprinkles a few LLM bots only when an LLM is wired.
+    llmAvailable: llmConfig !== null,
   });
 
   const ctx: GatewayContext = { cfg, store, identity, manager, moderation, telemetry, nameOf };

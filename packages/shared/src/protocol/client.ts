@@ -61,6 +61,15 @@ export const KickSchema = envelope('kick', {
 // start_game {}
 export const StartGameSchema = envelope('start_game', {});
 
+// quick_play {}  — enter the public quick-play matchmaking queue. The server
+// forms a full table within seconds: real queuers join, AI bots backfill the
+// remaining seats, and the game AUTO-STARTS (no host "Deal" click). Works for
+// guests (the matchmaking lobby is private). See `queue_status` (server.ts).
+export const QuickPlaySchema = envelope('quick_play', {});
+
+// leave_queue {}  — leave the quick-play queue before a match forms.
+export const LeaveQueueSchema = envelope('leave_queue', {});
+
 // chat {channel, text}
 export const ChatSchema = envelope('chat', {
   channel: ChatChannelSchema,
@@ -125,7 +134,12 @@ export const AdminActionSchema = envelope('admin_action', {
   action: z.enum(['kill', 'stump', 'force_phase', 'grant_points', 'revoke_points', 'temp_ban']),
   targetSeat: SeatIdSchema.optional(),
   points: z.number().int().min(0).max(100000).optional(),
-  durationMs: z.number().int().min(0).max(30 * 24 * 60 * 60 * 1000).optional(),
+  durationMs: z
+    .number()
+    .int()
+    .min(0)
+    .max(30 * 24 * 60 * 60 * 1000)
+    .optional(),
   reason: z.string().max(200).optional(),
 });
 
@@ -149,6 +163,8 @@ export const ClientMessageSchema = z.union([
   LobbyConfigMessageSchema,
   KickSchema,
   StartGameSchema,
+  QuickPlaySchema,
+  LeaveQueueSchema,
   ChatSchema,
   WhisperClientSchema,
   VoteSchema,
@@ -173,6 +189,8 @@ export type LeaveLobby = z.infer<typeof LeaveLobbySchema>;
 export type LobbyConfigMessage = z.infer<typeof LobbyConfigMessageSchema>;
 export type Kick = z.infer<typeof KickSchema>;
 export type StartGame = z.infer<typeof StartGameSchema>;
+export type QuickPlay = z.infer<typeof QuickPlaySchema>;
+export type LeaveQueue = z.infer<typeof LeaveQueueSchema>;
 export type Chat = z.infer<typeof ChatSchema>;
 export type WhisperClient = z.infer<typeof WhisperClientSchema>;
 export type Vote = z.infer<typeof VoteSchema>;

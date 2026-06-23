@@ -153,6 +153,7 @@ function baseState(): StoreState {
     userId: null,
     guestId: null,
     me: null,
+    matchmaking: null,
     lobby: null,
     game: {
       setupId: 's',
@@ -224,7 +225,7 @@ describe('ChatPane: silenced input + context-aware muted message', () => {
     onSend: vi.fn(),
   };
 
-  it("disables the day input and shows the blackmail note for a silenced seat", () => {
+  it('disables the day input and shows the blackmail note for a silenced seat', () => {
     const ctx = ctxOf({ phase: 'DAY_DISCUSSION', silencedToday: true });
     render(
       <ChatPane
@@ -275,9 +276,7 @@ describe('ChatPane: silenced input + context-aware muted message', () => {
     useStore.setState({
       chat: [{ id: 1, channel: 'jail', from: JAILOR_CHAT_ALIAS, text: 'speak', ts: 0 }],
     });
-    render(
-      <ChatPane {...common} channels={['jail']} activeDefault="jail" canSpeak={false} />,
-    );
+    render(<ChatPane {...common} channels={['jail']} activeDefault="jail" canSpeak={false} />);
     expect(screen.getByText(`${JAILOR_CHAT_ALIAS}:`)).toBeInTheDocument();
     useStore.setState({ chat: [] });
     void seat;

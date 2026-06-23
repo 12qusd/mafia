@@ -200,6 +200,26 @@ export const ForceUpdateSchema = envelope('force_update', {
   minProtocolVersion: z.number().int().min(1),
 });
 
+// queue_status {state, position?, queued?, eta?, lobbyId?}
+//
+// Quick-play matchmaking feedback (per-recipient; leak-safe, carries no secret).
+//  - 'searching' — the player is in the queue. `position` (1-based) and `queued`
+//    (current queue size) drive the "finding a table…" UI; `eta` is the server
+//    epoch-ms the fill window is expected to close (best-effort countdown).
+//  - 'matched'   — a table formed; `lobbyId` is the matchmaking lobby/room id.
+//    The player is already moved into the room and will receive the normal
+//    `lobby_state` / `game_started` / `your_role` frames; this only tells the
+//    client to leave the "searching" overlay.
+//  - 'cancelled' — the player left the queue, or the queue emptied before a
+//    match formed.
+export const QueueStatusSchema = envelope('queue_status', {
+  state: z.enum(['searching', 'matched', 'cancelled']),
+  position: z.number().int().min(1).optional(),
+  queued: z.number().int().min(0).optional(),
+  eta: z.number().int().optional(),
+  lobbyId: z.string().optional(),
+});
+
 /**
  * Discriminated union of every server→client message.
  *
@@ -229,6 +249,7 @@ export const ServerMessageSchema = z.union([
   ErrorSchema,
   PongSchema,
   ForceUpdateSchema,
+  QueueStatusSchema,
   DebugStateSchema,
   DebugTraceSchema,
   DebugEventSchema,
@@ -258,4 +279,5 @@ export type SeatTransform = z.infer<typeof SeatTransformSchema>;
 export type ServerError = z.infer<typeof ErrorSchema>;
 export type Pong = z.infer<typeof PongSchema>;
 export type ForceUpdate = z.infer<typeof ForceUpdateSchema>;
+export type QueueStatus = z.infer<typeof QueueStatusSchema>;
 export type { DebugState, DebugTrace, DebugEvent } from './debug.js';
