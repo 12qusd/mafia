@@ -17,8 +17,8 @@ trademark sweep (no "SC2"/"StarCraft", no bare "Mafia" — Take-Two marks).
 
 - GitHub: `12qusd/mafia`. Live checkout on host `mrfox` at
   `/home/fox/Projects/mafia` (Debian, accessed via `ssh mrfox`).
-- Active branch: `feat/nocturne-full-buildout` (23 commits ahead of `main`).
-  `main` is the default branch but lags the buildout.
+- Active branch: `feat/nocturne-full-buildout` (well ahead of `main` — ~24
+  commits and counting). `main` is the default branch but lags the buildout.
 - Stack: TypeScript end-to-end. Node 20+ (`.nvmrc` = `20`),
   `pnpm@9.15.9` (`packageManager`). Strict TS, ESLint (typescript-eslint),
   Prettier, Vitest. ESM (`"type": "module"`), `module: NodeNext`.
@@ -219,9 +219,11 @@ Source of truth: `OPERATIONS.md` and `ecosystem.config.cjs`.
   port 5433), then `pnpm --filter @nocturne/server migrate`. `NO_DB=1` runs
   guests-only in-memory (dev/CI/bots).
 - Env vars: see `packages/server/src/config.ts` and the README table. Live values
-  in `ecosystem.config.cjs` (note: it currently contains real secrets —
-  `SESSION_SECRET`, `ADMIN_TOKEN` — committed to the repo; treat as
-  operator-rotatable, don't paste into external channels).
+  live in `ecosystem.config.cjs` on the host, which holds real secrets
+  (`SESSION_SECRET`, `ADMIN_TOKEN`). That file is **gitignored and NOT tracked**
+  (`.gitignore` line 33; never committed — verified `git log --all` is empty for
+  it), so the secrets are not in the repo or on GitHub. Keep it untracked; don't
+  paste the values into external channels; rotate if ever exposed.
 
 ## Conventions
 
