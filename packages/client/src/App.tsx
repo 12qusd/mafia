@@ -10,6 +10,7 @@ import { strings } from '@nocturne/shared';
 import { conn } from './ws/connection.js';
 import { useStore } from './store/store.js';
 import { refreshMe } from './lib/me.js';
+import { pingPresence } from './lib/api.js';
 import { Toasts } from './components/Toasts.js';
 import { ForceUpdateModal } from './components/ForceUpdateModal.js';
 import { Glossary } from './components/Glossary.js';
@@ -24,10 +25,14 @@ import { PreferencesScreen } from './screens/PreferencesScreen.js';
 import { LeaderboardScreen } from './screens/LeaderboardScreen.js';
 import { SetupsScreen } from './screens/SetupsScreen.js';
 import { ReplayScreen } from './screens/ReplayScreen.js';
+import { CommunityScreen } from './screens/CommunityScreen.js';
+import { ProfileScreen } from './screens/ProfileScreen.js';
+import { FriendsScreen } from './screens/FriendsScreen.js';
 
 export function App() {
   const settings = useStore((s) => s.settings);
   const phase = useStore((s) => s.game?.phase ?? null);
+  const meId = useStore((s) => (s.me && !s.me.isGuest ? s.me.id : null));
   // Public role glossary ("The Cast") — open from the topbar on every screen so
   // any player can read every role's canonical card (anti fake-verify, §13.1).
   const [glossaryOpen, setGlossaryOpen] = useState(false);
@@ -47,6 +52,16 @@ export function App() {
     void refreshMe();
     return () => conn.disconnect();
   }, []);
+
+  // Presence heartbeat (Social): ping while a registered account is signed in.
+  // The server throttles DB writes to ≥30s/user, so a 60s client cadence keeps
+  // the "online" dots warm without churn. Guests have no presence row.
+  useEffect(() => {
+    if (!meId) return;
+    void pingPresence();
+    const t = setInterval(() => void pingPresence(), 60_000);
+    return () => clearInterval(t);
+  }, [meId]);
 
   // Apply display settings + scene tint to the document root.
   useEffect(() => {
@@ -87,6 +102,12 @@ export function App() {
             <Link className="linkbtn" to="/leaderboard">
               Leaderboard
             </Link>
+            <Link className="linkbtn" to="/community">
+              Community
+            </Link>
+            <Link className="linkbtn" to="/friends">
+              Friends
+            </Link>
             <Link className="linkbtn" to="/setups">
               Setups
             </Link>
@@ -115,6 +136,9 @@ export function App() {
           <Route path="/lobby/:id" element={<LobbyScreen />} />
           <Route path="/game" element={<GameScreen />} />
           <Route path="/leaderboard" element={<LeaderboardScreen />} />
+          <Route path="/community" element={<CommunityScreen />} />
+          <Route path="/friends" element={<FriendsScreen />} />
+          <Route path="/u/:username" element={<ProfileScreen />} />
           <Route path="/setups" element={<SetupsScreen />} />
           <Route path="/replay/:matchId" element={<ReplayScreen />} />
           <Route path="/preferences" element={<PreferencesScreen />} />

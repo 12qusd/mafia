@@ -14,6 +14,8 @@ export interface UserRow {
   email: string | null;
   passwordHash: string;
   flags: number;
+  /** Account creation time (epoch ms). Optional: not all read paths select it. */
+  createdAt?: number;
 }
 
 export type SanctionType = 'warning' | 'mute' | 'temp_ban' | 'perma_ban';
@@ -203,6 +205,55 @@ export interface ActiveSanctions {
   muteExpiresAt: number | null;
 }
 
+// --------------------------------------------------------------------------
+// Social: profiles, presence, friends, chat rooms, direct messages
+// (Social feature — HTTP-only, its own tables; never in the game hot path.)
+// --------------------------------------------------------------------------
+
+/** A user's public profile (free-text, length-capped server-side). */
+export interface ProfileRow {
+  userId: string;
+  tagline: string | null;
+  bio: string | null;
+  /** Optional faction-flair key (validated against a client allowlist; ≤24). */
+  accent: string | null;
+  updatedAt: number;
+}
+
+/** A public chat room: the global shoutbox or a topical channel. */
+export interface ChatRoomRow {
+  id: string;
+  slug: string;
+  name: string;
+  topic: string;
+  /** 'shoutbox' (the global wire) | 'channel' (a topical room). */
+  kind: string;
+  sort: number;
+  createdAt: number;
+}
+
+/** A single posted room message (joined to its author's username). */
+export interface RoomMessageRow {
+  id: string;
+  roomId: string;
+  userId: string;
+  username: string;
+  body: string;
+  createdAt: number;
+}
+
+/** A single direct message in a thread. */
+export interface DmMessageRow {
+  id: string;
+  threadId: string;
+  senderId: string;
+  body: string;
+  createdAt: number;
+}
+
+/** Canonical friendship status between the caller and another user. */
+export type FriendshipStatus = 'none' | 'pending_out' | 'pending_in' | 'friends';
+
 export interface Store {
   readonly persistent: boolean;
 
@@ -294,6 +345,86 @@ export interface Store {
 
   // Telemetry rollup (§15)
   upsertDailyRollup(day: string, fields: Record<string, number>): Promise<void>;
+
+  // --- Social: profiles & presence -----------------------------------------
+  /** A user's public profile, or null if they have not set one. */
+  getProfile(userId: string): Promise<ProfileRow | null>;
+  /** Insert-or-update a user's profile (each field length-capped by the caller). */
+  upsertProfile(
+    userId: string,
+    fields: { tagline?: string | undefined; bio?: string | undefined; accent?: string | undefined },
+  ): Promise<void>;
+  /** Record a presence ping (users.last_seen_at). `at` is epoch ms. */
+  touchPresence(userId: string, at: number): Promise<void>;
+  /** Last-seen epoch-ms (or null) for each of the given user ids. */
+  getLastSeen(userIds: string[]): Promise<Record<string, number | null>>;
+
+  // --- Social: friends ------------------------------------------------------
+  /**
+   * Request friendship. If a *reverse* pending row already exists, accept it
+   * ('accepted'); a same-direction pending/accepted row returns 'exists';
+   * otherwise a new pending row is created ('created').
+   */
+  requestFriend(
+    requesterId: string,
+    addresseeId: string,
+  ): Promise<'created' | 'exists' | 'accepted'>;
+  /** Respond to a request (only the addressee may act). accept→accepted; decline→delete. */
+  respondFriend(userId: string, friendshipId: string, accept: boolean): Promise<boolean>;
+  /** Remove the friendship (any row) for the unordered pair. */
+  removeFriend(userId: string, otherId: string): Promise<boolean>;
+  /** The caller's accepted friends (id, name, last-seen). */
+  listFriends(
+    userId: string,
+  ): Promise<Array<{ userId: string; username: string; lastSeen: number | null }>>;
+  /** Incoming + outgoing pending friend requests for the caller. */
+  listFriendRequests(userId: string): Promise<{
+    incoming: Array<{ id: string; userId: string; username: string; createdAt: number }>;
+    outgoing: Array<{ id: string; userId: string; username: string; createdAt: number }>;
+  }>;
+  /** Friendship status between the caller and another user. */
+  friendshipStatus(userId: string, otherId: string): Promise<FriendshipStatus>;
+
+  // --- Social: chat rooms ---------------------------------------------------
+  /** All chat rooms, ordered by sort. */
+  listRooms(): Promise<ChatRoomRow[]>;
+  /** A room by its slug, or null. */
+  getRoomBySlug(slug: string): Promise<ChatRoomRow | null>;
+  /** Post a message to a room (returns the persisted row, author joined). */
+  postRoomMessage(roomId: string, userId: string, body: string): Promise<RoomMessageRow>;
+  /**
+   * The newest `limit` messages for a room, ascending by time. With `sinceId`,
+   * only messages strictly newer than that id (poll deltas). `limit` capped ≤100.
+   */
+  listRoomMessages(
+    roomId: string,
+    opts: { limit: number; sinceId?: string },
+  ): Promise<
+    Array<{ id: string; userId: string; username: string; body: string; createdAt: number }>
+  >;
+
+  // --- Social: direct messages ---------------------------------------------
+  /** The canonical thread id for an unordered pair (creating it if needed). */
+  ensureDmThread(a: string, b: string): Promise<string>;
+  /** Post a DM (bumps the thread's last_at). */
+  postDm(threadId: string, senderId: string, body: string): Promise<DmMessageRow>;
+  /** The caller's DM threads, newest first (with the other participant + preview). */
+  listDmThreads(userId: string): Promise<
+    Array<{
+      threadId: string;
+      otherUserId: string;
+      otherUsername: string;
+      lastAt: number;
+      preview: string;
+    }>
+  >;
+  /** Messages in a thread, ascending. With `sinceId`, only newer ones. `limit` ≤100. */
+  listDmMessages(
+    threadId: string,
+    opts: { limit: number; sinceId?: string },
+  ): Promise<Array<{ id: string; senderId: string; body: string; createdAt: number }>>;
+  /** The two participant user ids of a thread (for authorization), or null. */
+  dmThreadParticipants(threadId: string): Promise<[string, string] | null>;
 
   close(): Promise<void>;
 }

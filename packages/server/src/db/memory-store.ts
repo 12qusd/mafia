@@ -9,6 +9,7 @@
 import type { GameSetup } from '@nocturne/shared';
 import { newId } from '../ids.js';
 import { log } from '../log.js';
+import { DEFAULT_ROOMS } from './default-rooms.js';
 import type {
   Store,
   UserRow,
@@ -27,7 +28,30 @@ import type {
   RolePreference,
   RankedResultInput,
   RatingLeaderboardEntry,
+  ProfileRow,
+  ChatRoomRow,
+  RoomMessageRow,
+  DmMessageRow,
+  FriendshipStatus,
 } from './types.js';
+
+/** Internal friendship record (one per unordered pair). */
+interface MemFriendship {
+  id: string;
+  requesterId: string;
+  addresseeId: string;
+  status: 'pending' | 'accepted';
+  createdAt: number;
+  respondedAt: number | null;
+}
+
+/** Internal DM thread record (canonical lo<hi ordering). */
+interface MemDmThread {
+  id: string;
+  userLo: string;
+  userHi: string;
+  lastAt: number;
+}
 
 export class MemoryStore implements Store {
   readonly persistent = false;
@@ -45,9 +69,59 @@ export class MemoryStore implements Store {
   private readonly ratings = new Map<string, RatingRow>();
   private readonly rolePrefs = new Map<string, Map<string, RolePreference['preference']>>();
   private readonly rankedResults: RankedResultInput[] = [];
+  // --- Social (process-lifetime only) --------------------------------------
+  private readonly profiles = new Map<string, ProfileRow>();
+  private readonly lastSeen = new Map<string, number>();
+  private readonly friendships: MemFriendship[] = [];
+  private readonly rooms: ChatRoomRow[] = [];
+  private readonly roomMessages: RoomMessageRow[] = [];
+  private readonly dmThreads: MemDmThread[] = [];
+  private readonly dmMessages: DmMessageRow[] = [];
+  /** Monotonic clock so same-millisecond posts keep a stable, increasing order. */
+  private clockSeq = 0;
 
   constructor() {
     log.warn('NO_DB mode: running guests-only with no persistence (§10).');
+    // Seed the same default chat rooms the SQL schema seeds, so /api/rooms works
+    // identically in NO_DB/guests-only mode (Social feature).
+    const now = Date.now();
+    for (const r of DEFAULT_ROOMS) {
+      this.rooms.push({
+        id: newId(),
+        slug: r.slug,
+        name: r.name,
+        topic: r.topic,
+        kind: r.kind,
+        sort: r.sort,
+        createdAt: now,
+      });
+    }
+  }
+
+  /**
+   * Best-effort username for a user id. MemoryStore is guests-only (no user
+   * table), so social rows store the id; we resolve a name from any recorded
+   * profile/registry or fall back to a short id-derived handle (mirrors nameOf).
+   */
+  private nameFor(userId: string): string {
+    return this.usernames.get(userId) ?? userId;
+  }
+  /** Optional name registry so unit tests can attach readable usernames. */
+  private readonly usernames = new Map<string, string>();
+  /** Test/seed helper: associate a display name with a synthetic user id. */
+  setUsernameForTest(userId: string, username: string): void {
+    this.usernames.set(userId, username);
+  }
+
+  /**
+   * A strictly-increasing timestamp (epoch ms, but never repeating within a
+   * process). Postgres orders ties by created_at + id; in-memory we keep the
+   * same observable ordering without depending on sub-ms wall-clock resolution.
+   */
+  private now(): number {
+    const t = Date.now();
+    this.clockSeq = t > this.clockSeq ? t : this.clockSeq + 1;
+    return this.clockSeq;
   }
 
   async createUser(): Promise<UserRow> {
@@ -326,6 +400,267 @@ export class MemoryStore implements Store {
       .reverse()
       .slice(0, Math.max(1, Math.min(limit, 500)))
       .map((r) => ({ ...r }));
+  }
+
+  // --- Social: profiles & presence -----------------------------------------
+
+  async getProfile(userId: string): Promise<ProfileRow | null> {
+    return this.profiles.get(userId) ?? null;
+  }
+  async upsertProfile(
+    userId: string,
+    fields: { tagline?: string | undefined; bio?: string | undefined; accent?: string | undefined },
+  ): Promise<void> {
+    const cur = this.profiles.get(userId);
+    this.profiles.set(userId, {
+      userId,
+      tagline: fields.tagline !== undefined ? fields.tagline : (cur?.tagline ?? null),
+      bio: fields.bio !== undefined ? fields.bio : (cur?.bio ?? null),
+      accent: fields.accent !== undefined ? fields.accent : (cur?.accent ?? null),
+      updatedAt: Date.now(),
+    });
+  }
+  async touchPresence(userId: string, at: number): Promise<void> {
+    this.lastSeen.set(userId, at);
+  }
+  async getLastSeen(userIds: string[]): Promise<Record<string, number | null>> {
+    const out: Record<string, number | null> = {};
+    for (const id of userIds) out[id] = this.lastSeen.get(id) ?? null;
+    return out;
+  }
+
+  // --- Social: friends ------------------------------------------------------
+
+  private findFriendship(a: string, b: string): MemFriendship | undefined {
+    return this.friendships.find(
+      (f) =>
+        (f.requesterId === a && f.addresseeId === b) ||
+        (f.requesterId === b && f.addresseeId === a),
+    );
+  }
+
+  async requestFriend(
+    requesterId: string,
+    addresseeId: string,
+  ): Promise<'created' | 'exists' | 'accepted'> {
+    const existing = this.findFriendship(requesterId, addresseeId);
+    if (existing) {
+      if (existing.status === 'accepted') return 'exists';
+      // A reverse pending row → accept it.
+      if (existing.requesterId === addresseeId && existing.addresseeId === requesterId) {
+        existing.status = 'accepted';
+        existing.respondedAt = Date.now();
+        return 'accepted';
+      }
+      // Same-direction pending row already there.
+      return 'exists';
+    }
+    this.friendships.push({
+      id: newId(),
+      requesterId,
+      addresseeId,
+      status: 'pending',
+      createdAt: Date.now(),
+      respondedAt: null,
+    });
+    return 'created';
+  }
+
+  async respondFriend(userId: string, friendshipId: string, accept: boolean): Promise<boolean> {
+    const idx = this.friendships.findIndex((f) => f.id === friendshipId);
+    if (idx < 0) return false;
+    const f = this.friendships[idx]!;
+    // Only the addressee of a pending request may act.
+    if (f.addresseeId !== userId || f.status !== 'pending') return false;
+    if (accept) {
+      f.status = 'accepted';
+      f.respondedAt = Date.now();
+    } else {
+      this.friendships.splice(idx, 1);
+    }
+    return true;
+  }
+
+  async removeFriend(userId: string, otherId: string): Promise<boolean> {
+    const idx = this.friendships.findIndex(
+      (f) =>
+        (f.requesterId === userId && f.addresseeId === otherId) ||
+        (f.requesterId === otherId && f.addresseeId === userId),
+    );
+    if (idx < 0) return false;
+    this.friendships.splice(idx, 1);
+    return true;
+  }
+
+  async listFriends(
+    userId: string,
+  ): Promise<Array<{ userId: string; username: string; lastSeen: number | null }>> {
+    return this.friendships
+      .filter(
+        (f) =>
+          f.status === 'accepted' &&
+          (f.requesterId === userId || f.addresseeId === userId),
+      )
+      .map((f) => {
+        const other = f.requesterId === userId ? f.addresseeId : f.requesterId;
+        return { userId: other, username: this.nameFor(other), lastSeen: this.lastSeen.get(other) ?? null };
+      })
+      .sort((a, b) => a.username.localeCompare(b.username));
+  }
+
+  async listFriendRequests(userId: string): Promise<{
+    incoming: Array<{ id: string; userId: string; username: string; createdAt: number }>;
+    outgoing: Array<{ id: string; userId: string; username: string; createdAt: number }>;
+  }> {
+    const incoming = this.friendships
+      .filter((f) => f.status === 'pending' && f.addresseeId === userId)
+      .map((f) => ({
+        id: f.id,
+        userId: f.requesterId,
+        username: this.nameFor(f.requesterId),
+        createdAt: f.createdAt,
+      }))
+      .sort((a, b) => b.createdAt - a.createdAt);
+    const outgoing = this.friendships
+      .filter((f) => f.status === 'pending' && f.requesterId === userId)
+      .map((f) => ({
+        id: f.id,
+        userId: f.addresseeId,
+        username: this.nameFor(f.addresseeId),
+        createdAt: f.createdAt,
+      }))
+      .sort((a, b) => b.createdAt - a.createdAt);
+    return { incoming, outgoing };
+  }
+
+  async friendshipStatus(userId: string, otherId: string): Promise<FriendshipStatus> {
+    const f = this.findFriendship(userId, otherId);
+    if (!f) return 'none';
+    if (f.status === 'accepted') return 'friends';
+    return f.requesterId === userId ? 'pending_out' : 'pending_in';
+  }
+
+  // --- Social: chat rooms ---------------------------------------------------
+
+  async listRooms(): Promise<ChatRoomRow[]> {
+    return [...this.rooms].sort((a, b) => a.sort - b.sort).map((r) => ({ ...r }));
+  }
+  async getRoomBySlug(slug: string): Promise<ChatRoomRow | null> {
+    const r = this.rooms.find((x) => x.slug === slug);
+    return r ? { ...r } : null;
+  }
+  async postRoomMessage(roomId: string, userId: string, body: string): Promise<RoomMessageRow> {
+    const row: RoomMessageRow = {
+      id: newId(),
+      roomId,
+      userId,
+      username: this.nameFor(userId),
+      body,
+      createdAt: this.now(),
+    };
+    this.roomMessages.push(row);
+    return { ...row };
+  }
+  async listRoomMessages(
+    roomId: string,
+    opts: { limit: number; sinceId?: string },
+  ): Promise<
+    Array<{ id: string; userId: string; username: string; body: string; createdAt: number }>
+  > {
+    const limit = Math.max(1, Math.min(opts.limit, 100));
+    // Insertion order is chronological; assign a stable sequence per row.
+    const all = this.roomMessages.filter((m) => m.roomId === roomId);
+    let slice = all;
+    if (opts.sinceId) {
+      const idx = all.findIndex((m) => m.id === opts.sinceId);
+      slice = idx >= 0 ? all.slice(idx + 1) : all;
+    }
+    // Newest `limit`, ascending by time.
+    const tail = slice.slice(Math.max(0, slice.length - limit));
+    return tail.map((m) => ({
+      id: m.id,
+      userId: m.userId,
+      username: this.nameFor(m.userId),
+      body: m.body,
+      createdAt: m.createdAt,
+    }));
+  }
+
+  // --- Social: direct messages ---------------------------------------------
+
+  private static dmOrder(a: string, b: string): [string, string] {
+    return a < b ? [a, b] : [b, a];
+  }
+
+  async ensureDmThread(a: string, b: string): Promise<string> {
+    const [lo, hi] = MemoryStore.dmOrder(a, b);
+    let t = this.dmThreads.find((x) => x.userLo === lo && x.userHi === hi);
+    if (!t) {
+      t = { id: newId(), userLo: lo, userHi: hi, lastAt: this.now() };
+      this.dmThreads.push(t);
+    }
+    return t.id;
+  }
+  async postDm(threadId: string, senderId: string, body: string): Promise<DmMessageRow> {
+    const row: DmMessageRow = {
+      id: newId(),
+      threadId,
+      senderId,
+      body,
+      createdAt: this.now(),
+    };
+    this.dmMessages.push(row);
+    const t = this.dmThreads.find((x) => x.id === threadId);
+    if (t) t.lastAt = row.createdAt;
+    return { ...row };
+  }
+  async listDmThreads(userId: string): Promise<
+    Array<{
+      threadId: string;
+      otherUserId: string;
+      otherUsername: string;
+      lastAt: number;
+      preview: string;
+    }>
+  > {
+    return this.dmThreads
+      .filter((t) => t.userLo === userId || t.userHi === userId)
+      .sort((a, b) => b.lastAt - a.lastAt)
+      .map((t) => {
+        const other = t.userLo === userId ? t.userHi : t.userLo;
+        const msgs = this.dmMessages.filter((m) => m.threadId === t.id);
+        const last = msgs[msgs.length - 1];
+        return {
+          threadId: t.id,
+          otherUserId: other,
+          otherUsername: this.nameFor(other),
+          lastAt: t.lastAt,
+          preview: last?.body ?? '',
+        };
+      });
+  }
+  async listDmMessages(
+    threadId: string,
+    opts: { limit: number; sinceId?: string },
+  ): Promise<Array<{ id: string; senderId: string; body: string; createdAt: number }>> {
+    const limit = Math.max(1, Math.min(opts.limit, 100));
+    const all = this.dmMessages.filter((m) => m.threadId === threadId);
+    let slice = all;
+    if (opts.sinceId) {
+      const idx = all.findIndex((m) => m.id === opts.sinceId);
+      slice = idx >= 0 ? all.slice(idx + 1) : all;
+    }
+    const tail = slice.slice(Math.max(0, slice.length - limit));
+    return tail.map((m) => ({
+      id: m.id,
+      senderId: m.senderId,
+      body: m.body,
+      createdAt: m.createdAt,
+    }));
+  }
+  async dmThreadParticipants(threadId: string): Promise<[string, string] | null> {
+    const t = this.dmThreads.find((x) => x.id === threadId);
+    return t ? [t.userLo, t.userHi] : null;
   }
 
   async close(): Promise<void> {}

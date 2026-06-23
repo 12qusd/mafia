@@ -2236,3 +2236,54 @@ unchanged and re-proven.
   `pnpm -r test`: shared 210, engine **232** (225 + 7 new), client 167, server 91,
   bots 36 — all pass. Determinism property tests pass (same seed+log ⇒ identical
   hash, with and without prefs). `npx eslint .` clean (exit 0). Leak sweep 0/200.
+
+---
+
+## Social — public profiles, friends, DMs, channels, shoutbox, presence
+
+An "older internet site" community layer. **HTTP-only with its own tables** — it
+never touches the engine, `transport.ts`/ScopedTransport, the game WS protocol, or
+the §5 leak path (leak auditor stays 0/200). Reads of public surfaces (profiles,
+rooms, messages) are open; all writes are ACCOUNT-ONLY (guests/anon → 403); a
+muted/banned user → 403 (`silenced`) on any post.
+
+### Data + store
+- New tables (additive/idempotent in schema.sql): `profiles` (tagline/bio/accent),
+  `users.last_seen_at` (presence), `friendships` (one row per unordered pair via a
+  `least()/greatest()` unique index, status pending|accepted), `chat_rooms`
+  (seeded: shoutbox `The Wire` + channels `The Parlor`/`The Back Room`/`The
+  Speakeasy`), `room_messages`, `dm_threads` (canonical user_lo<user_hi), `dm_messages`.
+- Full `Store` surface on BOTH impls. MemoryStore seeds the SAME default rooms
+  (via `db/default-rooms.ts`) so `/api/rooms` works in NO_DB/CI; route + state-machine
+  unit tests run guests-only there.
+- The public profile composite reuses `buildUserStatsSummary` + `buildRankedSummary`;
+  `friendship` field is computed only for an authed non-guest viewing someone else.
+
+### Routes (all under /api)
+`GET users/:username/profile`, `POST me/profile`, `GET me/social`,
+`POST friends/request|respond`, `DELETE friends/:id`, `GET rooms`,
+`GET/POST rooms/:slug/messages`, `GET/POST dms/:otherUserId`, `POST presence/ping`.
+Posts carry a **per-(user, scope) cooldown** (1.2s) keyed by room slug / dm thread —
+flooding one stream never blocks a post in another channel or a DM. Presence DB
+writes throttled to ≥30s/user; also touched on `GET /api/me`.
+
+### Client
+`/community` (masthead + faux visitor counter + The Wire shoutbox + channels +
+who's-around, delta-polled ~5s), `/u/:username` (public profile + inline self-edit +
+friend actions), `/friends` (friends/requests + DM pane). Usernames link to
+`/u/:username` from the leaderboard + dossier. All user text sanitized on render.
+Mobile: friend rows wrap their action group rather than clip at the 820px breakpoint.
+
+### Incidental fix (pre-existing race, surfaced during the social screenshot pass)
+The WS keepalive `ping` is now exempt from the pre-hello guard in `ws/handlers.ts`.
+The client starts pinging the instant the socket opens (right after `hello`) and the
+gateway dispatches frames concurrently, so a ping could race ahead of the still-
+resolving async hello and draw a spurious "send hello first" error toast on page
+load. `ping` only echoes a `pong` with the caller's timestamp (identity-free), so
+exempting it is safe; every other command still requires hello.
+
+### Gate (all GREEN)
+`pnpm -r build` clean; `pnpm -r test` shared 210 / engine 232 / client 167 /
+**server 109** (+18 social) / bots 36; `npx eslint .` exit 0; leak sweep 0/200.
+Verified live end-to-end (friend request→reverse-accept, shoutbox post, scoped-
+cooldown DM, public profile) + desktop/mobile screenshots, 0 console errors.

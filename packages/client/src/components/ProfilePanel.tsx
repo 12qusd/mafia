@@ -64,7 +64,9 @@ export function ProfilePanel() {
       <DecoHead>{PROFILE.heading}</DecoHead>
 
       <div className="profile-head">
-        <div className="profile-name">{sanitizeInline(me.name)}</div>
+        <Link className="profile-name lb-link" to={`/u/${encodeURIComponent(me.name)}`}>
+          {sanitizeInline(me.name)}
+        </Link>
         <div className="profile-badges">
           <TierBadge totalPoints={stats?.totalPoints ?? 0} />
           {stats?.ranked && (

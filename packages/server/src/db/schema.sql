@@ -292,3 +292,89 @@ CREATE TABLE IF NOT EXISTS telemetry_daily (
   peak_concurrent  int NOT NULL DEFAULT 0,
   avg_lobby_wait_ms double precision NOT NULL DEFAULT 0
 );
+
+-- --------------------------------------------------------------------------
+-- Social: profiles, presence, friends, public chat rooms, direct messages
+-- (Social feature) — additive + idempotent; HTTP-only, never in the game hot
+-- path. Guests are read-only; account-only writes are enforced server-side.
+-- --------------------------------------------------------------------------
+
+-- Public profile (tagline/bio/accent flair). One row per user.
+CREATE TABLE IF NOT EXISTS profiles (
+  user_id    uuid PRIMARY KEY REFERENCES users(id) ON DELETE CASCADE,
+  tagline    text NULL,
+  bio        text NULL,
+  -- Optional faction-flair key (free text; client validates an allowlist, the
+  -- server only length-caps it ≤24).
+  accent     text NULL,
+  updated_at timestamptz NOT NULL DEFAULT now()
+);
+
+-- Presence: last activity ping (profile/online dots). Idempotent column add.
+ALTER TABLE users ADD COLUMN IF NOT EXISTS last_seen_at timestamptz NULL;
+
+-- Friendships. One row per unordered pair (enforced by the pair index below).
+-- status: 'pending' (requester→addressee) | 'accepted'.
+CREATE TABLE IF NOT EXISTS friendships (
+  id           uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+  requester_id uuid NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+  addressee_id uuid NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+  status       text NOT NULL DEFAULT 'pending',   -- pending | accepted
+  created_at   timestamptz NOT NULL DEFAULT now(),
+  responded_at timestamptz NULL,
+  CHECK (requester_id <> addressee_id)
+);
+-- Exactly one row per unordered pair (direction-agnostic).
+CREATE UNIQUE INDEX IF NOT EXISTS friendships_pair_idx
+  ON friendships (least(requester_id, addressee_id), greatest(requester_id, addressee_id));
+CREATE INDEX IF NOT EXISTS friendships_addressee_idx ON friendships (addressee_id, status);
+CREATE INDEX IF NOT EXISTS friendships_requester_idx ON friendships (requester_id, status);
+
+-- Public chat rooms: the global shoutbox + topical channels.
+CREATE TABLE IF NOT EXISTS chat_rooms (
+  id         uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+  slug       text UNIQUE NOT NULL,
+  name       text NOT NULL,
+  topic      text NOT NULL DEFAULT '',
+  kind       text NOT NULL DEFAULT 'channel',   -- shoutbox | channel
+  sort       int NOT NULL DEFAULT 0,
+  created_at timestamptz NOT NULL DEFAULT now()
+);
+-- Seed the default rooms (idempotent on slug).
+INSERT INTO chat_rooms (slug, name, topic, kind, sort) VALUES
+  ('shoutbox', 'The Wire', 'Word on the street — keep it short.', 'shoutbox', 0),
+  ('parlor',   'The Parlor', 'General chatter for made men and marks alike.', 'channel', 1),
+  ('strategy', 'The Back Room', 'Strategy, role talk, post-game tells.', 'channel', 2),
+  ('offtopic', 'The Speakeasy', 'Anything goes after hours.', 'channel', 3)
+ON CONFLICT (slug) DO NOTHING;
+
+-- Room messages (the shoutbox + channels). Newest-first reads via the index.
+CREATE TABLE IF NOT EXISTS room_messages (
+  id         uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+  room_id    uuid NOT NULL REFERENCES chat_rooms(id) ON DELETE CASCADE,
+  user_id    uuid NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+  body       text NOT NULL,
+  created_at timestamptz NOT NULL DEFAULT now()
+);
+CREATE INDEX IF NOT EXISTS room_messages_room_idx ON room_messages (room_id, created_at DESC);
+
+-- Direct-message threads. Canonical ordering: user_lo < user_hi (lexicographic
+-- on the uuid text), one row per pair.
+CREATE TABLE IF NOT EXISTS dm_threads (
+  id      uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+  user_lo uuid NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+  user_hi uuid NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+  last_at timestamptz NOT NULL DEFAULT now(),
+  CHECK (user_lo < user_hi),
+  UNIQUE (user_lo, user_hi)
+);
+
+-- Direct messages within a thread.
+CREATE TABLE IF NOT EXISTS dm_messages (
+  id         uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+  thread_id  uuid NOT NULL REFERENCES dm_threads(id) ON DELETE CASCADE,
+  sender_id  uuid NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+  body       text NOT NULL,
+  created_at timestamptz NOT NULL DEFAULT now()
+);
+CREATE INDEX IF NOT EXISTS dm_messages_thread_idx ON dm_messages (thread_id, created_at);

@@ -26,6 +26,11 @@ import type {
   RolePreference,
   RankedResultInput,
   RatingLeaderboardEntry,
+  ProfileRow,
+  ChatRoomRow,
+  RoomMessageRow,
+  DmMessageRow,
+  FriendshipStatus,
 } from './types.js';
 
 interface PgUser {
@@ -34,6 +39,7 @@ interface PgUser {
   email: string | null;
   password_hash: string;
   flags: number;
+  created_at?: Date;
 }
 
 export class PgStore implements Store {
@@ -51,6 +57,7 @@ export class PgStore implements Store {
       email: r.email,
       passwordHash: r.password_hash,
       flags: r.flags,
+      ...(r.created_at ? { createdAt: r.created_at.getTime() } : {}),
     };
   }
 
@@ -69,7 +76,7 @@ export class PgStore implements Store {
 
   async getUserByUsername(username: string): Promise<UserRow | null> {
     const { rows } = await this.pool.query<PgUser>(
-      `SELECT id, username, email, password_hash, flags FROM users WHERE username = $1`,
+      `SELECT id, username, email, password_hash, flags, created_at FROM users WHERE username = $1`,
       [username],
     );
     return rows[0] ? this.mapUser(rows[0]) : null;
@@ -77,7 +84,7 @@ export class PgStore implements Store {
 
   async getUserById(id: string): Promise<UserRow | null> {
     const { rows } = await this.pool.query<PgUser>(
-      `SELECT id, username, email, password_hash, flags FROM users WHERE id = $1`,
+      `SELECT id, username, email, password_hash, flags, created_at FROM users WHERE id = $1`,
       [id],
     );
     return rows[0] ? this.mapUser(rows[0]) : null;
@@ -783,6 +790,436 @@ export class PgStore implements Store {
       rdAfter: r.rd_after,
       delta: r.delta,
     }));
+  }
+
+  // --- Social: profiles & presence -----------------------------------------
+
+  async getProfile(userId: string): Promise<ProfileRow | null> {
+    const { rows } = await this.pool.query<{
+      user_id: string;
+      tagline: string | null;
+      bio: string | null;
+      accent: string | null;
+      updated_at: Date;
+    }>(
+      `SELECT user_id, tagline, bio, accent, updated_at FROM profiles WHERE user_id = $1`,
+      [userId],
+    );
+    const r = rows[0];
+    if (!r) return null;
+    return {
+      userId: r.user_id,
+      tagline: r.tagline,
+      bio: r.bio,
+      accent: r.accent,
+      updatedAt: r.updated_at.getTime(),
+    };
+  }
+
+  async upsertProfile(
+    userId: string,
+    fields: { tagline?: string | undefined; bio?: string | undefined; accent?: string | undefined },
+  ): Promise<void> {
+    // COALESCE keeps an existing column when the caller omits that field.
+    await this.pool.query(
+      `INSERT INTO profiles (user_id, tagline, bio, accent, updated_at)
+       VALUES ($1, $2, $3, $4, now())
+       ON CONFLICT (user_id) DO UPDATE SET
+         tagline    = COALESCE($2, profiles.tagline),
+         bio        = COALESCE($3, profiles.bio),
+         accent     = COALESCE($4, profiles.accent),
+         updated_at = now()`,
+      [
+        userId,
+        fields.tagline ?? null,
+        fields.bio ?? null,
+        fields.accent ?? null,
+      ],
+    );
+  }
+
+  async touchPresence(userId: string, at: number): Promise<void> {
+    await this.pool.query(`UPDATE users SET last_seen_at = to_timestamp($2 / 1000.0) WHERE id = $1`, [
+      userId,
+      at,
+    ]);
+  }
+
+  async getLastSeen(userIds: string[]): Promise<Record<string, number | null>> {
+    const out: Record<string, number | null> = {};
+    for (const id of userIds) out[id] = null;
+    if (userIds.length === 0) return out;
+    const { rows } = await this.pool.query<{ id: string; last_seen_at: Date | null }>(
+      `SELECT id, last_seen_at FROM users WHERE id = ANY($1::uuid[])`,
+      [userIds],
+    );
+    for (const r of rows) out[r.id] = r.last_seen_at ? r.last_seen_at.getTime() : null;
+    return out;
+  }
+
+  // --- Social: friends ------------------------------------------------------
+
+  async requestFriend(
+    requesterId: string,
+    addresseeId: string,
+  ): Promise<'created' | 'exists' | 'accepted'> {
+    // A reverse pending row (other → me) means this request accepts it.
+    const reverse = await this.pool.query(
+      `UPDATE friendships SET status = 'accepted', responded_at = now()
+       WHERE requester_id = $2 AND addressee_id = $1 AND status = 'pending'`,
+      [requesterId, addresseeId],
+    );
+    if ((reverse.rowCount ?? 0) > 0) return 'accepted';
+    // Otherwise insert a fresh pending row; the unordered-pair unique index makes
+    // a duplicate (either direction, any status) a no-op.
+    const ins = await this.pool.query(
+      `INSERT INTO friendships (id, requester_id, addressee_id, status)
+       VALUES ($1, $2, $3, 'pending')
+       ON CONFLICT (least(requester_id, addressee_id), greatest(requester_id, addressee_id))
+       DO NOTHING`,
+      [newId(), requesterId, addresseeId],
+    );
+    return (ins.rowCount ?? 0) > 0 ? 'created' : 'exists';
+  }
+
+  async respondFriend(userId: string, friendshipId: string, accept: boolean): Promise<boolean> {
+    if (accept) {
+      const res = await this.pool.query(
+        `UPDATE friendships SET status = 'accepted', responded_at = now()
+         WHERE id = $1 AND addressee_id = $2 AND status = 'pending'`,
+        [friendshipId, userId],
+      );
+      return (res.rowCount ?? 0) > 0;
+    }
+    const res = await this.pool.query(
+      `DELETE FROM friendships WHERE id = $1 AND addressee_id = $2 AND status = 'pending'`,
+      [friendshipId, userId],
+    );
+    return (res.rowCount ?? 0) > 0;
+  }
+
+  async removeFriend(userId: string, otherId: string): Promise<boolean> {
+    const res = await this.pool.query(
+      `DELETE FROM friendships
+       WHERE (requester_id = $1 AND addressee_id = $2)
+          OR (requester_id = $2 AND addressee_id = $1)`,
+      [userId, otherId],
+    );
+    return (res.rowCount ?? 0) > 0;
+  }
+
+  async listFriends(
+    userId: string,
+  ): Promise<Array<{ userId: string; username: string; lastSeen: number | null }>> {
+    const { rows } = await this.pool.query<{
+      id: string;
+      username: string;
+      last_seen_at: Date | null;
+    }>(
+      `SELECT u.id, u.username, u.last_seen_at
+       FROM friendships f
+       JOIN users u ON u.id = CASE WHEN f.requester_id = $1 THEN f.addressee_id ELSE f.requester_id END
+       WHERE f.status = 'accepted' AND (f.requester_id = $1 OR f.addressee_id = $1)
+       ORDER BY u.username`,
+      [userId],
+    );
+    return rows.map((r) => ({
+      userId: r.id,
+      username: r.username,
+      lastSeen: r.last_seen_at ? r.last_seen_at.getTime() : null,
+    }));
+  }
+
+  async listFriendRequests(userId: string): Promise<{
+    incoming: Array<{ id: string; userId: string; username: string; createdAt: number }>;
+    outgoing: Array<{ id: string; userId: string; username: string; createdAt: number }>;
+  }> {
+    const incomingQ = await this.pool.query<{
+      id: string;
+      uid: string;
+      username: string;
+      created_at: Date;
+    }>(
+      `SELECT f.id, u.id AS uid, u.username, f.created_at
+       FROM friendships f JOIN users u ON u.id = f.requester_id
+       WHERE f.addressee_id = $1 AND f.status = 'pending'
+       ORDER BY f.created_at DESC`,
+      [userId],
+    );
+    const outgoingQ = await this.pool.query<{
+      id: string;
+      uid: string;
+      username: string;
+      created_at: Date;
+    }>(
+      `SELECT f.id, u.id AS uid, u.username, f.created_at
+       FROM friendships f JOIN users u ON u.id = f.addressee_id
+       WHERE f.requester_id = $1 AND f.status = 'pending'
+       ORDER BY f.created_at DESC`,
+      [userId],
+    );
+    const map = (r: { id: string; uid: string; username: string; created_at: Date }) => ({
+      id: r.id,
+      userId: r.uid,
+      username: r.username,
+      createdAt: r.created_at.getTime(),
+    });
+    return { incoming: incomingQ.rows.map(map), outgoing: outgoingQ.rows.map(map) };
+  }
+
+  async friendshipStatus(userId: string, otherId: string): Promise<FriendshipStatus> {
+    const { rows } = await this.pool.query<{
+      requester_id: string;
+      status: string;
+    }>(
+      `SELECT requester_id, status FROM friendships
+       WHERE (requester_id = $1 AND addressee_id = $2)
+          OR (requester_id = $2 AND addressee_id = $1)
+       LIMIT 1`,
+      [userId, otherId],
+    );
+    const r = rows[0];
+    if (!r) return 'none';
+    if (r.status === 'accepted') return 'friends';
+    return r.requester_id === userId ? 'pending_out' : 'pending_in';
+  }
+
+  // --- Social: chat rooms ---------------------------------------------------
+
+  private mapRoom(r: {
+    id: string;
+    slug: string;
+    name: string;
+    topic: string;
+    kind: string;
+    sort: number;
+    created_at: Date;
+  }): ChatRoomRow {
+    return {
+      id: r.id,
+      slug: r.slug,
+      name: r.name,
+      topic: r.topic,
+      kind: r.kind,
+      sort: r.sort,
+      createdAt: r.created_at.getTime(),
+    };
+  }
+
+  async listRooms(): Promise<ChatRoomRow[]> {
+    const { rows } = await this.pool.query<{
+      id: string;
+      slug: string;
+      name: string;
+      topic: string;
+      kind: string;
+      sort: number;
+      created_at: Date;
+    }>(`SELECT id, slug, name, topic, kind, sort, created_at FROM chat_rooms ORDER BY sort`);
+    return rows.map((r) => this.mapRoom(r));
+  }
+
+  async getRoomBySlug(slug: string): Promise<ChatRoomRow | null> {
+    const { rows } = await this.pool.query<{
+      id: string;
+      slug: string;
+      name: string;
+      topic: string;
+      kind: string;
+      sort: number;
+      created_at: Date;
+    }>(
+      `SELECT id, slug, name, topic, kind, sort, created_at FROM chat_rooms WHERE slug = $1`,
+      [slug],
+    );
+    return rows[0] ? this.mapRoom(rows[0]) : null;
+  }
+
+  async postRoomMessage(roomId: string, userId: string, body: string): Promise<RoomMessageRow> {
+    const { rows } = await this.pool.query<{
+      id: string;
+      room_id: string;
+      user_id: string;
+      username: string;
+      body: string;
+      created_at: Date;
+    }>(
+      `WITH ins AS (
+         INSERT INTO room_messages (id, room_id, user_id, body)
+         VALUES ($1, $2, $3, $4)
+         RETURNING id, room_id, user_id, body, created_at
+       )
+       SELECT ins.id, ins.room_id, ins.user_id, u.username, ins.body, ins.created_at
+       FROM ins JOIN users u ON u.id = ins.user_id`,
+      [newId(), roomId, userId, body],
+    );
+    const r = rows[0] as NonNullable<(typeof rows)[0]>;
+    return {
+      id: r.id,
+      roomId: r.room_id,
+      userId: r.user_id,
+      username: r.username,
+      body: r.body,
+      createdAt: r.created_at.getTime(),
+    };
+  }
+
+  async listRoomMessages(
+    roomId: string,
+    opts: { limit: number; sinceId?: string },
+  ): Promise<
+    Array<{ id: string; userId: string; username: string; body: string; createdAt: number }>
+  > {
+    const limit = Math.max(1, Math.min(opts.limit, 100));
+    // Newest `limit` (delta past sinceId if given), then return ascending.
+    const { rows } = await this.pool.query<{
+      id: string;
+      user_id: string;
+      username: string;
+      body: string;
+      created_at: Date;
+    }>(
+      `SELECT m.id, m.user_id, u.username, m.body, m.created_at
+       FROM room_messages m JOIN users u ON u.id = m.user_id
+       WHERE m.room_id = $1
+         AND ($3::uuid IS NULL OR m.created_at > (SELECT created_at FROM room_messages WHERE id = $3))
+       ORDER BY m.created_at DESC, m.id DESC
+       LIMIT $2`,
+      [roomId, limit, opts.sinceId ?? null],
+    );
+    return rows
+      .map((r) => ({
+        id: r.id,
+        userId: r.user_id,
+        username: r.username,
+        body: r.body,
+        createdAt: r.created_at.getTime(),
+      }))
+      .reverse();
+  }
+
+  // --- Social: direct messages ---------------------------------------------
+
+  private static dmOrder(a: string, b: string): [string, string] {
+    return a < b ? [a, b] : [b, a];
+  }
+
+  async ensureDmThread(a: string, b: string): Promise<string> {
+    const [lo, hi] = PgStore.dmOrder(a, b);
+    const ins = await this.pool.query<{ id: string }>(
+      `INSERT INTO dm_threads (id, user_lo, user_hi)
+       VALUES ($1, $2, $3)
+       ON CONFLICT (user_lo, user_hi) DO NOTHING
+       RETURNING id`,
+      [newId(), lo, hi],
+    );
+    if (ins.rows[0]) return ins.rows[0].id;
+    const { rows } = await this.pool.query<{ id: string }>(
+      `SELECT id FROM dm_threads WHERE user_lo = $1 AND user_hi = $2`,
+      [lo, hi],
+    );
+    return (rows[0] as { id: string }).id;
+  }
+
+  async postDm(threadId: string, senderId: string, body: string): Promise<DmMessageRow> {
+    const { rows } = await this.pool.query<{
+      id: string;
+      thread_id: string;
+      sender_id: string;
+      body: string;
+      created_at: Date;
+    }>(
+      `INSERT INTO dm_messages (id, thread_id, sender_id, body)
+       VALUES ($1, $2, $3, $4)
+       RETURNING id, thread_id, sender_id, body, created_at`,
+      [newId(), threadId, senderId, body],
+    );
+    const r = rows[0] as NonNullable<(typeof rows)[0]>;
+    await this.pool.query(`UPDATE dm_threads SET last_at = $2 WHERE id = $1`, [
+      threadId,
+      r.created_at,
+    ]);
+    return {
+      id: r.id,
+      threadId: r.thread_id,
+      senderId: r.sender_id,
+      body: r.body,
+      createdAt: r.created_at.getTime(),
+    };
+  }
+
+  async listDmThreads(userId: string): Promise<
+    Array<{
+      threadId: string;
+      otherUserId: string;
+      otherUsername: string;
+      lastAt: number;
+      preview: string;
+    }>
+  > {
+    const { rows } = await this.pool.query<{
+      thread_id: string;
+      other_id: string;
+      other_username: string;
+      last_at: Date;
+      preview: string | null;
+    }>(
+      `SELECT t.id AS thread_id,
+              other.id AS other_id,
+              other.username AS other_username,
+              t.last_at,
+              (SELECT body FROM dm_messages m WHERE m.thread_id = t.id
+               ORDER BY m.created_at DESC, m.id DESC LIMIT 1) AS preview
+       FROM dm_threads t
+       JOIN users other ON other.id = CASE WHEN t.user_lo = $1 THEN t.user_hi ELSE t.user_lo END
+       WHERE t.user_lo = $1 OR t.user_hi = $1
+       ORDER BY t.last_at DESC`,
+      [userId],
+    );
+    return rows.map((r) => ({
+      threadId: r.thread_id,
+      otherUserId: r.other_id,
+      otherUsername: r.other_username,
+      lastAt: r.last_at.getTime(),
+      preview: r.preview ?? '',
+    }));
+  }
+
+  async listDmMessages(
+    threadId: string,
+    opts: { limit: number; sinceId?: string },
+  ): Promise<Array<{ id: string; senderId: string; body: string; createdAt: number }>> {
+    const limit = Math.max(1, Math.min(opts.limit, 100));
+    const { rows } = await this.pool.query<{
+      id: string;
+      sender_id: string;
+      body: string;
+      created_at: Date;
+    }>(
+      `SELECT id, sender_id, body, created_at FROM dm_messages
+       WHERE thread_id = $1
+         AND ($3::uuid IS NULL OR created_at > (SELECT created_at FROM dm_messages WHERE id = $3))
+       ORDER BY created_at DESC, id DESC
+       LIMIT $2`,
+      [threadId, limit, opts.sinceId ?? null],
+    );
+    return rows
+      .map((r) => ({
+        id: r.id,
+        senderId: r.sender_id,
+        body: r.body,
+        createdAt: r.created_at.getTime(),
+      }))
+      .reverse();
+  }
+
+  async dmThreadParticipants(threadId: string): Promise<[string, string] | null> {
+    const { rows } = await this.pool.query<{ user_lo: string; user_hi: string }>(
+      `SELECT user_lo, user_hi FROM dm_threads WHERE id = $1`,
+      [threadId],
+    );
+    const r = rows[0];
+    return r ? [r.user_lo, r.user_hi] : null;
   }
 
   async close(): Promise<void> {

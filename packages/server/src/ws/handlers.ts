@@ -44,7 +44,13 @@ export class MessageHandlers {
 
   /** Dispatch one validated message. Never throws (gateway also wraps). */
   async handle(conn: Connection, msg: ClientMessage): Promise<void> {
-    if (msg.type !== 'hello' && !conn.helloDone) {
+    // `ping` is an identity-free keepalive (it only echoes a `pong` with the
+    // caller's timestamp). The client starts pinging the moment the socket opens
+    // — immediately after `hello` — and the gateway dispatches frames
+    // concurrently, so a ping can race ahead of the still-resolving async hello.
+    // Exempting it from the pre-hello guard avoids a spurious "send hello first"
+    // error toast on every page load. All other commands still require hello.
+    if (msg.type !== 'hello' && msg.type !== 'ping' && !conn.helloDone) {
       replyError(conn, 'not_authenticated', 'send hello first');
       return;
     }

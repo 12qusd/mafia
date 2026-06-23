@@ -14,6 +14,10 @@ import { buildRankedSummary } from '../ranked/award.js';
 
 const COOKIE = 'nocturne_session';
 
+/** Throttle presence DB writes from the /api/me poll to ≥30s per user (Social). */
+const PRESENCE_THROTTLE_MS = 30_000;
+const lastPresenceWrite = new Map<string, number>();
+
 const RegisterBody = z.object({
   username: z
     .string()
@@ -86,6 +90,15 @@ export function registerAuthRoutes(app: FastifyInstance, ctx: GatewayContext): v
     if (stats && ctx.manager.seasonId) {
       const ranked = await buildRankedSummary(ctx.store, identity.id, ctx.manager.seasonId);
       if (ranked) stats.ranked = ranked;
+    }
+    // Presence (Social): record activity for non-guests, throttled to ≥30s/user.
+    if (!identity.isGuest && ctx.store.persistent) {
+      const now = Date.now();
+      const last = lastPresenceWrite.get(identity.id) ?? 0;
+      if (now - last >= PRESENCE_THROTTLE_MS) {
+        lastPresenceWrite.set(identity.id, now);
+        await ctx.store.touchPresence(identity.id, now);
+      }
     }
     return reply.send({
       id: identity.id,

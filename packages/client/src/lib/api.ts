@@ -675,6 +675,419 @@ export async function logout(): Promise<void> {
 // Re-export for callers that only narrow points breakdowns from untrusted JSON.
 export { PointsBreakdownSchema };
 
+// ---------------------------------------------------------------------------
+// Social: profiles, friends, direct messages, public rooms, presence
+// ---------------------------------------------------------------------------
+
+/** A public profile composite (`GET /api/users/:username/profile`). */
+export interface PublicProfile {
+  id: string;
+  username: string;
+  memberSince: number | null;
+  tagline: string | null;
+  bio: string | null;
+  accent: string | null;
+  lastSeen: number | null;
+  stats: {
+    totalPoints: number;
+    gamesPlayed: number;
+    gamesWon: number;
+    gamesSurvived: number;
+    tier: string;
+  } | null;
+  ranked: {
+    mmr: number;
+    rank: string;
+    rankName: string;
+    games: number;
+    wins: number;
+  } | null;
+  achievements: string[];
+  /** Computed only for an authed non-guest viewing someone else; else null. */
+  friendship: 'none' | 'pending_out' | 'pending_in' | 'friends' | 'self' | null;
+}
+
+function numOrNull(v: unknown): number | null {
+  return typeof v === 'number' && Number.isFinite(v) ? v : null;
+}
+
+/** `GET /api/users/:username/profile` — public profile, or null on any failure. */
+export async function fetchPublicProfile(username: string): Promise<PublicProfile | null> {
+  try {
+    const d = await getJson(`/api/users/${encodeURIComponent(username)}/profile`);
+    if (!isObj(d)) return null;
+    const id = str(d['id']);
+    const name = str(d['username']);
+    if (id === undefined || name === undefined) return null;
+    const s = isObj(d['stats']) ? d['stats'] : null;
+    const r = isObj(d['ranked']) ? d['ranked'] : null;
+    const fr = str(d['friendship']);
+    const friendship =
+      fr === 'none' || fr === 'pending_out' || fr === 'pending_in' || fr === 'friends' || fr === 'self'
+        ? fr
+        : null;
+    return {
+      id,
+      username: name,
+      memberSince: numOrNull(d['memberSince']),
+      tagline: str(d['tagline']) ?? null,
+      bio: str(d['bio']) ?? null,
+      accent: str(d['accent']) ?? null,
+      lastSeen: numOrNull(d['lastSeen']),
+      stats: s
+        ? {
+            totalPoints: num(s['totalPoints']),
+            gamesPlayed: num(s['gamesPlayed']),
+            gamesWon: num(s['gamesWon']),
+            gamesSurvived: num(s['gamesSurvived']),
+            tier: str(s['tier']) ?? 'stray',
+          }
+        : null,
+      ranked: r
+        ? {
+            mmr: num(r['mmr']),
+            rank: str(r['rank']) ?? 'stray',
+            rankName: str(r['rankName']) ?? '',
+            games: num(r['games']),
+            wins: num(r['wins']),
+          }
+        : null,
+      achievements: Array.isArray(d['achievements'])
+        ? d['achievements'].filter((a): a is string => typeof a === 'string')
+        : [],
+      friendship,
+    };
+  } catch {
+    return null;
+  }
+}
+
+/** `POST /api/me/profile` — edit own profile. true on success. */
+export async function saveProfile(fields: {
+  tagline?: string;
+  bio?: string;
+  accent?: string;
+}): Promise<boolean> {
+  try {
+    const res = await fetch('/api/me/profile', {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      credentials: 'include',
+      body: JSON.stringify(fields),
+    });
+    return res.ok;
+  } catch {
+    return false;
+  }
+}
+
+export interface FriendItem {
+  userId: string;
+  username: string;
+  lastSeen: number | null;
+}
+export interface FriendRequestItem {
+  id: string;
+  userId: string;
+  username: string;
+  createdAt: number;
+}
+export interface DmThreadItem {
+  threadId: string;
+  otherUserId: string;
+  otherUsername: string;
+  lastAt: number;
+  preview: string;
+}
+export interface SocialState {
+  friends: FriendItem[];
+  requests: { incoming: FriendRequestItem[]; outgoing: FriendRequestItem[] };
+  threads: DmThreadItem[];
+}
+
+function narrowFriend(v: unknown): FriendItem | null {
+  if (!isObj(v)) return null;
+  const userId = str(v['userId']);
+  if (userId === undefined) return null;
+  return { userId, username: str(v['username']) ?? userId, lastSeen: numOrNull(v['lastSeen']) };
+}
+function narrowRequest(v: unknown): FriendRequestItem | null {
+  if (!isObj(v)) return null;
+  const id = str(v['id']);
+  const userId = str(v['userId']);
+  if (id === undefined || userId === undefined) return null;
+  return { id, userId, username: str(v['username']) ?? userId, createdAt: num(v['createdAt']) };
+}
+function narrowThread(v: unknown): DmThreadItem | null {
+  if (!isObj(v)) return null;
+  const threadId = str(v['threadId']);
+  const otherUserId = str(v['otherUserId']);
+  if (threadId === undefined || otherUserId === undefined) return null;
+  return {
+    threadId,
+    otherUserId,
+    otherUsername: str(v['otherUsername']) ?? otherUserId,
+    lastAt: num(v['lastAt']),
+    preview: str(v['preview']) ?? '',
+  };
+}
+
+const EMPTY_SOCIAL: SocialState = {
+  friends: [],
+  requests: { incoming: [], outgoing: [] },
+  threads: [],
+};
+
+/** `GET /api/me/social` — the caller's friends, requests, and DM threads. */
+export async function fetchSocial(): Promise<SocialState> {
+  try {
+    const d = await getJson('/api/me/social');
+    if (!isObj(d)) return EMPTY_SOCIAL;
+    const friends = Array.isArray(d['friends'])
+      ? d['friends'].map(narrowFriend).filter((x): x is FriendItem => x !== null)
+      : [];
+    const reqs = isObj(d['requests']) ? d['requests'] : {};
+    const incoming = Array.isArray(reqs['incoming'])
+      ? reqs['incoming'].map(narrowRequest).filter((x): x is FriendRequestItem => x !== null)
+      : [];
+    const outgoing = Array.isArray(reqs['outgoing'])
+      ? reqs['outgoing'].map(narrowRequest).filter((x): x is FriendRequestItem => x !== null)
+      : [];
+    const threads = Array.isArray(d['threads'])
+      ? d['threads'].map(narrowThread).filter((x): x is DmThreadItem => x !== null)
+      : [];
+    return { friends, requests: { incoming, outgoing }, threads };
+  } catch {
+    return EMPTY_SOCIAL;
+  }
+}
+
+/** The result of a friend request (`POST /api/friends/request`). */
+export type FriendRequestResult =
+  | { ok: true; result: 'created' | 'exists' | 'accepted' }
+  | { ok: false; status: number };
+
+/** `POST /api/friends/request` { username }. */
+export async function requestFriend(username: string): Promise<FriendRequestResult> {
+  try {
+    const res = await fetch('/api/friends/request', {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      credentials: 'include',
+      body: JSON.stringify({ username }),
+    });
+    if (res.ok) {
+      const d: unknown = await res.json().catch(() => ({}));
+      const r = isObj(d) ? str(d['result']) : undefined;
+      return {
+        ok: true,
+        result: r === 'exists' || r === 'accepted' ? r : 'created',
+      };
+    }
+    return { ok: false, status: res.status };
+  } catch {
+    return { ok: false, status: 0 };
+  }
+}
+
+/** `POST /api/friends/respond` { id, accept }. true on success. */
+export async function respondFriend(id: string, accept: boolean): Promise<boolean> {
+  try {
+    const res = await fetch('/api/friends/respond', {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      credentials: 'include',
+      body: JSON.stringify({ id, accept }),
+    });
+    return res.ok;
+  } catch {
+    return false;
+  }
+}
+
+/** `DELETE /api/friends/:otherUserId`. true on success. */
+export async function removeFriend(otherUserId: string): Promise<boolean> {
+  try {
+    const res = await fetch(`/api/friends/${encodeURIComponent(otherUserId)}`, {
+      method: 'DELETE',
+      credentials: 'include',
+    });
+    return res.ok;
+  } catch {
+    return false;
+  }
+}
+
+/** A public chat room (the shoutbox or a channel). */
+export interface ChatRoom {
+  slug: string;
+  name: string;
+  topic: string;
+  kind: 'shoutbox' | 'channel';
+  sort: number;
+}
+
+/** A single posted room message. */
+export interface RoomMessage {
+  id: string;
+  userId: string;
+  username: string;
+  body: string;
+  createdAt: number;
+}
+
+function narrowRoom(v: unknown): ChatRoom | null {
+  if (!isObj(v)) return null;
+  const slug = str(v['slug']);
+  const name = str(v['name']);
+  if (slug === undefined || name === undefined) return null;
+  const kind = str(v['kind']) === 'shoutbox' ? 'shoutbox' : 'channel';
+  return { slug, name, topic: str(v['topic']) ?? '', kind, sort: num(v['sort']) };
+}
+function narrowRoomMessage(v: unknown): RoomMessage | null {
+  if (!isObj(v)) return null;
+  const id = str(v['id']);
+  if (id === undefined) return null;
+  return {
+    id,
+    userId: str(v['userId']) ?? '',
+    username: str(v['username']) ?? '',
+    body: str(v['body']) ?? '',
+    createdAt: num(v['createdAt']),
+  };
+}
+
+/** `GET /api/rooms` — public room list. [] on failure. */
+export async function fetchRooms(): Promise<ChatRoom[]> {
+  try {
+    const d = await getJson('/api/rooms');
+    const list = isObj(d) ? d['rooms'] : undefined;
+    if (!Array.isArray(list)) return [];
+    return list.map(narrowRoom).filter((r): r is ChatRoom => r !== null);
+  } catch {
+    return [];
+  }
+}
+
+/** `GET /api/rooms/:slug/messages` — newest `limit` ascending; delta past `sinceId`. */
+export async function fetchRoomMessages(
+  slug: string,
+  opts: { sinceId?: string; limit?: number } = {},
+): Promise<RoomMessage[]> {
+  try {
+    const params = new URLSearchParams();
+    if (opts.sinceId) params.set('sinceId', opts.sinceId);
+    if (opts.limit) params.set('limit', String(opts.limit));
+    const qs = params.toString();
+    const d = await getJson(`/api/rooms/${encodeURIComponent(slug)}/messages${qs ? `?${qs}` : ''}`);
+    const list = isObj(d) ? d['messages'] : undefined;
+    if (!Array.isArray(list)) return [];
+    return list.map(narrowRoomMessage).filter((m): m is RoomMessage => m !== null);
+  } catch {
+    return [];
+  }
+}
+
+/** The result of posting to a room. */
+export type PostResult<T> = { ok: true; message: T } | { ok: false; status: number };
+
+/** `POST /api/rooms/:slug/messages` { body }. */
+export async function postRoomMessage(
+  slug: string,
+  body: string,
+): Promise<PostResult<RoomMessage>> {
+  try {
+    const res = await fetch(`/api/rooms/${encodeURIComponent(slug)}/messages`, {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      credentials: 'include',
+      body: JSON.stringify({ body }),
+    });
+    if (res.ok) {
+      const d: unknown = await res.json().catch(() => ({}));
+      const m = isObj(d) ? narrowRoomMessage(d['message']) : null;
+      if (m) return { ok: true, message: m };
+      return { ok: false, status: res.status };
+    }
+    return { ok: false, status: res.status };
+  } catch {
+    return { ok: false, status: 0 };
+  }
+}
+
+/** A single direct message. */
+export interface DmMessage {
+  id: string;
+  senderId: string;
+  body: string;
+  createdAt: number;
+}
+
+function narrowDm(v: unknown): DmMessage | null {
+  if (!isObj(v)) return null;
+  const id = str(v['id']);
+  if (id === undefined) return null;
+  return {
+    id,
+    senderId: str(v['senderId']) ?? '',
+    body: str(v['body']) ?? '',
+    createdAt: num(v['createdAt']),
+  };
+}
+
+/** `GET /api/dms/:otherUserId` — ensures the thread; returns its id + messages. */
+export async function fetchDms(
+  otherUserId: string,
+  opts: { sinceId?: string; limit?: number } = {},
+): Promise<{ threadId: string; messages: DmMessage[] } | null> {
+  try {
+    const params = new URLSearchParams();
+    if (opts.sinceId) params.set('sinceId', opts.sinceId);
+    if (opts.limit) params.set('limit', String(opts.limit));
+    const qs = params.toString();
+    const d = await getJson(`/api/dms/${encodeURIComponent(otherUserId)}${qs ? `?${qs}` : ''}`);
+    if (!isObj(d)) return null;
+    const threadId = str(d['threadId']);
+    if (threadId === undefined) return null;
+    const messages = Array.isArray(d['messages'])
+      ? d['messages'].map(narrowDm).filter((m): m is DmMessage => m !== null)
+      : [];
+    return { threadId, messages };
+  } catch {
+    return null;
+  }
+}
+
+/** `POST /api/dms/:otherUserId` { body }. */
+export async function postDm(otherUserId: string, body: string): Promise<PostResult<DmMessage>> {
+  try {
+    const res = await fetch(`/api/dms/${encodeURIComponent(otherUserId)}`, {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      credentials: 'include',
+      body: JSON.stringify({ body }),
+    });
+    if (res.ok) {
+      const d: unknown = await res.json().catch(() => ({}));
+      const m = isObj(d) ? narrowDm(d['message']) : null;
+      if (m) return { ok: true, message: m };
+      return { ok: false, status: res.status };
+    }
+    return { ok: false, status: res.status };
+  } catch {
+    return { ok: false, status: 0 };
+  }
+}
+
+/** `POST /api/presence/ping` — best-effort heartbeat (ignored on failure). */
+export async function pingPresence(): Promise<void> {
+  try {
+    await fetch('/api/presence/ping', { method: 'POST', credentials: 'include' });
+  } catch {
+    /* best effort */
+  }
+}
+
 /** Fetch the public lobby list; returns [] on any failure (resilient browser). */
 export async function fetchLobbies(): Promise<LobbyListItem[]> {
   try {

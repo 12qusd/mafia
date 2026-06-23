@@ -7,6 +7,7 @@
  */
 
 import { useEffect, useState } from 'react';
+import { Link } from 'react-router-dom';
 import { useStore } from '../store/store.js';
 import { DecoHead, TierBadge, RankBadge } from '../components/common.js';
 import { LEADERBOARD } from '../lib/strings-extra.js';
@@ -116,7 +117,9 @@ function CasualBoard({
                 {MEDALS[i]}
               </div>
               <div className="podium-place">{i + 1}</div>
-              <div className="podium-name">{sanitizeInline(e.username)}</div>
+              <Link className="podium-name lb-link" to={`/u/${encodeURIComponent(e.username)}`}>
+                {sanitizeInline(e.username)}
+              </Link>
               <TierBadge totalPoints={e.totalPoints} size="sm" />
               <div className="podium-points">
                 {e.totalPoints} {LEADERBOARD.points.toLowerCase()}
@@ -150,7 +153,9 @@ function CasualBoard({
                 <tr key={e.userId || rank} className={isMe ? 'lb-you' : ''}>
                   <td className="lb-rank">{rank}</td>
                   <td>
-                    {sanitizeInline(e.username)}{' '}
+                    <Link className="lb-link" to={`/u/${encodeURIComponent(e.username)}`}>
+                      {sanitizeInline(e.username)}
+                    </Link>{' '}
                     {isMe && <span className="badge badge-you">{LEADERBOARD.you}</span>}
                   </td>
                   <td>
@@ -211,7 +216,9 @@ function RankedBoard({
                 {MEDALS[i]}
               </div>
               <div className="podium-place">{i + 1}</div>
-              <div className="podium-name">{sanitizeInline(e.username)}</div>
+              <Link className="podium-name lb-link" to={`/u/${encodeURIComponent(e.username)}`}>
+                {sanitizeInline(e.username)}
+              </Link>
               <RankBadge rankKey={e.rank} rankName={e.rankName} size="sm" />
               <div className="podium-points">
                 {e.mmr} {LEADERBOARD.mmr}
@@ -245,7 +252,9 @@ function RankedBoard({
                 <tr key={e.userId || rank} className={isMe ? 'lb-you' : ''}>
                   <td className="lb-rank">{rank}</td>
                   <td>
-                    {sanitizeInline(e.username)}{' '}
+                    <Link className="lb-link" to={`/u/${encodeURIComponent(e.username)}`}>
+                      {sanitizeInline(e.username)}
+                    </Link>{' '}
                     {isMe && <span className="badge badge-you">{LEADERBOARD.you}</span>}
                   </td>
                   <td>
