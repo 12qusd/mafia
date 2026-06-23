@@ -29,7 +29,7 @@ import {
   type SeatSnapshot,
   type Phase,
 } from '@nocturne/shared';
-import type { Engine, GameState, GameEvent } from '../engine-adapter.js';
+import type { Engine, GameState, GameEvent, SeatPreference } from '../engine-adapter.js';
 import {
   ScopedTransport,
   sendToSocket,
@@ -149,11 +149,25 @@ export class Room implements AudienceProvider {
    * Initialize the engine with the locked roster and deliver role cards. Each
    * roster entry: { identityId, name }. Seat order follows roster order.
    */
-  init(roster: { identityId: string; name: string }[], setup: GameSetup): void {
+  init(
+    roster: { identityId: string; name: string; seatPreference?: SeatPreference }[],
+    setup: GameSetup,
+  ): void {
+    // Build the per-seat preference array (seat order = roster order). Omit it
+    // entirely when no seated player carries a preference so the engine takes the
+    // byte-identical no-preference path (guests/bots and unentitled players carry
+    // none — gated upstream in the lobby manager). See engine `assignWithPreferences`.
+    const seatPreferences = roster.map(
+      (r) => r.seatPreference ?? { blacklist: [], prefer: [] },
+    );
+    const anyPref = seatPreferences.some(
+      (p) => p.blacklist.length > 0 || p.prefer.length > 0,
+    );
     this.state = this.engine.init(setup, this.seed, {
       playerCount: roster.length,
       names: roster.map((r) => r.name),
       config: this.config,
+      ...(anyPref ? { seatPreferences } : {}),
     });
 
     const seatIds = this.engine.allSeats(this.state);

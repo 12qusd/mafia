@@ -2144,3 +2144,95 @@ different names, different wire fields.
   + ranked_results, guest/bot exclusion, idempotent ledger, rank-from-MMR),
   ranked queue bucketing + the guest-rejected-from-ranked E2E (matchmaker.test.ts),
   and a ranked queue_status reducer case. `npx eslint .` clean (exit 0).
+
+---
+
+## Goal 3 — Point-unlocked role preferences (blacklist / prefer)
+
+Point-unlocked, deterministic, gated. At `UNLOCKS.ROLE_BLACKLIST_AT` (2500) a
+player may BLACKLIST roles (never be dealt them — best-effort, non-guaranteed);
+at `UNLOCKS.ROLE_PREFER_AT` (6000) they may PREFER roles (weighted toward, NOT
+guaranteed). The role MULTISET is still fixed by the setup — preferences only
+influence the seat↔role permutation. Determinism + the §5 leak invariant are
+unchanged and re-proven.
+
+### (a) Preference-aware, still-deterministic assignment (engine)
+- `InitOptions.seatPreferences?: SeatPreference[]` (seat/roster-indexed;
+  `{ blacklist: string[]; prefer: string[] }`). ABSENT or all-empty ⇒ the
+  byte-identical no-preference path.
+- `assignRoles` ALWAYS runs the existing baseline Fisher–Yates shuffle and
+  consumes the PRNG exactly as before. ONLY when ≥1 seat declares a preference
+  does it then call `assignWithPreferences`, advancing the PRNG further and
+  re-deriving the permutation. No prefs ⇒ PRNG state + result identical (this is
+  the no-prefs-is-identical guarantee; verified by hashState equality across
+  player counts 7–15, and all 225 prior engine tests pass untouched).
+- `assignWithPreferences` is a SEEDED greedy assignment with weighted
+  tie-breaking, over the SAME multiset:
+  - Seats are ordered most-constrained-first (fewest non-blacklisted distinct
+    roles, ties by seat index) — a deterministic order independent of the PRNG.
+  - Each seat picks from the remaining pool: candidates = non-blacklisted
+    remaining roles (fall back to ALL remaining only if over-constrained — the
+    documented blacklist non-guarantee). Each candidate is weighted
+    (PREFER_WEIGHT=4 for a preferred role, else 1) and ONE is drawn via a single
+    seeded `weightedPick` step. Same (roles, prefs, prng) ⇒ identical result.
+  - Blacklist = hard-avoid (zero violations whenever a conflict-free assignment
+    exists, which is every realistic sparse-blacklist case; minimized otherwise).
+  - Prefer = soft-weight (more likely, never guaranteed).
+- Role ids are typed `string[]` (engine + adapter): set-membership compares to
+  the drawn multiset, so a stale/unknown id simply never matches — harmless.
+- New tests (`packages/engine/test/preferences.test.ts`, 7): no-prefs ⇒ identical
+  hashState; prefs never change the multiset/counts; same (setup,seed,prefs) ⇒
+  identical hashState; blacklisted role avoided over 200 seeds; multiple distinct
+  blacklists all honored; preferred role hit MORE than chance over 600 seeds;
+  over-constrained blacklist degrades gracefully (exactly one forced violation,
+  multiset intact, no crash).
+
+### (b) server→engine threading + the server-side unlock gate
+- New `packages/server/src/lobby/preferences.ts`:
+  `fetchGatedSeatPreference(store, identityId)` reads `getRolePreferences` +
+  `getUserStats.totalPoints`, applies `unlocksFor(points)`, and DROPS entries the
+  player has not unlocked (blacklist only if ≥2500, prefer only if ≥6000).
+  Returns null for guests (`guest:` ids) / bots / NO_DB / no prefs. This is the
+  authority — a tampered client cannot bypass it. (Verified standalone:
+  below-2500⇒null, 2500–6000⇒blacklist-only, ≥6000⇒both, guest⇒null.)
+- The synchronous start path is preserved (no big async refactor): gated prefs
+  are cached on `Connection.seatPreference` at lobby-join (async, best-effort)
+  and REFRESHED for all players just before forming the game. `startGame` (the
+  host "Deal" path) is now `async` and awaits `refreshLobbyPreferences(lobby)`;
+  `onStartGame` awaits it. Matchmade tables rely on the join-time cache.
+- `formGame` attaches each player's cached `seatPreference` to the roster;
+  `room.init` builds the seat-indexed array and passes `seatPreferences` into the
+  engine ONLY when at least one is non-empty (else omitted ⇒ no-pref path).
+  Guests/bots carry null ⇒ empty ⇒ no effect.
+
+### (c) Endpoints (account-only; gate enforced server-side)
+- `GET /api/me/preferences` → `{ unlocks: unlocksFor(points), preferences: [{role,
+  preference}] }`. 401 guest-less, 403 guest.
+- `POST /api/preferences { role, preference: 'blacklist'|'prefer'|null }` — zod
+  `RoleIdSchema` validates the role; the unlock GATE is enforced on write (403
+  `{error:'locked', unlock}` for a tier the player hasn't reached). Clearing
+  (null) is always allowed. `registerPreferencesRoutes` wired in `app.ts`.
+
+### (d) Client UI (gated on unlocks)
+- New `/preferences` route + `PreferencesScreen` ("Standing orders"), linked from
+  the topbar nav and the profile dossier. Lists every role grouped by faction
+  (reuses `ALL_ROLES` + `FactionTag`), each with a three-state segmented control
+  Neutral / Blacklist / Prefer. Blacklist enabled only when `canBlacklistRoles`,
+  Prefer only when `canPreferRoles` (locked controls show 🔒 + tooltip); locked
+  tiers show a "Bank N reputation to unlock…" hint from `unlocks`. States it is a
+  WEIGHTED bias, not a guarantee. Reads GET, writes POST (optimistic, reverts on
+  failure). api helpers `fetchPreferences` / `setPreference`; copy in
+  `strings-extra.ts` `PREFERENCES`; `.pref-*` CSS (blood accent for an active
+  blacklist), mobile-stacked. Server-data-only.
+
+### §5 leak invariant — UNCHANGED and re-proven
+- Role assignment is not a leak surface (it produces the per-seat hidden role; §5
+  governs who sees it, unchanged). The bot sims exercise init heavily and pass NO
+  prefs (guests), so their behavior is byte-identical. Leak sweep
+  `NO_DB=1 node packages/bots/dist/cli/leakcheck.js` → **0 leaks / 200 games.**
+
+### Gate (all GREEN; nothing committed, no pm2 restart)
+- `pnpm --filter @nocturne/shared build` + `pnpm -r build` clean (5 packages).
+  `pnpm -r test`: shared 210, engine **232** (225 + 7 new), client 167, server 91,
+  bots 36 — all pass. Determinism property tests pass (same seed+log ⇒ identical
+  hash, with and without prefs). `npx eslint .` clean (exit 0). Leak sweep 0/200.

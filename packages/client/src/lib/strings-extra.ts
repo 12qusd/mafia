@@ -306,12 +306,50 @@ export const PROFILE = {
   locked: 'Locked',
   signOut: 'Sign out',
   viewLeaderboard: 'See the leaderboard',
+  rolePreferences: 'Standing orders',
   noStats: 'No record yet — play a ranked game to start your dossier.',
   ranked: 'Ranked standing',
   rankLabel: 'Rank',
   mmrLabel: 'MMR',
   rankedGames: 'Ranked games',
   rankedUnranked: 'Unranked — play a ranked game to earn your standing.',
+} as const;
+
+/** Role-preferences screen copy (point-unlocked, goal 3). Original noir register. */
+export const PREFERENCES = {
+  heading: 'Standing orders',
+  sub: 'Steer the deal — within reason.',
+  back: 'Back',
+  loading: 'Reading your file…',
+  signInRequired:
+    'Standing orders are for made members only. Open an account to bank a reputation and earn the privilege.',
+  // The weighted-bias disclaimer — preference is NOT a guarantee.
+  disclaimer:
+    'These are standing orders, not guarantees. A blacklisted role is avoided where the deal allows; a preferred role is merely weighted in your favor. The house still shuffles the deck.',
+  // Per-tier locked hints (built from unlocksFor's nextUnlock).
+  blacklistLockedHint: (at: number) => `Bank ${at.toLocaleString()} reputation to blacklist roles.`,
+  preferLockedHint: (at: number) => `Bank ${at.toLocaleString()} reputation to prefer roles.`,
+  blacklistUnlocked: 'Blacklist unlocked',
+  preferUnlocked: 'Preference unlocked',
+  // The three-state control labels.
+  stateNone: 'Neutral',
+  stateBlacklist: 'Blacklist',
+  statePrefer: 'Prefer',
+  stateNoneTitle: 'No standing order — assigned normally.',
+  stateBlacklistTitle: 'Avoid dealing me this role (best-effort).',
+  statePreferTitle: 'Weight the deal toward this role (not guaranteed).',
+  // Locked-control tooltips.
+  blacklistLockedTitle: 'Blacklisting is not yet unlocked.',
+  preferLockedTitle: 'Preferring is not yet unlocked.',
+  // Toast / inline feedback.
+  savedBlacklist: 'Role blacklisted.',
+  savedPrefer: 'Role preferred.',
+  savedCleared: 'Standing order lifted.',
+  saveFailedLocked: 'That tier is not unlocked yet.',
+  saveFailed: 'The house would not record that.',
+  // Progress hint header.
+  progressTo: (label: string, at: number) =>
+    `${label} unlocks at ${at.toLocaleString()} reputation.`,
 } as const;
 
 /** Leaderboard screen copy (goal 2 + ranked play). */

@@ -562,6 +562,107 @@ export async function downloadReplay(matchId: string): Promise<void> {
   URL.revokeObjectURL(url);
 }
 
+// ---------------------------------------------------------------------------
+// Role preferences (point-unlocked, goal 3)
+// ---------------------------------------------------------------------------
+
+/** A single stored role preference. */
+export interface RolePreferenceItem {
+  role: string;
+  preference: 'blacklist' | 'prefer';
+}
+
+/** What the caller's lifetime points have unlocked (mirrors shared `UnlockState`). */
+export interface PreferenceUnlocks {
+  canBlacklistRoles: boolean;
+  canPreferRoles: boolean;
+  nextUnlock: { label: string; at: number } | null;
+}
+
+export interface PreferencesResponse {
+  unlocks: PreferenceUnlocks;
+  preferences: RolePreferenceItem[];
+}
+
+const LOCKED_UNLOCKS: PreferenceUnlocks = {
+  canBlacklistRoles: false,
+  canPreferRoles: false,
+  nextUnlock: null,
+};
+
+function narrowUnlocks(v: unknown): PreferenceUnlocks {
+  if (!isObj(v)) return LOCKED_UNLOCKS;
+  let nextUnlock: PreferenceUnlocks['nextUnlock'] = null;
+  const nu = v['nextUnlock'];
+  if (isObj(nu)) {
+    const label = str(nu['label']);
+    if (label !== undefined) nextUnlock = { label, at: num(nu['at']) };
+  }
+  return {
+    canBlacklistRoles: bool(v['canBlacklistRoles']),
+    canPreferRoles: bool(v['canPreferRoles']),
+    nextUnlock,
+  };
+}
+
+/**
+ * `GET /api/me/preferences` — the caller's role preferences plus their unlock
+ * state. Returns locked unlocks + [] on any failure (signed out / offline).
+ */
+export async function fetchPreferences(): Promise<PreferencesResponse> {
+  try {
+    const data = await getJson('/api/me/preferences');
+    if (!isObj(data)) return { unlocks: LOCKED_UNLOCKS, preferences: [] };
+    const list = Array.isArray(data['preferences']) ? data['preferences'] : [];
+    const preferences: RolePreferenceItem[] = [];
+    for (const r of list) {
+      if (!isObj(r)) continue;
+      const role = str(r['role']);
+      const pref = str(r['preference']);
+      if (role !== undefined && (pref === 'blacklist' || pref === 'prefer')) {
+        preferences.push({ role, preference: pref });
+      }
+    }
+    return { unlocks: narrowUnlocks(data['unlocks']), preferences };
+  } catch {
+    return { unlocks: LOCKED_UNLOCKS, preferences: [] };
+  }
+}
+
+/** The result of attempting to set a role preference. */
+export type SetPreferenceResult =
+  | { ok: true }
+  | { ok: false; status: number; locked?: 'blacklist' | 'prefer' };
+
+/**
+ * `POST /api/preferences` — set (`'blacklist'|'prefer'`) or clear (`null`) a
+ * role's preference. The server enforces the unlock gate (403 `locked`); callers
+ * surface that as a "not yet unlocked" message.
+ */
+export async function setPreference(
+  role: string,
+  preference: 'blacklist' | 'prefer' | null,
+): Promise<SetPreferenceResult> {
+  try {
+    const res = await fetch('/api/preferences', {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      credentials: 'include',
+      body: JSON.stringify({ role, preference }),
+    });
+    if (res.ok) return { ok: true };
+    const data: unknown = await res.json().catch(() => ({}));
+    const locked = isObj(data) ? str(data['unlock']) : undefined;
+    return {
+      ok: false,
+      status: res.status,
+      ...(locked === 'blacklist' || locked === 'prefer' ? { locked } : {}),
+    };
+  } catch {
+    return { ok: false, status: 0 };
+  }
+}
+
 /** Logout helper (clears the server session; the cookie is httpOnly). */
 export async function logout(): Promise<void> {
   try {

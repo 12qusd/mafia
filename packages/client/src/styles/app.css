@@ -1371,6 +1371,43 @@ label {
     inset 0 1px 0 rgba(255, 250, 235, 0.4);
 }
 
+/* --- Role preferences (standing orders, goal 3) ------------------------- */
+.pref-row {
+  align-items: center;
+  gap: 12px;
+  padding: 4px 0;
+  border-bottom: 1px solid rgba(201, 164, 90, 0.08);
+}
+.pref-row:last-child {
+  border-bottom: none;
+}
+.pref-control {
+  flex: 0 0 auto;
+  white-space: nowrap;
+}
+.pref-control .btn:disabled {
+  opacity: 0.45;
+  cursor: not-allowed;
+}
+/* Blacklist active = blood accent (avoid). Prefer active keeps the brass. */
+.segmented .btn.pref-blacklist.btn-active {
+  background: linear-gradient(180deg, var(--c-blood), var(--c-blood-dim));
+  color: #fff4f2;
+}
+@media (max-width: 560px) {
+  .pref-row {
+    flex-direction: column;
+    align-items: flex-start;
+  }
+  .pref-control {
+    width: 100%;
+    justify-content: stretch;
+  }
+  .pref-control .btn {
+    flex: 1 1 0;
+  }
+}
+
 .error-text {
   color: var(--c-blood);
   font-size: calc(13px * var(--scale));

@@ -275,8 +275,8 @@ export class MessageHandlers {
     return null;
   }
 
-  private onStartGame(conn: Connection): void {
-    const res = this.ctx.manager.startGame(conn);
+  private async onStartGame(conn: Connection): Promise<void> {
+    const res = await this.ctx.manager.startGame(conn);
     if ('error' in res) replyError(conn, res.error as ErrorCode);
   }
 

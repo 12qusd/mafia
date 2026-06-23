@@ -128,6 +128,9 @@ export function ProfilePanel() {
             <Link className="btn btn-sm" to="/leaderboard">
               {PROFILE.viewLeaderboard}
             </Link>
+            <Link className="btn btn-sm" to="/preferences">
+              {PROFILE.rolePreferences}
+            </Link>
           </div>
         </>
       ) : (

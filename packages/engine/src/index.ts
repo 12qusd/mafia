@@ -14,7 +14,7 @@
 import type { Phase, GameTick } from '@nocturne/shared';
 import type { GameState } from './state.js';
 
-export { init, type InitOptions } from './init.js';
+export { init, type InitOptions, type SeatPreference } from './init.js';
 export { apply, type ApplyResult } from './apply.js';
 
 export type { GameState, SeatState, ResolutionTrace, NightAbility, GameOverState, SeatResult, WinCheckReason } from './state.js';

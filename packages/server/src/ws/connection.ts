@@ -37,6 +37,15 @@ export class Connection {
   readonly chatLimiter = new ChatLimiter();
   /** Clock offset estimation sample from last ping (§6.2); informational. */
   lastPingT = 0;
+  /**
+   * Point-unlocked, UNLOCK-GATED role preferences for this connection's seat
+   * (goal 3), cached at lobby-join and refreshed at game-start. Already filtered
+   * by the player's lifetime points (blacklist only if ≥ ROLE_BLACKLIST_AT,
+   * prefer only if ≥ ROLE_PREFER_AT) so the synchronous start path can read it
+   * without an await — a client cannot bypass the gate. `null` ⇒ none (guests,
+   * bots, players below the threshold, or accounts with no stored prefs).
+   */
+  seatPreference: { blacklist: string[]; prefer: string[] } | null = null;
 
   constructor(readonly socket: RawSocket) {}
 

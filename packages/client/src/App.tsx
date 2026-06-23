@@ -20,6 +20,7 @@ import { JoinScreen } from './screens/JoinScreen.js';
 import { LobbyScreen } from './screens/LobbyScreen.js';
 import { GameScreen } from './screens/GameScreen.js';
 import { SettingsScreen } from './screens/SettingsScreen.js';
+import { PreferencesScreen } from './screens/PreferencesScreen.js';
 import { LeaderboardScreen } from './screens/LeaderboardScreen.js';
 import { SetupsScreen } from './screens/SetupsScreen.js';
 import { ReplayScreen } from './screens/ReplayScreen.js';
@@ -100,6 +101,9 @@ export function App() {
             >
               {GLOSSARY.open}
             </button>
+            <Link className="linkbtn" to="/preferences">
+              Standing Orders
+            </Link>
             <Link className="linkbtn" to="/settings">
               Settings
             </Link>
@@ -113,6 +117,7 @@ export function App() {
           <Route path="/leaderboard" element={<LeaderboardScreen />} />
           <Route path="/setups" element={<SetupsScreen />} />
           <Route path="/replay/:matchId" element={<ReplayScreen />} />
+          <Route path="/preferences" element={<PreferencesScreen />} />
           <Route path="/settings" element={<SettingsScreen />} />
           <Route path="*" element={<Navigate to="/" replace />} />
         </Routes>

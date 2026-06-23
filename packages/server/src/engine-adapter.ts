@@ -66,11 +66,29 @@ export interface EngineApi {
   nextDeadline(state: GameState): Deadline | null;
 }
 
+/**
+ * Per-seat role preferences (point-unlocked, goal 3), indexed by seat/roster
+ * order. Mirrors the engine's `SeatPreference`. Absent ⇒ no preferences ⇒ the
+ * seat↔role assignment is byte-identical to the no-preference path. The server
+ * gates each entry on the player's lifetime points BEFORE building this (a stale
+ * preference from a player below the unlock threshold is dropped upstream).
+ */
+export interface SeatPreference {
+  /**
+   * Role ids (as strings — gated upstream from the DB; unknown/stale ids simply
+   * never match the drawn multiset and are harmless). Hard-avoided best-effort.
+   */
+  blacklist: string[];
+  /** Role ids soft-weighted toward this seat (non-guaranteed). */
+  prefer: string[];
+}
+
 export interface EngineInitOpts {
   playerCount?: number;
   names?: string[];
   config?: ResolvedLobbyConfig;
   matchId?: string;
+  seatPreferences?: SeatPreference[];
 }
 
 /** Per-seat view the server needs for routing, snapshots, and reveals. */

@@ -24,6 +24,7 @@ import type { BotManager } from '../bots/manager.js';
 import { newId, newInviteCode, newSeed } from '../ids.js';
 import { log } from '../log.js';
 import { Lobby, resolveConfig } from './lobby.js';
+import { fetchGatedSeatPreference } from './preferences.js';
 import {
   Matchmaker,
   type MatchmakerHost,
@@ -240,8 +241,34 @@ export class LobbyManager {
     this.identityScope.set(identityId, lobbyId);
     conn.lobbyId = lobbyId;
     conn.spectator = input.asSpectator ?? false;
+    // Pre-fetch this player's UNLOCK-GATED role preferences (goal 3) into the
+    // connection so the synchronous start path can read them without an await.
+    // Best-effort; failures leave the cache null (⇒ no preferences). Refreshed
+    // again at game-start to pick up any mid-lobby edits.
+    void this.refreshSeatPreference(conn);
     this.broadcastLobby(lobby);
     return { lobby };
+  }
+
+  /**
+   * Refresh a connection's cached, UNLOCK-GATED role preferences (goal 3) from
+   * the store. Best-effort: on any error the cache is left as-is. Called on
+   * lobby-join and again just before a game forms so the synchronous start path
+   * reads fresh, gate-enforced preferences without an await.
+   */
+  async refreshSeatPreference(conn: Connection): Promise<void> {
+    const id = conn.identityId;
+    if (!id) return;
+    try {
+      conn.seatPreference = await fetchGatedSeatPreference(this.deps.store, id);
+    } catch (e) {
+      log.warn('refreshSeatPreference failed', { id, err: String(e) });
+    }
+  }
+
+  /** Refresh every player connection's cached preferences for a lobby (pre-start). */
+  private async refreshLobbyPreferences(lobby: Lobby): Promise<void> {
+    await Promise.all(lobby.playerConnections().map((c) => this.refreshSeatPreference(c)));
   }
 
   leaveLobby(conn: Connection): void {
@@ -470,12 +497,16 @@ export class LobbyManager {
 
   // --- Start game (§7.5) ---------------------------------------------------
 
-  startGame(conn: Connection): { room: Room } | { error: string } {
+  async startGame(conn: Connection): Promise<{ room: Room } | { error: string }> {
     if (this.draining) return { error: 'cannot_start' };
     const lobby = this.lobbyOf(conn);
     if (!lobby) return { error: 'not_in_lobby' };
     if (!lobby.isHost(conn.identityId as string)) return { error: 'not_host' };
     if (!lobby.canStart()) return { error: 'cannot_start' };
+    // Refresh every player's UNLOCK-GATED role preferences so a mid-lobby edit is
+    // reflected at deal-time (goal 3). Cache already seeded at join; this catches
+    // changes. Failures leave the last-known cache (best-effort).
+    await this.refreshLobbyPreferences(lobby);
     return this.formGame(lobby, {});
   }
 
@@ -515,6 +546,10 @@ export class LobbyManager {
     const roster = players.map((c) => ({
       identityId: c.identityId as string,
       name: this.deps.nameOf(c.identityId as string),
+      // UNLOCK-GATED role preferences (goal 3), cached on the connection at
+      // join + pre-start refresh. Guests/bots/unentitled players carry null ⇒
+      // no preferences ⇒ the engine's byte-identical no-preference assignment.
+      ...(c.seatPreference ? { seatPreference: c.seatPreference } : {}),
     }));
     const setup = lobby.resolvedSetup;
     const playerCount = roster.length;
