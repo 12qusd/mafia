@@ -1848,3 +1848,129 @@ themselves); what is removed is every LIVING→DEAD bridge and every revival.
   15p ×60 → **0**; reckoning 15p ×60 → **0**; the-long-night 15p ×50 → **0**.
 - Determinism/purity property tests pass (`§12.1`: same seed ⇒ identical hash; init
   determinism; termination; leak-shape). Role count == **50**.
+
+## DATA LAYER: ranked play + role-preference unlocks (Glicko-2)
+
+Added the persistence foundation for ranked queues, seasons, MMR, and per-user
+role likes/blacklists. **DB layer only** — no engine/server-logic/client changes;
+ranking math + unlock gameplay are built by other agents on these primitives. The
+engine stays pure; all rating computation will happen server-side at match end
+(mirrors the points system, which also lives outside the engine).
+
+### Tables added to `schema.sql` (idempotent, mirroring existing style)
+- `seasons (id uuid pk, name text, started_at, ended_at null, is_current bool)`
+  — partial unique index `seasons_one_current_idx ON (is_current) WHERE is_current`
+  enforces **at most one current season**.
+- `ratings (user_id→users ON DELETE CASCADE, mode text, season_id uuid, mmr=1500,
+  rd=350, vol=0.06, games, wins, updated_at; PK (user_id, mode, season_id))`
+  — Glicko-2 state (mmr=rating r, rd=deviation, vol=volatility). Index
+  `ratings_leaderboard_idx ON (mode, season_id, mmr DESC)` for the ranked board.
+- `role_preferences (user_id→users CASCADE, role text, preference text
+  /* 'blacklist' | 'prefer' */, created_at; PK (user_id, role))`.
+- `ranked_results (match_id uuid, user_id uuid, mode, mmr_before/after,
+  rd_before/after, delta, created_at; PK (match_id, user_id))` — append-only
+  per-match rating deltas; **no FK** on match_id/user_id so a result survives
+  even if a match row is pruned. Index `ranked_results_user_idx ON
+  (user_id, created_at DESC)` for match history.
+- `matches`: added `mode text` (casual|ranked|quickplay) + `season_id uuid`,
+  both nullable, in the CREATE plus idempotent `ADD COLUMN IF NOT EXISTS`.
+
+### Store interface (`db/types.ts`) + both impls (`pg-store`, `memory-store`)
+- New types: `SeasonRow`, `RatingRow`, `RolePreference`, `RankedResultInput`,
+  `RatingLeaderboardEntry` (re-exported via `db/index.ts`'s `export *`).
+- New methods (in `Store`, implemented in both stores):
+  `getCurrentSeason`, `ensureCurrentSeason(name)`, `getRating(userId,mode,seasonId)`,
+  `upsertRating(row)`, `getRatingLeaderboard(mode,seasonId,limit)`,
+  `getRolePreferences(userId)`, `setRolePreference(userId,role,preference|null)`
+  (null removes the row), `writeRankedResults(rows)` (bulk, ignore-conflict),
+  `getRankedResults(userId,limit)` (newest-first).
+- `MatchRecord` gained **optional** `mode?`/`seasonId?` — the existing
+  `manager.ts` `writeMatch` caller omits them and still compiles (persists
+  casual). `writeMatch` writes them when present (null otherwise).
+- `MemoryStore` keeps in-process maps (NO_DB is guests-only): single
+  `currentSeason`, a `ratings` map keyed `${user} ${mode} ${season}`, a nested
+  `rolePrefs` map, and an append-order `rankedResults` array.
+
+### Gate (all GREEN; nothing committed, no pm2 restart, migration NOT run on live DB)
+- `pnpm --filter @nocturne/server typecheck` clean. `pnpm -r build` clean (all 5
+  packages). `pnpm -r test`: shared 186, engine 225, client 163, server 56,
+  bots 36 — all pass. `npx eslint .` clean (exit 0).
+- No leak/determinism impact (DB layer only; engine untouched). MemoryStore
+  (used by the server test harness) gains sane in-process implementations.
+
+---
+
+## Points economy expansion — role-win + feat achievements + unlock model
+
+Goal: make lifetime points a status symbol and the backbone for unlocks, with a
+much larger achievement set rewarding playing/winning/odd feats. Touched only
+`shared/types/points.ts` + a new `shared/types/achievements.ts` (exported via
+`types/index.ts`) and `server/points/award.ts` (+ their tests). DB/engine/client
+untouched (the client glossary/achievements UI is data-driven off `ACHIEVEMENTS`,
+so it auto-absorbs the new entries; no client test asserts an achievement count).
+
+### Role-win achievements (generated, one per role)
+- **[points] One `win_<roleid_lowercase>` achievement per role in `ALL_ROLES`**,
+  generated in `achievements.ts` (`ROLE_WIN_ACHIEVEMENTS`) so the list
+  auto-tracks the 50-role roster — add a role and it gets a win achievement with
+  no edit. Name `Win as <RoleName>`, original faction-flavoured noir copy.
+- **[points] Point tiers by `roleWinPoints(role)`:** COMMON 25 (Town / Mafia /
+  Triad / Cult body / support neutrals), KILLER 40 (NEUTRAL_KILLING + VAMPIRE +
+  the unique CULT_LEADER converter), TRICKSTER 50 (Jester, Executioner, Pirate,
+  Witch). Constants in `ROLE_WIN_POINTS`; tiering is faction-driven so it tracks
+  the roster. `ROLE_WIN_KEY_BY_ROLE` maps engine RoleId → win key for the server
+  detector.
+
+### Feat achievements (18 shipped, all detectable from match-player data)
+- **[points] Shipped feats** (key — condition — pts): `feat_dead_man_wins` (die
+  N1, still win — 40); `feat_first_blood` "Cold Open" (first body, dead N1 — 15);
+  `feat_last_town_standing` (win as the only surviving Town — needs the full
+  roster, passed in — 45); `feat_final_curtain` (win a 7+ day game — 35);
+  `feat_long_haul` (survive a 7+ day game — 40); `feat_martyrs_vindication` (win
+  while lynched loyal Town — 40); `feat_turncoat` (win with FINAL role VAMPIRE —
+  45); `feat_converted_faithful` (win with FINAL role CULTIST — 45);
+  `feat_ghost_of_the_house` (win with 5+ days dead — 30); `feat_untouchable`
+  (win alive — 25); `feat_pyrrhic` (win on the day you died — 35);
+  `feat_solo_carry` (NEUTRAL_KILLING wins alive — 50); `feat_kingmaker`
+  (Executioner win — 45); `feat_one_more_drink` (Survivor win — 35);
+  `feat_plague_apotheosis` (Pestilence win — 50); `feat_house_always_wins`
+  (Pirate win — 50); `feat_grim_loyalty` (die by day 2, stay, win — 35);
+  `feat_clean_hands` (Town win, alive — 30).
+- **[points] Detectability decision:** only feats derivable from the per-seat
+  `MatchPlayerRecord` (`outcome`/`survived`/`deathDay`/`role`/`faction`) + match
+  `finalDay`, plus (for `feat_last_town_standing`) the full player roster which
+  `detectAchievements` now also receives. `role`/`faction` on the record are the
+  seat's FINAL state at reveal, so conversions are honoured (a turned Vampire who
+  wins earns `win_vampire` + `feat_turncoat`).
+- **[points] SKIPPED as undetectable with today's signals** (would need extra
+  per-night state the match record does not carry): *never-targeted survivor*
+  (needs a per-seat "was visited/targeted" flag across all nights); *comeback /
+  numbers-disadvantage* (needs per-day faction-count history); *clean sweep with
+  zero Town deaths* — note `feat_clean_hands` ships the detectable weaker form
+  (this seat won for Town and lived), not the whole-team-untouched version, which
+  would need a per-Town-seat death tally (derivable from the roster but
+  deliberately deferred to avoid over-claiming). The existing `clean_sweep`,
+  `last_laugh`, `lone_wolf` core achievements are kept and NOT duplicated by the
+  new feats.
+
+### Unlock-threshold model (basis for role-preference, goal 3)
+- **[points] `UNLOCKS = { ROLE_BLACKLIST_AT: 2500, ROLE_PREFER_AT: 6000 }`** +
+  pure `unlocksFor(totalPoints): { canBlacklistRoles, canPreferRoles, nextUnlock
+  }` in `points.ts`. Blacklisting (never be dealt a role) unlocks first, role
+  preference (weighted toward) higher up; `nextUnlock` drives a "X to go" UI.
+  Tunable constants; gates the later role-preference feature with one call.
+
+### Award detection (`server/points/award.ts`)
+- `detectAchievements` now also takes the full `players` roster; it pushes
+  `ROLE_WIN_KEY_BY_ROLE[p.role]` on a win and the 18 feat keys from the same
+  signals, then keeps the existing catalog-filter + first-time-only
+  `store.unlockAchievements` semantics, so role-win/feat points flow through the
+  unchanged breakdown/`recordPoints` path. Exported for unit testing.
+
+### Gate (all GREEN; nothing committed, no pm2 restart)
+- `pnpm --filter @nocturne/shared build` clean. `pnpm -r build` clean (all 5
+  packages). `pnpm -r test`: shared 194, engine 225, client 163, server 70,
+  bots 36 — all pass. `npx eslint .` clean (exit 0).
+- Final achievement count: **79** (11 core + 50 role-win + 18 feat), all keys
+  unique. No leak/determinism impact — points are server-side, computed at game
+  end; the engine is untouched.

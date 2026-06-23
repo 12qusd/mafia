@@ -4,9 +4,19 @@ import {
   tierForPoints,
   POINTS,
   POINTS_TIERS,
+  ACHIEVEMENTS,
   ACHIEVEMENTS_BY_KEY,
   achievementPoints,
+  unlocksFor,
+  UNLOCKS,
 } from './points.js';
+import {
+  ROLE_WIN_ACHIEVEMENTS,
+  FEAT_ACHIEVEMENTS,
+  ROLE_WIN_KEY_BY_ROLE,
+  roleWinKey,
+} from './achievements.js';
+import { ALL_ROLES } from '../roles/index.js';
 
 describe('computeMatchPoints', () => {
   it('awards the played base for a finished game', () => {
@@ -74,5 +84,64 @@ describe('tierForPoints', () => {
 describe('achievementPoints', () => {
   it('returns 0 for unknown keys', () => {
     expect(achievementPoints('nope')).toBe(0);
+  });
+});
+
+describe('role-win achievement catalog', () => {
+  it('generates exactly one win achievement per role in ALL_ROLES', () => {
+    expect(ROLE_WIN_ACHIEVEMENTS).toHaveLength(ALL_ROLES.length);
+  });
+
+  it('keys every role to a `win_<roleid_lowercase>` achievement', () => {
+    for (const role of ALL_ROLES) {
+      const key = roleWinKey(role.id);
+      expect(key).toBe(`win_${role.id.toLowerCase()}`);
+      expect(ROLE_WIN_KEY_BY_ROLE[role.id]).toBe(key);
+      expect(ACHIEVEMENTS_BY_KEY[key]).toBeDefined();
+      expect(ACHIEVEMENTS_BY_KEY[key]?.name).toBe(`Win as ${role.name}`);
+    }
+  });
+
+  it('covers a few known keys with sensible point tiers', () => {
+    expect(ACHIEVEMENTS_BY_KEY['win_sheriff']?.points).toBe(25); // vanilla town
+    expect(ACHIEVEMENTS_BY_KEY['win_godfather']?.points).toBe(25); // informed evil
+    expect(ACHIEVEMENTS_BY_KEY['win_serial_killer']?.points).toBe(40); // neutral killer
+    expect(ACHIEVEMENTS_BY_KEY['win_vampire']?.points).toBe(40); // converter killer
+    expect(ACHIEVEMENTS_BY_KEY['win_jester']?.points).toBe(50); // trickster
+    expect(ACHIEVEMENTS_BY_KEY['win_pirate']?.points).toBe(50); // trickster
+  });
+
+  it('folds role-win + feat achievements into the public catalog with unique keys', () => {
+    const keys = ACHIEVEMENTS.map((a) => a.key);
+    expect(new Set(keys).size).toBe(keys.length); // no duplicate keys
+    for (const a of ROLE_WIN_ACHIEVEMENTS) expect(keys).toContain(a.key);
+    for (const a of FEAT_ACHIEVEMENTS) expect(keys).toContain(a.key);
+  });
+});
+
+describe('unlocksFor', () => {
+  it('locks both perks below the blacklist threshold and points to it', () => {
+    const u = unlocksFor(0);
+    expect(u.canBlacklistRoles).toBe(false);
+    expect(u.canPreferRoles).toBe(false);
+    expect(u.nextUnlock).toEqual({ label: 'Role blacklisting', at: UNLOCKS.ROLE_BLACKLIST_AT });
+  });
+
+  it('unlocks blacklisting at the threshold and points to preference next', () => {
+    const u = unlocksFor(UNLOCKS.ROLE_BLACKLIST_AT);
+    expect(u.canBlacklistRoles).toBe(true);
+    expect(u.canPreferRoles).toBe(false);
+    expect(u.nextUnlock).toEqual({ label: 'Role preference', at: UNLOCKS.ROLE_PREFER_AT });
+  });
+
+  it('unlocks everything at the preference threshold with no next milestone', () => {
+    const u = unlocksFor(UNLOCKS.ROLE_PREFER_AT);
+    expect(u.canBlacklistRoles).toBe(true);
+    expect(u.canPreferRoles).toBe(true);
+    expect(u.nextUnlock).toBeNull();
+  });
+
+  it('orders the thresholds blacklist < prefer', () => {
+    expect(UNLOCKS.ROLE_BLACKLIST_AT).toBeLessThan(UNLOCKS.ROLE_PREFER_AT);
   });
 });

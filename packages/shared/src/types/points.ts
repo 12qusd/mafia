@@ -10,6 +10,8 @@
 
 import { z } from 'zod';
 
+import { EXTRA_ACHIEVEMENTS } from './achievements.js';
+
 // --------------------------------------------------------------------------
 // Award reasons & breakdown
 // --------------------------------------------------------------------------
@@ -67,7 +69,13 @@ export interface AchievementDef {
   points: number;
 }
 
-export const ACHIEVEMENTS: readonly AchievementDef[] = [
+/**
+ * Hand-authored "core" achievements (first win, faction milestones, count-based
+ * and the original feats). The generated role-win catalog and the extra feat
+ * achievements (`achievements.ts`) are folded in below to form the single public
+ * {@link ACHIEVEMENTS} array the catalog/UI/award code consume uniformly.
+ */
+const CORE_ACHIEVEMENTS: readonly AchievementDef[] = [
   { key: 'first_win', name: 'First Blood', description: 'Win your very first game.', points: 30 },
   { key: 'survivor', name: 'Last One Standing', description: 'Be alive when the game ends.', points: 20 },
   {
@@ -111,6 +119,13 @@ export const ACHIEVEMENTS: readonly AchievementDef[] = [
   { key: 'high_roller', name: 'High Roller', description: 'Bank one thousand points.', points: 50 },
 ] as const;
 
+/**
+ * The full public achievement catalog: the hand-authored core, plus the
+ * generated one-per-role win achievements and the distinctive feat achievements
+ * (defined in `achievements.ts`).
+ */
+export const ACHIEVEMENTS: readonly AchievementDef[] = [...CORE_ACHIEVEMENTS, ...EXTRA_ACHIEVEMENTS];
+
 export const ACHIEVEMENTS_BY_KEY: Readonly<Record<string, AchievementDef>> = Object.fromEntries(
   ACHIEVEMENTS.map((a) => [a.key, a]),
 );
@@ -145,6 +160,49 @@ export function tierForPoints(total: number): PointsTier {
     else break;
   }
   return current;
+}
+
+// --------------------------------------------------------------------------
+// Unlock thresholds — basis for the role-preference feature (goal 3)
+// --------------------------------------------------------------------------
+//
+// Lifetime points are a status symbol AND the gate for role-preference perks:
+// past a threshold a player may BLACKLIST roles (never be assigned them); higher
+// up they may PREFER roles (weighted toward them). The gate lives here as pure,
+// tunable constants + a helper so the later feature can ask one question.
+
+export const UNLOCKS = {
+  /** Lifetime points to unlock role blacklisting (never be dealt picked roles). */
+  ROLE_BLACKLIST_AT: 2500,
+  /** Lifetime points to unlock role preference (weighted toward picked roles). */
+  ROLE_PREFER_AT: 6000,
+} as const;
+
+/** What a given lifetime-points total unlocks, plus the next milestone to chase. */
+export interface UnlockState {
+  /** May blacklist roles (never be assigned them). */
+  canBlacklistRoles: boolean;
+  /** May mark roles as preferred (weighted toward them when assigning). */
+  canPreferRoles: boolean;
+  /** The next unlock the player has not yet reached, or null if all unlocked. */
+  nextUnlock: { label: string; at: number } | null;
+}
+
+/**
+ * Pure: given a player's lifetime points, report which role-preference unlocks
+ * are available and the next milestone (for a "X to go" UI). Total: any number
+ * in ⇒ a fully-populated state out.
+ */
+export function unlocksFor(totalPoints: number): UnlockState {
+  const canBlacklistRoles = totalPoints >= UNLOCKS.ROLE_BLACKLIST_AT;
+  const canPreferRoles = totalPoints >= UNLOCKS.ROLE_PREFER_AT;
+  let nextUnlock: { label: string; at: number } | null = null;
+  if (!canBlacklistRoles) {
+    nextUnlock = { label: 'Role blacklisting', at: UNLOCKS.ROLE_BLACKLIST_AT };
+  } else if (!canPreferRoles) {
+    nextUnlock = { label: 'Role preference', at: UNLOCKS.ROLE_PREFER_AT };
+  }
+  return { canBlacklistRoles, canPreferRoles, nextUnlock };
 }
 
 // --------------------------------------------------------------------------

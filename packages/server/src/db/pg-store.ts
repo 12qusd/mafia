@@ -21,6 +21,11 @@ import type {
   PointAwardRecord,
   StatsDelta,
   CustomSetupRow,
+  SeasonRow,
+  RatingRow,
+  RolePreference,
+  RankedResultInput,
+  RatingLeaderboardEntry,
 } from './types.js';
 
 interface PgUser {
@@ -252,8 +257,8 @@ export class PgStore implements Store {
     try {
       await client.query('BEGIN');
       await client.query(
-        `INSERT INTO matches (id, setup_id, config, seed, started_at, ended_at, outcome, server_build, fingerprint)
-         VALUES ($1, $2, $3, $4, to_timestamp($5/1000.0), to_timestamp($6/1000.0), $7, $8, $9)`,
+        `INSERT INTO matches (id, setup_id, config, seed, started_at, ended_at, outcome, server_build, fingerprint, mode, season_id)
+         VALUES ($1, $2, $3, $4, to_timestamp($5/1000.0), to_timestamp($6/1000.0), $7, $8, $9, $10, $11)`,
         [
           record.id,
           record.setupId,
@@ -264,6 +269,8 @@ export class PgStore implements Store {
           record.outcome,
           record.serverBuild,
           record.fingerprint,
+          record.mode ?? null,
+          record.seasonId ?? null,
         ],
       );
       for (const p of record.players) {
@@ -570,6 +577,212 @@ export class PgStore implements Store {
       [id, ownerUserId],
     );
     return (res.rowCount ?? 0) > 0;
+  }
+
+  // --- Ranked play + role preferences (goal: ranked + preferences) ---------
+
+  private mapSeason(r: {
+    id: string;
+    name: string;
+    started_at: Date;
+    ended_at: Date | null;
+    is_current: boolean;
+  }): SeasonRow {
+    return {
+      id: r.id,
+      name: r.name,
+      startedAt: r.started_at.getTime(),
+      endedAt: r.ended_at ? r.ended_at.getTime() : null,
+      isCurrent: r.is_current,
+    };
+  }
+
+  async getCurrentSeason(): Promise<SeasonRow | null> {
+    const { rows } = await this.pool.query<{
+      id: string;
+      name: string;
+      started_at: Date;
+      ended_at: Date | null;
+      is_current: boolean;
+    }>(
+      `SELECT id, name, started_at, ended_at, is_current FROM seasons WHERE is_current LIMIT 1`,
+    );
+    return rows[0] ? this.mapSeason(rows[0]) : null;
+  }
+
+  async ensureCurrentSeason(name: string): Promise<SeasonRow> {
+    // Insert a current season only if none exists; the partial unique index on
+    // is_current guarantees at most one even under a race (then we re-read it).
+    await this.pool.query(
+      `INSERT INTO seasons (name, is_current)
+       SELECT $1, true
+       WHERE NOT EXISTS (SELECT 1 FROM seasons WHERE is_current)
+       ON CONFLICT DO NOTHING`,
+      [name],
+    );
+    const cur = await this.getCurrentSeason();
+    if (cur) return cur;
+    // Lost the race and the winner's row is current — read it back.
+    const again = await this.getCurrentSeason();
+    if (again) return again;
+    throw new Error('failed to ensure a current season');
+  }
+
+  private mapRating(r: {
+    user_id: string;
+    mode: string;
+    season_id: string;
+    mmr: number;
+    rd: number;
+    vol: number;
+    games: number;
+    wins: number;
+    updated_at: Date;
+  }): RatingRow {
+    return {
+      userId: r.user_id,
+      mode: r.mode,
+      seasonId: r.season_id,
+      mmr: r.mmr,
+      rd: r.rd,
+      vol: r.vol,
+      games: r.games,
+      wins: r.wins,
+      updatedAt: r.updated_at.getTime(),
+    };
+  }
+
+  async getRating(userId: string, mode: string, seasonId: string): Promise<RatingRow | null> {
+    const { rows } = await this.pool.query<{
+      user_id: string;
+      mode: string;
+      season_id: string;
+      mmr: number;
+      rd: number;
+      vol: number;
+      games: number;
+      wins: number;
+      updated_at: Date;
+    }>(
+      `SELECT user_id, mode, season_id, mmr, rd, vol, games, wins, updated_at
+       FROM ratings WHERE user_id = $1 AND mode = $2 AND season_id = $3`,
+      [userId, mode, seasonId],
+    );
+    return rows[0] ? this.mapRating(rows[0]) : null;
+  }
+
+  async upsertRating(row: RatingRow): Promise<void> {
+    await this.pool.query(
+      `INSERT INTO ratings (user_id, mode, season_id, mmr, rd, vol, games, wins, updated_at)
+       VALUES ($1, $2, $3, $4, $5, $6, $7, $8, now())
+       ON CONFLICT (user_id, mode, season_id) DO UPDATE SET
+         mmr = EXCLUDED.mmr,
+         rd = EXCLUDED.rd,
+         vol = EXCLUDED.vol,
+         games = EXCLUDED.games,
+         wins = EXCLUDED.wins,
+         updated_at = now()`,
+      [row.userId, row.mode, row.seasonId, row.mmr, row.rd, row.vol, row.games, row.wins],
+    );
+  }
+
+  async getRatingLeaderboard(
+    mode: string,
+    seasonId: string,
+    limit: number,
+  ): Promise<RatingLeaderboardEntry[]> {
+    const { rows } = await this.pool.query<{
+      user_id: string;
+      username: string;
+      mmr: number;
+      rd: number;
+      games: number;
+      wins: number;
+    }>(
+      `SELECT r.user_id, u.username, r.mmr, r.rd, r.games, r.wins
+       FROM ratings r JOIN users u ON u.id = r.user_id
+       WHERE r.mode = $1 AND r.season_id = $2
+       ORDER BY r.mmr DESC LIMIT $3`,
+      [mode, seasonId, Math.max(1, Math.min(limit, 500))],
+    );
+    return rows.map((r) => ({
+      userId: r.user_id,
+      username: r.username,
+      mmr: r.mmr,
+      rd: r.rd,
+      games: r.games,
+      wins: r.wins,
+    }));
+  }
+
+  async getRolePreferences(userId: string): Promise<RolePreference[]> {
+    const { rows } = await this.pool.query<{ role: string; preference: string }>(
+      `SELECT role, preference FROM role_preferences WHERE user_id = $1 ORDER BY role`,
+      [userId],
+    );
+    return rows.map((r) => ({
+      role: r.role,
+      preference: r.preference as RolePreference['preference'],
+    }));
+  }
+
+  async setRolePreference(
+    userId: string,
+    role: string,
+    preference: 'blacklist' | 'prefer' | null,
+  ): Promise<void> {
+    if (preference === null) {
+      await this.pool.query(`DELETE FROM role_preferences WHERE user_id = $1 AND role = $2`, [
+        userId,
+        role,
+      ]);
+      return;
+    }
+    await this.pool.query(
+      `INSERT INTO role_preferences (user_id, role, preference)
+       VALUES ($1, $2, $3)
+       ON CONFLICT (user_id, role) DO UPDATE SET preference = EXCLUDED.preference`,
+      [userId, role, preference],
+    );
+  }
+
+  async writeRankedResults(rows: RankedResultInput[]): Promise<void> {
+    for (const r of rows) {
+      await this.pool.query(
+        `INSERT INTO ranked_results
+           (match_id, user_id, mode, mmr_before, mmr_after, rd_before, rd_after, delta)
+         VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
+         ON CONFLICT (match_id, user_id) DO NOTHING`,
+        [r.matchId, r.userId, r.mode, r.mmrBefore, r.mmrAfter, r.rdBefore, r.rdAfter, r.delta],
+      );
+    }
+  }
+
+  async getRankedResults(userId: string, limit: number): Promise<RankedResultInput[]> {
+    const { rows } = await this.pool.query<{
+      match_id: string;
+      user_id: string;
+      mode: string;
+      mmr_before: number;
+      mmr_after: number;
+      rd_before: number;
+      rd_after: number;
+      delta: number;
+    }>(
+      `SELECT match_id, user_id, mode, mmr_before, mmr_after, rd_before, rd_after, delta
+       FROM ranked_results WHERE user_id = $1 ORDER BY created_at DESC LIMIT $2`,
+      [userId, Math.max(1, Math.min(limit, 500))],
+    );
+    return rows.map((r) => ({
+      matchId: r.match_id,
+      userId: r.user_id,
+      mode: r.mode,
+      mmrBefore: r.mmr_before,
+      mmrAfter: r.mmr_after,
+      rdBefore: r.rd_before,
+      rdAfter: r.rd_after,
+      delta: r.delta,
+    }));
   }
 
   async close(): Promise<void> {

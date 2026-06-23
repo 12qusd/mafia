@@ -14,6 +14,7 @@ import {
   achievementPoints,
   tierForPoints,
   ACHIEVEMENTS_BY_KEY,
+  ROLE_WIN_KEY_BY_ROLE,
   type UserStatsSummary,
 } from '@nocturne/shared';
 import type { Store, MatchPlayerRecord } from '../db/types.js';
@@ -37,11 +38,12 @@ function isRealUser(id: string): boolean {
  * given their pre-match lifetime counts. Count-based achievements (veteran,
  * centurion, high_roller, first_win) use the pre-match numbers + this match.
  */
-function detectAchievements(
+export function detectAchievements(
   p: MatchPlayerRecord,
   finalDay: number,
   prev: { gamesPlayed: number; gamesWon: number; totalPoints: number },
   basePointsThisMatch: number,
+  allPlayers: readonly MatchPlayerRecord[],
 ): string[] {
   const keys: string[] = [];
   const won = p.outcome === 'win';
@@ -62,6 +64,50 @@ function detectAchievements(
   if (prev.gamesPlayed + 1 >= 10) keys.push('veteran');
   if (prev.gamesPlayed + 1 >= 100) keys.push('centurion');
   if (prev.totalPoints + basePointsThisMatch >= 1000) keys.push('high_roller');
+
+  // --- Win-with-each-role (generated catalog) -----------------------------
+  // Uses the seat's FINAL role from the match record, so a converted Vampire
+  // who wins earns `win_vampire`. One per role; first-time-only via the store.
+  if (won) {
+    const winKey = ROLE_WIN_KEY_BY_ROLE[p.role];
+    if (winKey) keys.push(winKey);
+  }
+
+  // --- Feat achievements (detectable from this seat's record + finalDay) ----
+  const lynched = p.deathDay !== null && !p.survived; // executed/killed on a day we can see
+  if (won && !p.survived && p.deathDay === 1) keys.push('feat_dead_man_wins');
+  if (!p.survived && p.deathDay === 1) keys.push('feat_first_blood');
+  if (won && stayed && p.deathDay !== null && p.deathDay <= 2 && daysDead > 0) {
+    keys.push('feat_grim_loyalty');
+  }
+  if (won && p.faction === 'TOWN' && p.survived) keys.push('feat_clean_hands');
+  if (won && p.survived) keys.push('feat_untouchable');
+  if (won && finalDay >= 7) keys.push('feat_final_curtain');
+  if (p.survived && finalDay >= 7) keys.push('feat_long_haul');
+  if (won && p.faction === 'TOWN' && lynched) keys.push('feat_martyrs_vindication');
+  if (won && p.deathDay !== null && p.deathDay === finalDay && !p.survived) {
+    keys.push('feat_pyrrhic');
+  }
+  if (won && daysDead >= 5) keys.push('feat_ghost_of_the_house');
+  // Conversions: a seat whose FINAL role is the converted body but is benign-ish
+  // (Vampire/Cultist) won — they were turned and rode the win home.
+  if (won && p.role === 'VAMPIRE') keys.push('feat_turncoat');
+  if (won && p.role === 'CULTIST') keys.push('feat_converted_faithful');
+  // Independent-killer + standout-neutral wins.
+  if (won && p.faction === 'NEUTRAL_KILLING' && p.survived) keys.push('feat_solo_carry');
+  if (won && p.role === 'EXECUTIONER') keys.push('feat_kingmaker');
+  if (won && p.role === 'SURVIVOR') keys.push('feat_one_more_drink');
+  if (won && p.role === 'PESTILENCE') keys.push('feat_plague_apotheosis');
+  if (won && p.role === 'PIRATE') keys.push('feat_house_always_wins');
+
+  // --- Last Town standing (needs the full roster) -------------------------
+  // Win as Town, alive at the end, and no OTHER Town seat survived.
+  if (won && p.faction === 'TOWN' && p.survived) {
+    const otherTownSurvivors = allPlayers.filter(
+      (q) => q.seat !== p.seat && q.faction === 'TOWN' && q.survived,
+    );
+    if (otherTownSurvivors.length === 0) keys.push('feat_last_town_standing');
+  }
 
   // Only keep keys that exist in the catalog.
   return keys.filter((k) => ACHIEVEMENTS_BY_KEY[k]);
@@ -89,7 +135,7 @@ export async function awardMatchPoints(input: AwardInput): Promise<void> {
         finalDay,
       }).total;
 
-      const candidateKeys = detectAchievements(p, finalDay, prev, basePoints);
+      const candidateKeys = detectAchievements(p, finalDay, prev, basePoints, players);
       // Only award achievement points the first time each is unlocked.
       const newlyUnlocked = await store.unlockAchievements(
         userId,

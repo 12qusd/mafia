@@ -45,10 +45,17 @@ CREATE TABLE IF NOT EXISTS matches (
   server_build text NOT NULL,
   -- Replay integrity fingerprint (§9): HMAC-SHA256 over the canonical match
   -- record (setup, seed, players, ordered event log). Verified on replay read.
-  fingerprint  text NULL
+  fingerprint  text NULL,
+  -- Queue the match was played in: casual | ranked | quickplay. Ranked matches
+  -- additionally carry the season they counted toward (see ratings below).
+  mode         text NULL,
+  season_id    uuid NULL
 );
 -- Idempotent column add for databases created before the fingerprint column.
 ALTER TABLE matches ADD COLUMN IF NOT EXISTS fingerprint text;
+-- Idempotent column adds for ranked play (mode + season tag on existing rows).
+ALTER TABLE matches ADD COLUMN IF NOT EXISTS mode text;
+ALTER TABLE matches ADD COLUMN IF NOT EXISTS season_id uuid;
 
 CREATE TABLE IF NOT EXISTS match_players (
   match_id        uuid NOT NULL REFERENCES matches(id) ON DELETE CASCADE,
@@ -109,6 +116,73 @@ CREATE TABLE IF NOT EXISTS point_log (
   created_at timestamptz NOT NULL DEFAULT now()
 );
 CREATE INDEX IF NOT EXISTS point_log_user_idx ON point_log(user_id);
+
+-- --------------------------------------------------------------------------
+-- Ranked play + role-preference unlocks (goal: ranked + preferences) — Glicko-2
+-- ratings, seasons, per-match rating deltas, and per-user role likes/blacklists.
+-- Written at match end alongside the match row; never in the per-message hot path.
+-- Guests and TEST-mode games are excluded by the server before writing.
+-- --------------------------------------------------------------------------
+
+-- Ranked seasons. At most one is the current season at a time (partial unique
+-- index below); a season ends when ended_at is set and is_current flips false.
+CREATE TABLE IF NOT EXISTS seasons (
+  id         uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+  name       text NOT NULL,
+  started_at timestamptz NOT NULL DEFAULT now(),
+  ended_at   timestamptz NULL,
+  is_current boolean NOT NULL DEFAULT false
+);
+-- Enforce a single current season (partial unique index on the live flag).
+CREATE UNIQUE INDEX IF NOT EXISTS seasons_one_current_idx
+  ON seasons (is_current) WHERE is_current;
+
+-- Per-user, per-mode, per-season rating. Glicko-2 state: mmr (rating r), rd
+-- (rating deviation), vol (volatility). games/wins track the season record.
+CREATE TABLE IF NOT EXISTS ratings (
+  user_id    uuid NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+  mode       text NOT NULL,
+  season_id  uuid NOT NULL,
+  mmr        double precision NOT NULL DEFAULT 1500,
+  rd         double precision NOT NULL DEFAULT 350,
+  vol        double precision NOT NULL DEFAULT 0.06,
+  games      int NOT NULL DEFAULT 0,
+  wins       int NOT NULL DEFAULT 0,
+  updated_at timestamptz NOT NULL DEFAULT now(),
+  PRIMARY KEY (user_id, mode, season_id)
+);
+-- Ranked leaderboard read: top mmr per (mode, season).
+CREATE INDEX IF NOT EXISTS ratings_leaderboard_idx
+  ON ratings (mode, season_id, mmr DESC);
+
+-- Per-user role preferences for matchmaking/assignment: 'prefer' (more likely)
+-- or 'blacklist' (avoid). One row per (user, role).
+CREATE TABLE IF NOT EXISTS role_preferences (
+  user_id    uuid NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+  role       text NOT NULL,
+  preference text NOT NULL,   -- 'blacklist' | 'prefer'
+  created_at timestamptz NOT NULL DEFAULT now(),
+  PRIMARY KEY (user_id, role)
+);
+
+-- Append-only per-match rating deltas (audit trail + profile match history).
+-- match_id/user_id are stored loosely (no FK) so a ranked result survives even
+-- if the match row write is skipped/pruned; the server writes both together.
+CREATE TABLE IF NOT EXISTS ranked_results (
+  match_id   uuid NOT NULL,
+  user_id    uuid NOT NULL,
+  mode       text NOT NULL,
+  mmr_before double precision NOT NULL,
+  mmr_after  double precision NOT NULL,
+  rd_before  double precision NOT NULL,
+  rd_after   double precision NOT NULL,
+  delta      double precision NOT NULL,
+  created_at timestamptz NOT NULL DEFAULT now(),
+  PRIMARY KEY (match_id, user_id)
+);
+-- Recent ranked match history for a user.
+CREATE INDEX IF NOT EXISTS ranked_results_user_idx
+  ON ranked_results (user_id, created_at DESC);
 
 -- --------------------------------------------------------------------------
 -- Custom & scheduled setups (custom setup builder + setup-of-the-day)

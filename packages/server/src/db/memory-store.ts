@@ -22,6 +22,11 @@ import type {
   PointAwardRecord,
   StatsDelta,
   CustomSetupRow,
+  SeasonRow,
+  RatingRow,
+  RolePreference,
+  RankedResultInput,
+  RatingLeaderboardEntry,
 } from './types.js';
 
 export class MemoryStore implements Store {
@@ -35,6 +40,11 @@ export class MemoryStore implements Store {
   private readonly achievementsByUser = new Map<string, Set<string>>();
   /** In-process custom setups (process-lifetime only). */
   private readonly customSetups = new Map<string, CustomSetupRow>();
+  /** In-process ranked state (process-lifetime only; guests excluded upstream). */
+  private currentSeason: SeasonRow | null = null;
+  private readonly ratings = new Map<string, RatingRow>();
+  private readonly rolePrefs = new Map<string, Map<string, RolePreference['preference']>>();
+  private readonly rankedResults: RankedResultInput[] = [];
 
   constructor() {
     log.warn('NO_DB mode: running guests-only with no persistence (§10).');
@@ -227,6 +237,95 @@ export class MemoryStore implements Store {
     if (!row || row.ownerUserId !== ownerUserId) return false;
     this.customSetups.delete(id);
     return true;
+  }
+
+  // --- Ranked play + role preferences (goal: ranked + preferences) ---------
+
+  private ratingKey(userId: string, mode: string, seasonId: string): string {
+    return `${userId} ${mode} ${seasonId}`;
+  }
+
+  async getCurrentSeason(): Promise<SeasonRow | null> {
+    return this.currentSeason;
+  }
+  async ensureCurrentSeason(name: string): Promise<SeasonRow> {
+    if (!this.currentSeason) {
+      this.currentSeason = {
+        id: newId(),
+        name,
+        startedAt: Date.now(),
+        endedAt: null,
+        isCurrent: true,
+      };
+    }
+    return this.currentSeason;
+  }
+  async getRating(userId: string, mode: string, seasonId: string): Promise<RatingRow | null> {
+    return this.ratings.get(this.ratingKey(userId, mode, seasonId)) ?? null;
+  }
+  async upsertRating(row: RatingRow): Promise<void> {
+    this.ratings.set(this.ratingKey(row.userId, row.mode, row.seasonId), {
+      ...row,
+      updatedAt: Date.now(),
+    });
+  }
+  async getRatingLeaderboard(
+    mode: string,
+    seasonId: string,
+    limit: number,
+  ): Promise<RatingLeaderboardEntry[]> {
+    return [...this.ratings.values()]
+      .filter((r) => r.mode === mode && r.seasonId === seasonId)
+      .sort((a, b) => b.mmr - a.mmr)
+      .slice(0, Math.max(1, Math.min(limit, 500)))
+      .map((r) => ({
+        userId: r.userId,
+        username: r.userId,
+        mmr: r.mmr,
+        rd: r.rd,
+        games: r.games,
+        wins: r.wins,
+      }));
+  }
+  async getRolePreferences(userId: string): Promise<RolePreference[]> {
+    const m = this.rolePrefs.get(userId);
+    if (!m) return [];
+    return [...m.entries()]
+      .map(([role, preference]) => ({ role, preference }))
+      .sort((a, b) => a.role.localeCompare(b.role));
+  }
+  async setRolePreference(
+    userId: string,
+    role: string,
+    preference: 'blacklist' | 'prefer' | null,
+  ): Promise<void> {
+    let m = this.rolePrefs.get(userId);
+    if (preference === null) {
+      m?.delete(role);
+      return;
+    }
+    if (!m) {
+      m = new Map();
+      this.rolePrefs.set(userId, m);
+    }
+    m.set(role, preference);
+  }
+  async writeRankedResults(rows: RankedResultInput[]): Promise<void> {
+    for (const r of rows) {
+      const exists = this.rankedResults.some(
+        (x) => x.matchId === r.matchId && x.userId === r.userId,
+      );
+      if (!exists) this.rankedResults.push({ ...r });
+    }
+  }
+  async getRankedResults(userId: string, limit: number): Promise<RankedResultInput[]> {
+    // Newest first: in-process inserts are append-order, so reverse.
+    return this.rankedResults
+      .filter((r) => r.userId === userId)
+      .slice()
+      .reverse()
+      .slice(0, Math.max(1, Math.min(limit, 500)))
+      .map((r) => ({ ...r }));
   }
 
   async close(): Promise<void> {}

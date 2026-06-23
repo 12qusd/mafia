@@ -63,6 +63,11 @@ export interface MatchRecord {
   serverBuild: string;
   /** HMAC-SHA256 over the canonical record; replay-integrity proof (§9). */
   fingerprint: string;
+  /** Queue the match was played in: casual | ranked | quickplay. Optional so the
+   *  existing match-end caller (which omits it) still persists casual matches. */
+  mode?: string;
+  /** Ranked season the match counted toward, when {@link mode} is 'ranked'. */
+  seasonId?: string;
   players: MatchPlayerRecord[];
   events: { seq: number; phase: string; event: unknown }[];
   chat: { seq: number; channel: string; senderSeat: number | null; body: string }[];
@@ -136,6 +141,60 @@ export interface CustomSetupRow {
   createdAt: number;
 }
 
+// --------------------------------------------------------------------------
+// Ranked play + role-preference unlocks (goal: ranked + preferences)
+// --------------------------------------------------------------------------
+
+/** A ranked season. At most one row has `isCurrent` true at a time. */
+export interface SeasonRow {
+  id: string;
+  name: string;
+  startedAt: number;
+  endedAt: number | null;
+  isCurrent: boolean;
+}
+
+/** Per-user, per-mode, per-season Glicko-2 rating: mmr=rating, rd=deviation, vol=volatility. */
+export interface RatingRow {
+  userId: string;
+  mode: string;
+  seasonId: string;
+  mmr: number;
+  rd: number;
+  vol: number;
+  games: number;
+  wins: number;
+  updatedAt: number;
+}
+
+/** A user's preference for a role: avoid it ('blacklist') or favor it ('prefer'). */
+export interface RolePreference {
+  role: string;
+  preference: 'blacklist' | 'prefer';
+}
+
+/** One per-match rating delta to append at match end (audit + match history). */
+export interface RankedResultInput {
+  matchId: string;
+  userId: string;
+  mode: string;
+  mmrBefore: number;
+  mmrAfter: number;
+  rdBefore: number;
+  rdAfter: number;
+  delta: number;
+}
+
+/** A ranked-leaderboard row (rating joined to the user's name). */
+export interface RatingLeaderboardEntry {
+  userId: string;
+  username: string;
+  mmr: number;
+  rd: number;
+  games: number;
+  wins: number;
+}
+
 /** Active-sanction summary used at login / lobby-join (§10, §11). */
 export interface ActiveSanctions {
   banned: boolean;
@@ -203,6 +262,35 @@ export interface Store {
   listCustomSetups(ownerUserId: string): Promise<CustomSetupRow[]>;
   /** Delete a setup; succeeds only if owned by `ownerUserId`. Returns whether a row was removed. */
   deleteCustomSetup(id: string, ownerUserId: string): Promise<boolean>;
+
+  // Ranked play + role preferences (goal: ranked + preferences). Written at
+  // match end alongside the match row; guests/TEST games are excluded upstream.
+  /** The current season, or null if none has been opened. */
+  getCurrentSeason(): Promise<SeasonRow | null>;
+  /** Return the current season, creating one with `name` if none is current. */
+  ensureCurrentSeason(name: string): Promise<SeasonRow>;
+  /** A user's rating for a (mode, season), or null if they have not played it. */
+  getRating(userId: string, mode: string, seasonId: string): Promise<RatingRow | null>;
+  /** Insert-or-update a rating by its (user, mode, season) key; bumps updated_at. */
+  upsertRating(row: RatingRow): Promise<void>;
+  /** Top ratings for a (mode, season), highest mmr first (joined to usernames). */
+  getRatingLeaderboard(
+    mode: string,
+    seasonId: string,
+    limit: number,
+  ): Promise<RatingLeaderboardEntry[]>;
+  /** A user's role preferences (likes + blacklists). */
+  getRolePreferences(userId: string): Promise<RolePreference[]>;
+  /** Set or clear (preference=null removes the row) a user's preference for a role. */
+  setRolePreference(
+    userId: string,
+    role: string,
+    preference: 'blacklist' | 'prefer' | null,
+  ): Promise<void>;
+  /** Bulk-append per-match rating deltas (ignores already-written (match,user) rows). */
+  writeRankedResults(rows: RankedResultInput[]): Promise<void>;
+  /** Recent ranked results for a user, newest first (match history). */
+  getRankedResults(userId: string, limit: number): Promise<RankedResultInput[]>;
 
   // Telemetry rollup (§15)
   upsertDailyRollup(day: string, fields: Record<string, number>): Promise<void>;
