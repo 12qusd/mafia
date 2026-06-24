@@ -38,6 +38,13 @@ import { buildUserStatsSummary } from '../points/stats.js';
 import { awardRankedRatings, RANKED_MODE } from '../ranked/award.js';
 import { DEFAULT_RATING, type AdminAction } from '@nocturne/shared';
 
+/**
+ * Leaver re-queue cooldown (ranked): after abandoning a ranked match, a human is
+ * blocked from re-queuing ranked for this long. Bounded, in-memory; bots/guests
+ * never reach this path. Documented alongside LEAVER_PENALTY in ranked/award.ts.
+ */
+const LEAVER_COOLDOWN_MS = 5 * 60 * 1000;
+
 export interface ManagerDeps {
   engine: Engine;
   store: Store;
@@ -98,6 +105,13 @@ export class LobbyManager {
    * lived server with many distinct ranked players cannot grow it unboundedly.
    */
   private readonly mmrCache = new Map<string, number>();
+  /**
+   * Leaver re-queue cooldowns: userId → epoch-ms the ranked cooldown expires.
+   * Set at game-over for anyone who abandoned a ranked match; checked (and lazily
+   * pruned) in {@link quickPlay} for the 'ranked' queue. Bounded by the active
+   * ranked population; expired entries are dropped on read.
+   */
+  private readonly rankedCooldownUntil = new Map<string, number>();
 
   constructor(private readonly deps: ManagerDeps) {
     this.matchmaker = new Matchmaker(
@@ -122,6 +136,30 @@ export class LobbyManager {
       this.currentSeasonId = season.id;
     } catch (err) {
       log.warn('could not ensure ranked season', { err: String(err) });
+    }
+  }
+
+  /**
+   * Season rollover (admin-triggered, ranked lifecycle). Ends the current season,
+   * opens a new one, and soft-resets every rating into it (the store does this
+   * transactionally). The manager then PICKS UP the new season: it updates the
+   * cached {@link seasonId} so subsequent ranked games are tagged with the new
+   * season, and clears the MMR bucketing cache so it re-warms from the reset
+   * ratings. Returns the new current season. Persistent stores only.
+   */
+  async rolloverSeason(newName: string): Promise<{ id: string; name: string } | { error: string }> {
+    if (!this.deps.store.persistent) return { error: 'not_persistent' };
+    try {
+      const season = await this.deps.store.rolloverSeason(newName);
+      this.currentSeasonId = season.id;
+      // The bucketing cache holds OLD-season MMRs; drop it so it re-warms from the
+      // soft-reset new-season ratings on the next ranked queue.
+      this.mmrCache.clear();
+      log.info('season rolled over', { seasonId: season.id, name: season.name });
+      return { id: season.id, name: season.name };
+    } catch (err) {
+      log.error('season rollover failed', { err: String(err) });
+      return { error: 'internal_error' };
     }
   }
 
@@ -643,7 +681,9 @@ export class LobbyManager {
    *  - 'casual' (default): the classic quick-play queue; guests allowed.
    *  - 'ranked': requires a REGISTERED account (guests rejected with
    *    'not_authenticated' so the client prompts to sign in) and a persistent
-   *    store with a current season; forms season-tagged ranked games.
+   *    store with a current season; forms season-tagged ranked games. A recent
+   *    leaver is rejected with 'cooldown' (the handler maps it to a
+   *    `cannot_start`/`cooldown` error) until their re-queue cooldown expires.
    */
   quickPlay(conn: Connection, mode: QueueMode = 'casual'): string | null {
     if (this.draining) return 'cannot_start';
@@ -654,6 +694,13 @@ export class LobbyManager {
       // Ranked requires a real account and an open season.
       if (conn.identity?.isGuest !== false) return 'not_authenticated';
       if (!this.deps.store.persistent || !this.currentSeasonId) return 'cannot_start';
+      // Leaver cooldown: block (and lazily prune) a recent abandoner.
+      const now = this.deps.clock?.() ?? Date.now();
+      const until = this.rankedCooldownUntil.get(conn.identityId);
+      if (until !== undefined) {
+        if (until > now) return 'cooldown';
+        this.rankedCooldownUntil.delete(conn.identityId);
+      }
       // Warm the MMR cache for bucketing (best-effort; default until resolved).
       this.refreshMmrCache(conn.identityId);
       this.rankedMatchmaker.enqueue(conn);
@@ -873,16 +920,23 @@ export class LobbyManager {
       let rankedDeltas: Map<string, number> | undefined;
       let rankedSeasonId: string | undefined;
       if (!room.isTestMode && room.mode === RANKED_MODE && room.seasonId) {
-        rankedDeltas = await awardRankedRatings({
+        const award = await awardRankedRatings({
           store: this.deps.store,
           matchId,
           players: rec.players,
           seasonId: room.seasonId,
+          now: this.deps.clock?.() ?? Date.now(),
         });
+        rankedDeltas = award.deltas;
         rankedSeasonId = room.seasonId;
         // Keep the bucketing cache fresh for the next queue.
         for (const [userId] of rankedDeltas) {
           this.refreshMmrCache(userId);
+        }
+        // Leaver / queue-dodge: a short re-queue cooldown for anyone who
+        // abandoned the match (checked in quickPlay('ranked')).
+        for (const userId of award.leavers) {
+          this.rankedCooldownUntil.set(userId, (this.deps.clock?.() ?? Date.now()) + LEAVER_COOLDOWN_MS);
         }
       }
       // Award points & achievements to registered players (goal 4). Guests and

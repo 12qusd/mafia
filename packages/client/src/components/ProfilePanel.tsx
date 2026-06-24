@@ -13,10 +13,10 @@ import { Link } from 'react-router-dom';
 import { ACHIEVEMENTS_BY_KEY } from '@nocturne/shared';
 import { useStore } from '../store/store.js';
 import { DecoHead, TierBadge, RankBadge } from './common.js';
-import { PROFILE } from '../lib/strings-extra.js';
+import { PROFILE, LEADERBOARD } from '../lib/strings-extra.js';
 import { sanitizeInline } from '../lib/sanitize.js';
 import * as api from '../lib/api.js';
-import type { AchievementCatalogEntry } from '../lib/api.js';
+import type { AchievementCatalogEntry, MyRank, RankedHistoryEntry } from '../lib/api.js';
 
 function winRate(won: number, played: number): string {
   if (played <= 0) return '—';
@@ -26,16 +26,29 @@ function winRate(won: number, played: number): string {
 export function ProfilePanel() {
   const me = useStore((s) => s.me);
   const [catalog, setCatalog] = useState<AchievementCatalogEntry[]>([]);
+  // Ranked placements (own rank) + recent ranked history — both auth-only/self
+  // endpoints, so fetched here for the signed-in account's own dossier.
+  const [myRank, setMyRank] = useState<MyRank | null>(null);
+  const [history, setHistory] = useState<RankedHistoryEntry[]>([]);
 
+  const isRegistered = !!me && !me.isGuest;
   useEffect(() => {
     let live = true;
     void api.fetchAchievements().then((a) => {
       if (live) setCatalog(a);
     });
+    if (isRegistered) {
+      void api.fetchMyRank().then((r) => {
+        if (live) setMyRank(r);
+      });
+      void api.fetchMyRankedHistory(8).then((h) => {
+        if (live) setHistory(h);
+      });
+    }
     return () => {
       live = false;
     };
-  }, []);
+  }, [isRegistered]);
 
   if (!me) return null;
 
@@ -69,12 +82,17 @@ export function ProfilePanel() {
         </Link>
         <div className="profile-badges">
           <TierBadge totalPoints={stats?.totalPoints ?? 0} />
-          {stats?.ranked && (
-            <RankBadge
-              rankKey={stats.ranked.rank}
-              rankName={stats.ranked.rankName}
-              mmr={stats.ranked.mmr}
-            />
+          {/* In placements: show the placements pill instead of the ladder badge. */}
+          {myRank?.placements ? (
+            <RankBadge placements={myRank.placements} />
+          ) : (
+            stats?.ranked && (
+              <RankBadge
+                rankKey={stats.ranked.rank}
+                rankName={stats.ranked.rankName}
+                mmr={stats.ranked.mmr}
+              />
+            )
           )}
         </div>
       </div>
@@ -98,6 +116,29 @@ export function ProfilePanel() {
               </>
             )}
           </div>
+
+          {/* Recent ranked history (delta arrows + new MMR). Own dossier only. */}
+          {history.length > 0 && (
+            <>
+              <div className="spread">
+                <DecoHead>{LEADERBOARD.rankedHistory}</DecoHead>
+              </div>
+              <div className="ranked-history">
+                {history.map((h) => {
+                  const up = h.delta >= 0;
+                  return (
+                    <div key={h.matchId} className="ranked-history-row">
+                      <span className={`ranked-history-delta ${up ? 'up' : 'down'}`}>
+                        {up ? '▲' : '▼'} {up ? '+' : ''}
+                        {h.delta}
+                      </span>
+                      <span className="faint">→ {h.mmrAfter} {LEADERBOARD.mmr}</span>
+                    </div>
+                  );
+                })}
+              </div>
+            </>
+          )}
 
           <div className="spread">
             <DecoHead>{PROFILE.achievements}</DecoHead>

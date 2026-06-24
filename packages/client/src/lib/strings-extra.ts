@@ -395,6 +395,13 @@ export const LEADERBOARD = {
   mmr: 'MMR',
   standing: 'Standing',
   rankedEmpty: 'No ranked play yet this season. Be the first to climb.',
+  season: 'Season',
+  prev: 'Previous',
+  next: 'Next',
+  yourRank: 'Your rank',
+  yourRankUnplaced: 'Unranked — finish your placements to land on the board.',
+  rankedHistory: 'Ranked history',
+  rankedHistoryEmpty: 'No ranked games yet.',
 } as const;
 
 /** Community hub copy (Social feature) — the "old-web" social district. */

@@ -21,6 +21,11 @@ const SanctionBody = z.object({
   durationMs: z.number().int().positive().optional(),
 });
 
+/** Season-rollover body: an optional new season name (defaults to "Season N+1"). */
+const RolloverBody = z.object({
+  name: z.string().max(120).optional(),
+});
+
 async function requireAdmin(
   ctx: GatewayContext,
   req: FastifyRequest,
@@ -49,6 +54,35 @@ export function registerAdminRoutes(app: FastifyInstance, ctx: GatewayContext): 
     const reports = await ctx.moderation.listReports('open');
     return reply.send(reports);
   });
+
+  // --- Ranked season rollover (admin-only, MANUAL — not auto-scheduled) -----
+  // Ends the current season, opens a new one, and soft-resets every rating into
+  // it (pulled toward the mean, RD re-inflated for re-placement). The manager
+  // then tags subsequent ranked games with the new season. The OPERATOR triggers
+  // this; there is no cron. Persistent stores only (ranked needs accounts).
+  app.post<{ Body: { name?: string } | undefined }>(
+    '/api/admin/seasons/rollover',
+    async (req, reply) => {
+      const admin = await requireAdmin(ctx, req, reply);
+      if (!admin) return;
+      if (!ctx.store.persistent) return reply.code(400).send({ error: 'not_persistent' });
+      const parsed = RolloverBody.safeParse(req.body ?? {});
+      if (!parsed.success) return reply.code(400).send({ error: 'bad_request' });
+      let name = parsed.data.name?.trim();
+      if (!name) {
+        // Default name: "Season N+1" based on how many seasons exist.
+        const seasons = await ctx.store.getSeasons(100);
+        name = `Season ${seasons.length + 1}`;
+      }
+      const result = await ctx.manager.rolloverSeason(name);
+      if ('error' in result) return reply.code(500).send({ error: result.error });
+      await ctx.store.logAdminAction(admin.adminId, 'admin_season_rollover', {
+        seasonId: result.id,
+        name: result.name,
+      });
+      return reply.send({ ok: true, season: result });
+    },
+  );
 
   app.post('/admin/sanction', async (req, reply) => {
     const admin = await requireAdmin(ctx, req, reply);

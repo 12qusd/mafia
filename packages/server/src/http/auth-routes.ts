@@ -10,7 +10,7 @@ import { z } from 'zod';
 import { DISPLAY_NAME_MAX } from '@nocturne/shared';
 import type { GatewayContext } from '../ws/context.js';
 import { buildUserStatsSummary } from '../points/stats.js';
-import { buildRankedSummary } from '../ranked/award.js';
+import { buildRankedSummary, RANKED_MODE } from '../ranked/award.js';
 import { clientIp } from './rate-limit.js';
 import { issueEmailVerification } from './account-routes.js';
 
@@ -141,6 +141,45 @@ export function registerAuthRoutes(app: FastifyInstance, ctx: GatewayContext): v
       emailVerified,
       hasEmail,
     });
+  });
+
+  // --- Ranked self-rank + match history (auth, persistent) -----------------
+
+  // The caller's 1-based rank position in the current season + their standing,
+  // or null when unplaced (no rating this season). Guests/NO_DB → { rank: null }.
+  app.get('/api/me/ranked/rank', async (req, reply) => {
+    const identity = await ctx.identity.resolveToken(readToken(req));
+    if (!identity) return reply.code(401).send({ error: 'not_authenticated' });
+    const seasonId = ctx.manager.seasonId;
+    if (identity.isGuest || !ctx.store.persistent || !seasonId) {
+      return reply.send({ rank: null, seasonId: seasonId ?? null });
+    }
+    const [position, summary] = await Promise.all([
+      ctx.store.getRankPosition(identity.id, RANKED_MODE, seasonId),
+      buildRankedSummary(ctx.store, identity.id, seasonId),
+    ]);
+    if (position === null || !summary) {
+      return reply.send({ rank: null, seasonId });
+    }
+    return reply.send({ rank: { position, ...summary }, seasonId });
+  });
+
+  // The caller's recent ranked match history (newest first): per-match MMR
+  // before/after + delta. Empty for guests/NO_DB. Reuses the ranked_results
+  // ledger (append-only audit trail). `limit` capped at 50.
+  app.get<{ Querystring: { limit?: string } }>('/api/me/ranked/history', async (req, reply) => {
+    const identity = await ctx.identity.resolveToken(readToken(req));
+    if (!identity) return reply.code(401).send({ error: 'not_authenticated' });
+    if (identity.isGuest || !ctx.store.persistent) return reply.send({ history: [] });
+    const limit = Math.max(1, Math.min(Number(req.query.limit) || 20, 50));
+    const rows = await ctx.store.getRankedResults(identity.id, limit);
+    const history = rows.map((r) => ({
+      matchId: r.matchId,
+      mmrBefore: Math.round(r.mmrBefore),
+      mmrAfter: Math.round(r.mmrAfter),
+      delta: Math.round(r.delta),
+    }));
+    return reply.send({ history });
   });
 
   // Issue a guest session over HTTP (for clients that prefer a cookie first).

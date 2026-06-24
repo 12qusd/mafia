@@ -5,7 +5,7 @@
  */
 
 import { Pool } from 'pg';
-import type { GameSetup } from '@nocturne/shared';
+import { softResetRating, type GameSetup } from '@nocturne/shared';
 import { newId } from '../ids.js';
 import type {
   Store,
@@ -835,6 +835,80 @@ export class PgStore implements Store {
     throw new Error('failed to ensure a current season');
   }
 
+  async rolloverSeason(newName: string): Promise<SeasonRow> {
+    const client = await this.pool.connect();
+    try {
+      await client.query('BEGIN');
+      // Close the current season (if any). Row-lock it so two concurrent
+      // rollovers can't both proceed (the partial unique index also guards).
+      const { rows: curRows } = await client.query<{ id: string }>(
+        `SELECT id FROM seasons WHERE is_current FOR UPDATE`,
+      );
+      const oldSeasonId = curRows[0]?.id ?? null;
+      if (oldSeasonId) {
+        await client.query(
+          `UPDATE seasons SET is_current = false, ended_at = now() WHERE id = $1`,
+          [oldSeasonId],
+        );
+      }
+      // Open the new current season.
+      const { rows: newRows } = await client.query<{
+        id: string;
+        name: string;
+        started_at: Date;
+        ended_at: Date | null;
+        is_current: boolean;
+      }>(
+        `INSERT INTO seasons (name, is_current) VALUES ($1, true)
+         RETURNING id, name, started_at, ended_at, is_current`,
+        [newName],
+      );
+      const newSeason = this.mapSeason(newRows[0] as never);
+      // Soft-reset every rating from the old season into the new one (archive the
+      // old rows under their season_id). games/wins reset for placements.
+      if (oldSeasonId) {
+        const { rows: ratings } = await client.query<{
+          user_id: string;
+          mode: string;
+          mmr: number;
+          rd: number;
+          vol: number;
+        }>(`SELECT user_id, mode, mmr, rd, vol FROM ratings WHERE season_id = $1`, [oldSeasonId]);
+        for (const r of ratings) {
+          const reset = softResetRating({ rating: r.mmr, rd: r.rd, vol: r.vol });
+          await client.query(
+            `INSERT INTO ratings (user_id, mode, season_id, mmr, rd, vol, games, wins, updated_at)
+             VALUES ($1, $2, $3, $4, $5, $6, 0, 0, now())
+             ON CONFLICT (user_id, mode, season_id) DO NOTHING`,
+            [r.user_id, r.mode, newSeason.id, reset.rating, reset.rd, reset.vol],
+          );
+        }
+      }
+      await client.query('COMMIT');
+      return newSeason;
+    } catch (err) {
+      await client.query('ROLLBACK');
+      throw err;
+    } finally {
+      client.release();
+    }
+  }
+
+  async getSeasons(limit: number): Promise<SeasonRow[]> {
+    const { rows } = await this.pool.query<{
+      id: string;
+      name: string;
+      started_at: Date;
+      ended_at: Date | null;
+      is_current: boolean;
+    }>(
+      `SELECT id, name, started_at, ended_at, is_current FROM seasons
+       ORDER BY started_at DESC LIMIT $1`,
+      [Math.max(1, Math.min(limit, 100))],
+    );
+    return rows.map((r) => this.mapSeason(r));
+  }
+
   private mapRating(r: {
     user_id: string;
     mode: string;
@@ -920,6 +994,59 @@ export class PgStore implements Store {
       games: r.games,
       wins: r.wins,
     }));
+  }
+
+  async getRatingLeaderboardPage(
+    mode: string,
+    seasonId: string,
+    offset: number,
+    limit: number,
+  ): Promise<RatingLeaderboardEntry[]> {
+    const { rows } = await this.pool.query<{
+      user_id: string;
+      username: string;
+      mmr: number;
+      rd: number;
+      games: number;
+      wins: number;
+    }>(
+      `SELECT r.user_id, u.username, r.mmr, r.rd, r.games, r.wins
+       FROM ratings r JOIN users u ON u.id = r.user_id
+       WHERE r.mode = $1 AND r.season_id = $2
+       ORDER BY r.mmr DESC, r.user_id ASC
+       OFFSET $3 LIMIT $4`,
+      [mode, seasonId, Math.max(0, offset), Math.max(1, Math.min(limit, 100))],
+    );
+    return rows.map((r) => ({
+      userId: r.user_id,
+      username: r.username,
+      mmr: r.mmr,
+      rd: r.rd,
+      games: r.games,
+      wins: r.wins,
+    }));
+  }
+
+  async getRatingCount(mode: string, seasonId: string): Promise<number> {
+    const { rows } = await this.pool.query<{ n: string }>(
+      `SELECT COUNT(*)::bigint AS n FROM ratings WHERE mode = $1 AND season_id = $2`,
+      [mode, seasonId],
+    );
+    return Number(rows[0]?.n ?? 0);
+  }
+
+  async getRankPosition(userId: string, mode: string, seasonId: string): Promise<number | null> {
+    const { rows } = await this.pool.query<{ mmr: number }>(
+      `SELECT mmr FROM ratings WHERE user_id = $1 AND mode = $2 AND season_id = $3`,
+      [userId, mode, seasonId],
+    );
+    if (!rows[0]) return null;
+    const { rows: countRows } = await this.pool.query<{ n: string }>(
+      `SELECT COUNT(*)::bigint AS n FROM ratings
+       WHERE mode = $1 AND season_id = $2 AND mmr > $3`,
+      [mode, seasonId, rows[0].mmr],
+    );
+    return Number(countRows[0]?.n ?? 0) + 1;
   }
 
   async getRolePreferences(userId: string): Promise<RolePreference[]> {

@@ -2479,3 +2479,35 @@ Known minor follow-up: the create-table TEST MODE toggle still renders for non-a
 hide it unless me.isAdmin).
 
 Gate green: build clean; tests 825 (client 174); eslint 0; leak 0/200.
+
+---
+
+## Production-readiness Wave 4a — ranked depth + lifecycle
+
+The ranked ladder gains the lifecycle/fairness scaffolding the audit flagged. Server +
+DB + a little client; engine/§5 leak path untouched; account+persistent+season gated.
+
+- **Season rollover** (the known stub): admin `POST /api/admin/seasons/rollover` →
+  `store.rolloverSeason` (one pg transaction: FOR UPDATE-lock + close current, open new,
+  soft-reset every rating into the new season). Soft-reset (pure `softResetRating`):
+  `mmr = 1500 + (old-1500)*0.5`, `rd = max(old, 200)`, `vol=0.06`, games/wins=0; old rows
+  stay archived under their season_id. Manager updates `currentSeasonId` + clears mmrCache
+  so new games tag the new season. `GET /api/seasons` archive list. Manual/admin only — no cron.
+- **Placements**: `PLACEMENT_GAMES=5`; players with games<5 are "in placements" — kept on
+  the board but flagged (`placements:{played,total}`); the client RankBadge shows
+  "Unranked — X/5" in place of the ladder badge (leaderboard, your-rank, dossier).
+- **Inactivity RD inflation** (pure `inflateForInactivity`): Glicko-2 `φ'=√(φ²+σ²·t)` over
+  whole 7-day periods since updatedAt, clamped to base RD=350, applied at ranked game ENTRY
+  (now passed in) so returning players re-converge fast.
+- **Leaderboard**: `GET /api/leaderboard/ranked?seasonId=&page=&limit=` now paginated
+  (0-based page, cap 100, `{entries,page,limit,total}`); `getRatingLeaderboardPage` +
+  `getRatingCount`. `GET /api/me/ranked/rank` → caller's 1-based position (null if unplaced)
+  via `getRankPosition`. Client: pager + "Your rank #N" + season filter.
+- **Leaver penalty**: a human with match outcome 'left' in a ranked game takes an extra
+  `-30` MMR (after the Glicko update, never feeds opponent math) + a 5-min ranked re-queue
+  cooldown (in-memory map, checked in quickPlay(ranked) → 'cooldown' mapped to cannot_start).
+  Bots/guests/normal-losses untouched.
+- **Ranked history**: `GET /api/me/ranked/history` (reuses getRankedResults) → dossier list.
+
+Gate green: tests 849 (shared 220 / server 182); eslint 0; leak 0/200. Rollover SQL
+reviewed (not executed on the live season); read endpoints + placements verified live.

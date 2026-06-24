@@ -7,7 +7,8 @@
 
 import { describe, it, expect, beforeEach } from 'vitest';
 import { MemoryStore } from '../db/memory-store.js';
-import { awardRankedRatings, buildRankedSummary, RANKED_MODE } from './award.js';
+import { awardRankedRatings, buildRankedSummary, RANKED_MODE, LEAVER_PENALTY } from './award.js';
+import { PLACEMENT_GAMES, RATING_PERIOD_MS } from '@nocturne/shared';
 import type { MatchPlayerRecord } from '../db/types.js';
 
 function player(id: string, outcome: string, seat: number): MatchPlayerRecord {
@@ -39,7 +40,7 @@ describe('awardRankedRatings', () => {
       player('guest:carol', 'win', 2), // a guest: excluded
       player('guest:bot-1', 'loss', 3), // a backfill bot (guest id): excluded
     ];
-    const deltas = await awardRankedRatings({ store, matchId: 'm1', players, seasonId });
+    const { deltas } = await awardRankedRatings({ store, matchId: 'm1', players, seasonId });
 
     // Only the two registered humans got ratings.
     expect([...deltas.keys()].sort()).toEqual(['user-alice', 'user-bob']);
@@ -78,7 +79,7 @@ describe('awardRankedRatings', () => {
       player('guest:bot-5', 'loss', 5),
       player('guest:bot-6', 'loss', 6),
     ];
-    const deltas = await awardRankedRatings({ store, matchId: 'm2', players, seasonId });
+    const { deltas } = await awardRankedRatings({ store, matchId: 'm2', players, seasonId });
     const d = deltas.get('user-solo')!;
     expect(d).toBeGreaterThan(0);
     // Heavily dampened (density 1/7): well under a typical full-game swing.
@@ -90,6 +91,96 @@ describe('awardRankedRatings', () => {
     await awardRankedRatings({ store, matchId: 'm3', players, seasonId });
     await awardRankedRatings({ store, matchId: 'm3', players, seasonId });
     expect(await store.getRankedResults('user-x', 10)).toHaveLength(1);
+  });
+
+  it('an abandoner takes an extra LEAVER_PENALTY debit and is reported', async () => {
+    // Two parallel matches: one where the loser stayed, one where they left.
+    const stayed = await awardRankedRatings({
+      store: new MemoryStore(),
+      matchId: 'ms',
+      players: [player('a', 'win', 0), player('stayer', 'loss', 1)],
+      seasonId,
+    });
+    const left = await awardRankedRatings({
+      store,
+      matchId: 'ml',
+      players: [player('a', 'win', 0), player('leaver', 'left', 1)],
+      seasonId,
+    });
+    // The leaver list reports the abandoner.
+    expect(left.leavers).toEqual(['leaver']);
+    expect(stayed.leavers).toEqual([]);
+    // The leaver loses the same base loss PLUS the fixed penalty.
+    const stayDelta = stayed.deltas.get('stayer')!;
+    const leftDelta = left.deltas.get('leaver')!;
+    expect(leftDelta).toBeCloseTo(stayDelta - LEAVER_PENALTY, 6);
+    const leaverRow = await store.getRating('leaver', RANKED_MODE, seasonId);
+    expect(leaverRow!.mmr).toBeLessThan(1500 - LEAVER_PENALTY);
+  });
+
+  it('inactivity inflates the pre-game RD so a returning player re-converges', async () => {
+    // Seed a tight, stale rating for a returning player.
+    const t0 = 1_000_000_000;
+    await store.upsertRating({
+      userId: 'returner',
+      mode: RANKED_MODE,
+      seasonId,
+      mmr: 1500,
+      rd: 60,
+      vol: 0.05,
+      games: 10,
+      wins: 5,
+      updatedAt: 0,
+    });
+    // Force the stored updatedAt far in the past by overwriting via getRating shape.
+    const row = await store.getRating('returner', RANKED_MODE, seasonId);
+    row!.updatedAt = t0; // memory-store returns the live object reference
+    // Now award a loss "many periods later" — the recorded rdBefore should be the
+    // INFLATED rd (wider than the stored 60), so the swing is larger than tight.
+    const now = t0 + RATING_PERIOD_MS * 8;
+    await awardRankedRatings({
+      store,
+      matchId: 'mr',
+      players: [player('opp', 'win', 0), player('returner', 'loss', 1)],
+      seasonId,
+      now,
+    });
+    const ledger = await store.getRankedResults('returner', 1);
+    expect(ledger[0]!.rdBefore).toBeGreaterThan(60);
+  });
+});
+
+describe('buildRankedSummary placements', () => {
+  it('marks a player below PLACEMENT_GAMES as in placements, drops it once placed', async () => {
+    const store = new MemoryStore();
+    const season = await store.ensureCurrentSeason('S');
+    await store.upsertRating({
+      userId: 'rookie',
+      mode: RANKED_MODE,
+      seasonId: season.id,
+      mmr: 1520,
+      rd: 200,
+      vol: 0.06,
+      games: 2,
+      wins: 1,
+      updatedAt: 0,
+    });
+    const before = await buildRankedSummary(store, 'rookie', season.id);
+    expect(before!.placements).toEqual({ played: 2, total: PLACEMENT_GAMES });
+
+    await store.upsertRating({
+      userId: 'rookie',
+      mode: RANKED_MODE,
+      seasonId: season.id,
+      mmr: 1560,
+      rd: 120,
+      vol: 0.06,
+      games: PLACEMENT_GAMES,
+      wins: 3,
+      updatedAt: 0,
+    });
+    const after = await buildRankedSummary(store, 'rookie', season.id);
+    expect(after!.placements).toBeUndefined();
   });
 });
 

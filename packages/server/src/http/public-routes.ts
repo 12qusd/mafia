@@ -3,7 +3,7 @@
  */
 
 import type { FastifyInstance } from 'fastify';
-import { GAME_NAME, SETUPS, ACHIEVEMENTS, rankForMmr } from '@nocturne/shared';
+import { GAME_NAME, SETUPS, ACHIEVEMENTS, rankForMmr, PLACEMENT_GAMES } from '@nocturne/shared';
 import type { GatewayContext } from '../ws/context.js';
 import { buildUserStatsSummary } from '../points/stats.js';
 import { buildRankedSummary, RANKED_MODE } from '../ranked/award.js';
@@ -89,32 +89,62 @@ export function registerPublicRoutes(app: FastifyInstance, ctx: GatewayContext):
     return reply.send({ entries });
   });
 
-  // --- Ranked play (MMR leaderboard + per-user rank) -----------------------
+  // --- Ranked play (MMR leaderboard + per-user rank + seasons) -------------
 
-  // Ranked leaderboard: top MMR for the current season + ranked mode. Each entry
-  // carries the derived rank (key/name) so the client renders the ladder badge.
-  app.get<{ Querystring: { limit?: string } }>('/api/leaderboard/ranked', async (req, reply) => {
-    const seasonId = ctx.manager.seasonId;
-    if (!ctx.store.persistent || !seasonId) {
-      return reply.send({ entries: [], seasonId: seasonId ?? null });
-    }
-    const limit = Math.max(1, Math.min(Number(req.query.limit) || 50, 200));
-    const rows = await ctx.store.getRatingLeaderboard(RANKED_MODE, seasonId, limit);
-    const entries = rows.map((r) => {
-      const rank = rankForMmr(r.mmr);
-      return {
-        userId: r.userId,
-        username: r.username,
-        mmr: Math.round(r.mmr),
-        rd: Math.round(r.rd),
-        rank: rank.key,
-        rankName: rank.name,
-        games: r.games,
-        wins: r.wins,
-      };
-    });
-    return reply.send({ entries, seasonId });
+  // Season archive: every season (id, name, started/ended, isCurrent), newest
+  // first. Drives the leaderboard's season filter dropdown. Empty under NO_DB.
+  app.get<{ Querystring: { limit?: string } }>('/api/seasons', async (req, reply) => {
+    if (!ctx.store.persistent) return reply.send({ seasons: [] });
+    const limit = Math.max(1, Math.min(Number(req.query.limit) || 24, 100));
+    const seasons = await ctx.store.getSeasons(limit);
+    return reply.send({ seasons });
   });
+
+  // Ranked leaderboard: top MMR for a season (defaults to the current) + ranked
+  // mode, PAGINATED. Each entry carries the derived rank (key/name) so the client
+  // renders the ladder badge; unplaced players (games < PLACEMENT_GAMES) are
+  // flagged so the client can show the placements pill instead of the ladder.
+  app.get<{ Querystring: { limit?: string; page?: string; seasonId?: string } }>(
+    '/api/leaderboard/ranked',
+    async (req, reply) => {
+      const seasonId = req.query.seasonId || ctx.manager.seasonId;
+      if (!ctx.store.persistent || !seasonId) {
+        return reply.send({
+          entries: [],
+          seasonId: seasonId ?? null,
+          page: 0,
+          limit: 0,
+          total: 0,
+        });
+      }
+      const limit = Math.max(1, Math.min(Number(req.query.limit) || 50, 100));
+      const page = Math.max(0, Number(req.query.page) || 0);
+      const [rows, total] = await Promise.all([
+        ctx.store.getRatingLeaderboardPage(RANKED_MODE, seasonId, page * limit, limit),
+        ctx.store.getRatingCount(RANKED_MODE, seasonId),
+      ]);
+      const entries = rows.map((r, i) => {
+        const rank = rankForMmr(r.mmr);
+        const unplaced = r.games < PLACEMENT_GAMES;
+        return {
+          // Absolute board position (1-based) for this page.
+          position: page * limit + i + 1,
+          userId: r.userId,
+          username: r.username,
+          mmr: Math.round(r.mmr),
+          rd: Math.round(r.rd),
+          rank: rank.key,
+          rankName: rank.name,
+          games: r.games,
+          wins: r.wins,
+          // Unplaced players appear on the board but are marked so the client
+          // shows "Unranked — X/5 placements" in place of the ladder badge.
+          ...(unplaced ? { placements: { played: r.games, total: PLACEMENT_GAMES } } : {}),
+        };
+      });
+      return reply.send({ entries, seasonId, page, limit, total });
+    },
+  );
 
   // Public ranked standing for a user (current season). 404 when none.
   app.get<{ Params: { userId: string } }>('/api/rank/:userId', async (req, reply) => {

@@ -78,6 +78,11 @@ export function TierBadge({
  * `mmr` (badge computes the rank) or a precomputed `rankKey`/`rankName` (from the
  * wire). Color is per-rank class; the rank name is always shown alongside it
  * (never a color-only signal). Optionally shows the MMR.
+ *
+ * When `placements` is set (the player has not finished their placement games),
+ * the ladder badge is REPLACED by an "Unranked — X/Y placements" pill, since a
+ * numeric rank isn't earned yet (the RD is still wide). The status text always
+ * carries the meaning so it is never a color-only signal.
  */
 export function RankBadge({
   mmr,
@@ -85,13 +90,28 @@ export function RankBadge({
   rankName,
   showMmr = false,
   size = 'md',
+  placements,
 }: {
   mmr?: number;
   rankKey?: string;
   rankName?: string;
   showMmr?: boolean;
   size?: 'sm' | 'md';
+  placements?: { played: number; total: number };
 }) {
+  if (placements) {
+    return (
+      <span
+        className={`rank-badge rank-placements ${size === 'sm' ? 'rank-sm' : ''}`}
+        title={`Unranked — ${placements.played}/${placements.total} placement games`}
+      >
+        <span className="rank-pip" aria-hidden="true">
+          ♠
+        </span>
+        Unranked — {placements.played}/{placements.total}
+      </span>
+    );
+  }
   const derived = mmr !== undefined ? rankForMmr(mmr) : null;
   const key = rankKey ?? derived?.key ?? 'stray';
   const name = rankName ?? derived?.name ?? '';

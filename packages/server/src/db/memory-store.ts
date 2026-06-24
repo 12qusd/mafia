@@ -6,7 +6,7 @@
  * for the process lifetime; match writes are dropped.
  */
 
-import type { GameSetup } from '@nocturne/shared';
+import { softResetRating, type GameSetup } from '@nocturne/shared';
 import { newId } from '../ids.js';
 import { log } from '../log.js';
 import { DEFAULT_ROOMS } from './default-rooms.js';
@@ -114,6 +114,8 @@ export class MemoryStore implements Store {
   private readonly matches = new Map<string, MatchRecord>();
   /** In-process ranked state (process-lifetime only; guests excluded upstream). */
   private currentSeason: SeasonRow | null = null;
+  /** All seasons ever opened (archive; newest pushed last). */
+  private readonly seasons: SeasonRow[] = [];
   private readonly ratings = new Map<string, RatingRow>();
   private readonly rolePrefs = new Map<string, Map<string, RolePreference['preference']>>();
   private readonly rankedResults: RankedResultInput[] = [];
@@ -501,8 +503,56 @@ export class MemoryStore implements Store {
         endedAt: null,
         isCurrent: true,
       };
+      this.seasons.push(this.currentSeason);
     }
     return this.currentSeason;
+  }
+  async rolloverSeason(newName: string): Promise<SeasonRow> {
+    const old = this.currentSeason;
+    const now = Date.now();
+    if (old) {
+      old.isCurrent = false;
+      old.endedAt = now;
+    }
+    const next: SeasonRow = {
+      id: newId(),
+      name: newName,
+      startedAt: now,
+      endedAt: null,
+      isCurrent: true,
+    };
+    this.currentSeason = next;
+    this.seasons.push(next);
+    // Soft-reset every rating from the old season into the new one (old rows are
+    // archived under their season id; new rows reset games/wins for placements).
+    if (old) {
+      for (const r of [...this.ratings.values()]) {
+        if (r.seasonId !== old.id) continue;
+        const reset = softResetRating({ rating: r.mmr, rd: r.rd, vol: r.vol });
+        const key = this.ratingKey(r.userId, r.mode, next.id);
+        if (!this.ratings.has(key)) {
+          this.ratings.set(key, {
+            userId: r.userId,
+            mode: r.mode,
+            seasonId: next.id,
+            mmr: reset.rating,
+            rd: reset.rd,
+            vol: reset.vol,
+            games: 0,
+            wins: 0,
+            updatedAt: now,
+          });
+        }
+      }
+    }
+    return next;
+  }
+  async getSeasons(limit: number): Promise<SeasonRow[]> {
+    return this.seasons
+      .slice()
+      .reverse()
+      .slice(0, Math.max(1, Math.min(limit, 100)))
+      .map((s) => ({ ...s }));
   }
   async getRating(userId: string, mode: string, seasonId: string): Promise<RatingRow | null> {
     return this.ratings.get(this.ratingKey(userId, mode, seasonId)) ?? null;
@@ -530,6 +580,40 @@ export class MemoryStore implements Store {
         games: r.games,
         wins: r.wins,
       }));
+  }
+  async getRatingLeaderboardPage(
+    mode: string,
+    seasonId: string,
+    offset: number,
+    limit: number,
+  ): Promise<RatingLeaderboardEntry[]> {
+    return [...this.ratings.values()]
+      .filter((r) => r.mode === mode && r.seasonId === seasonId)
+      // Stable tiebreak on user id to mirror the SQL ORDER BY (deterministic page).
+      .sort((a, b) => b.mmr - a.mmr || a.userId.localeCompare(b.userId))
+      .slice(Math.max(0, offset), Math.max(0, offset) + Math.max(1, Math.min(limit, 100)))
+      .map((r) => ({
+        userId: r.userId,
+        username: r.userId,
+        mmr: r.mmr,
+        rd: r.rd,
+        games: r.games,
+        wins: r.wins,
+      }));
+  }
+  async getRatingCount(mode: string, seasonId: string): Promise<number> {
+    let n = 0;
+    for (const r of this.ratings.values()) if (r.mode === mode && r.seasonId === seasonId) n++;
+    return n;
+  }
+  async getRankPosition(userId: string, mode: string, seasonId: string): Promise<number | null> {
+    const self = this.ratings.get(this.ratingKey(userId, mode, seasonId));
+    if (!self) return null;
+    let higher = 0;
+    for (const r of this.ratings.values()) {
+      if (r.mode === mode && r.seasonId === seasonId && r.mmr > self.mmr) higher++;
+    }
+    return higher + 1;
   }
   async getRolePreferences(userId: string): Promise<RolePreference[]> {
     const m = this.rolePrefs.get(userId);

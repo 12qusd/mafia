@@ -1901,6 +1901,55 @@ select[aria-invalid='true'] {
   color: var(--c-brass);
   box-shadow: 0 0 14px rgba(201, 164, 90, 0.45);
 }
+/* Placements: still earning a rank — muted, distinct from any ladder rung. */
+.rank-placements {
+  color: var(--c-text-dim);
+  font-style: italic;
+}
+
+/* Ranked leaderboard: season filter + own-rank line + pager (lifecycle). */
+.lb-ranked-controls {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--sp-2);
+}
+.lb-season-filter {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--sp-1);
+}
+.lb-your-rank {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.4em;
+}
+.lb-pager {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: var(--sp-2);
+  margin-top: var(--sp-2);
+}
+/* Compact ranked history list (profile dossier delta arrows). */
+.ranked-history {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+.ranked-history-row {
+  display: flex;
+  align-items: baseline;
+  gap: 0.5em;
+  font-size: 0.9em;
+}
+.ranked-history-delta.up {
+  color: var(--f-town);
+}
+.ranked-history-delta.down {
+  color: var(--c-danger, #c2554d);
+}
 
 /* Quick Play + Ranked sit side by side; stack on narrow screens. */
 .quickplay-row {

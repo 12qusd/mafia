@@ -47,6 +47,45 @@ const EPSILON = 0.000001;
 const SCALE = 173.7178;
 
 // --------------------------------------------------------------------------
+// Lifecycle constants (placements, soft-reset, inactivity) — ranked-progression
+// depth. PURE values consumed by the server's ranked lifecycle (season rollover,
+// placement gating, inactivity RD inflation). Kept here so client + server agree.
+// --------------------------------------------------------------------------
+
+/**
+ * Number of ranked games a player must finish IN A SEASON before they are
+ * "placed" (a numeric rank/ladder badge is shown). Below this they are
+ * "Unranked — X/5 placements" — the Glicko RD is still wide early, so the math
+ * is unchanged; this only gates the visible STATUS.
+ */
+export const PLACEMENT_GAMES = 5;
+
+/**
+ * Season soft-reset: how much of a player's distance from the mean carries into
+ * the new season. `new = MEAN + (old - MEAN) * CARRY`. 0 ⇒ everyone resets to
+ * the mean; 1 ⇒ full carry. 0.5 pulls everyone halfway toward the mean so the
+ * ladder re-spreads each season while preserving relative ordering.
+ */
+export const SEASON_CARRY = 0.5;
+
+/** The mean rating a soft-reset (and the rating scale) is centered on. */
+export const SEASON_MEAN = DEFAULT_RATING;
+
+/**
+ * RD a soft-reset re-inflates uncertainty UP to (a calibration value): high
+ * enough that the first games of the new season move MMR quickly so players
+ * re-converge fast, but below the cold-start {@link DEFAULT_RD}. A carried
+ * rating keeps its old RD only if it was already above this.
+ */
+export const SEASON_RESET_RD = 200;
+
+/**
+ * One ranked "rating period" for inactivity purposes, in ms (7 days). Whole
+ * periods elapsed since a rating's last update drive {@link inflateForInactivity}.
+ */
+export const RATING_PERIOD_MS = 7 * 24 * 60 * 60 * 1000;
+
+// --------------------------------------------------------------------------
 // Types
 // --------------------------------------------------------------------------
 
@@ -194,6 +233,61 @@ export function updateRating(player: Glicko, opponents: readonly GlickoOpponent[
 }
 
 // --------------------------------------------------------------------------
+// Lifecycle math (PURE): season soft-reset + inactivity RD inflation
+// --------------------------------------------------------------------------
+
+/**
+ * Pure season soft-reset of one rating into a new season. The MMR is pulled
+ * toward {@link SEASON_MEAN} by {@link SEASON_CARRY} (preserving relative
+ * ordering); RD is re-inflated UP to {@link SEASON_RESET_RD} (or kept if it was
+ * already wider), and volatility resets to {@link DEFAULT_VOL}. games/wins are a
+ * persistence concern (reset by the caller), not part of the rating math.
+ *
+ * Same inputs ⇒ same output (no clock / randomness).
+ */
+export function softResetRating(g: Glicko): Glicko {
+  return {
+    rating: SEASON_MEAN + (g.rating - SEASON_MEAN) * SEASON_CARRY,
+    rd: Math.max(g.rd, SEASON_RESET_RD),
+    vol: DEFAULT_VOL,
+  };
+}
+
+/**
+ * Pure Glicko-2 inactivity RD inflation: the "did-not-compete" RD-grows-with-
+ * time step applied for `inactivePeriods` whole rating periods, in one closed
+ * form. In Glicko-2 a single skipped period grows φ to `sqrt(φ² + σ²)`; over `t`
+ * periods this is `φ' = sqrt(φ² + σ²·t)` (since σ is held fixed across the gap).
+ * The result is clamped to {@link DEFAULT_RD} (uncertainty never exceeds the
+ * cold-start ceiling) and is a no-op for `t ≤ 0`.
+ *
+ * Returns the inflated RD on the VISIBLE (Glicko) scale. Rating + vol are
+ * unchanged by inactivity, so only RD is returned. `vol` is passed in because
+ * the inflation depends on the player's current volatility.
+ *
+ * Monotonic non-decreasing in `inactivePeriods`; pure (no clock — the caller
+ * computes whole periods from a `now` it passes in).
+ */
+export function inflateForInactivity(rd: number, vol: number, inactivePeriods: number): number {
+  if (!(inactivePeriods > 0)) return rd;
+  // Convert to the Glicko-2 scale, grow φ over t periods, convert back.
+  const phi = rd / SCALE;
+  const sigma = vol;
+  const phiStar = Math.sqrt(phi * phi + sigma * sigma * inactivePeriods);
+  const inflated = phiStar * SCALE;
+  return Math.min(DEFAULT_RD, Math.max(rd, inflated));
+}
+
+/**
+ * Whole rating periods elapsed between `updatedAt` and `now` (both epoch ms),
+ * for {@link inflateForInactivity}. Pure: the clock is passed in. Never negative.
+ */
+export function inactivePeriods(updatedAt: number, now: number): number {
+  if (!(now > updatedAt)) return 0;
+  return Math.floor((now - updatedAt) / RATING_PERIOD_MS);
+}
+
+// --------------------------------------------------------------------------
 // The Nocturne RANK ladder (visible competitive standing off MMR)
 // --------------------------------------------------------------------------
 //
@@ -272,4 +366,10 @@ export interface UserRankSummary {
   games: number;
   wins: number;
   seasonId: string;
+  /**
+   * Placement status when the player has not yet finished {@link PLACEMENT_GAMES}
+   * ranked games this season (the client shows "Unranked — played/total" instead
+   * of the ladder badge). Absent once placed.
+   */
+  placements?: { played: number; total: number };
 }

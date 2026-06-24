@@ -219,6 +219,8 @@ export async function fetchLeaderboard(limit = 50): Promise<LeaderboardEntry[]> 
 
 /** One row of the ranked (MMR) leaderboard. */
 export interface RankedLeaderboardEntry {
+  /** Absolute 1-based board position (across pages). */
+  position: number;
   userId: string;
   username: string;
   mmr: number;
@@ -229,29 +231,148 @@ export interface RankedLeaderboardEntry {
   rankName: string;
   gamesPlayed: number;
   gamesWon: number;
+  /** Set when the player has not yet completed their placement games. */
+  placements?: { played: number; total: number };
+}
+
+/** A page of the ranked leaderboard plus paging metadata. */
+export interface RankedLeaderboardPage {
+  entries: RankedLeaderboardEntry[];
+  seasonId: string | null;
+  page: number;
+  limit: number;
+  total: number;
+}
+
+function narrowRankedEntry(e: Record<string, unknown>, fallbackPos: number): RankedLeaderboardEntry {
+  const p = isObj(e['placements']) ? e['placements'] : null;
+  return {
+    position: typeof e['position'] === 'number' ? num(e['position']) : fallbackPos,
+    userId: str(e['userId']) ?? '',
+    username: str(e['username']) ?? '',
+    mmr: num(e['mmr']),
+    rd: num(e['rd']),
+    rank: str(e['rank']) ?? 'stray',
+    rankName: str(e['rankName']) ?? '',
+    gamesPlayed: num(e['games']),
+    gamesWon: num(e['wins']),
+    ...(p ? { placements: { played: num(p['played']), total: num(p['total']) } } : {}),
+  };
 }
 
 /**
- * `GET /api/leaderboard/ranked` — top MMR for the current season + mode. Each
- * entry carries the derived rank so the client renders the ladder badge. [] on
- * any failure (no season, no persistence, network error).
+ * `GET /api/leaderboard/ranked` — a PAGE of MMR rankings for a season (defaults
+ * to the current). Each entry carries the derived rank so the client renders the
+ * ladder badge; unplaced players carry a `placements` marker. Returns an empty
+ * page on any failure (no season, no persistence, network error).
  */
-export async function fetchRankedLeaderboard(limit = 50): Promise<RankedLeaderboardEntry[]> {
+export async function fetchRankedLeaderboard(
+  opts: { page?: number; limit?: number; seasonId?: string } = {},
+): Promise<RankedLeaderboardPage> {
+  const empty: RankedLeaderboardPage = { entries: [], seasonId: null, page: 0, limit: 0, total: 0 };
   try {
-    const data = await getJson(
-      `/api/leaderboard/ranked?limit=${encodeURIComponent(String(limit))}`,
-    );
-    const list = isObj(data) ? data['entries'] : undefined;
+    const limit = opts.limit ?? 50;
+    const page = opts.page ?? 0;
+    const qs = new URLSearchParams({ limit: String(limit), page: String(page) });
+    if (opts.seasonId) qs.set('seasonId', opts.seasonId);
+    const data = await getJson(`/api/leaderboard/ranked?${qs.toString()}`);
+    if (!isObj(data)) return empty;
+    const list = data['entries'];
+    if (!Array.isArray(list)) return empty;
+    const respPage = num(data['page']);
+    const respLimit = num(data['limit']);
+    return {
+      entries: list
+        .filter(isObj)
+        .map((e, i) => narrowRankedEntry(e, respPage * respLimit + i + 1)),
+      seasonId: str(data['seasonId']) ?? null,
+      page: respPage,
+      limit: respLimit,
+      total: num(data['total']),
+    };
+  } catch {
+    return empty;
+  }
+}
+
+/** One season in the archive (for the leaderboard's season filter). */
+export interface SeasonInfo {
+  id: string;
+  name: string;
+  startedAt: number;
+  endedAt: number | null;
+  isCurrent: boolean;
+}
+
+/** `GET /api/seasons` — the season archive, newest first. [] on any failure. */
+export async function fetchSeasons(): Promise<SeasonInfo[]> {
+  try {
+    const data = await getJson('/api/seasons');
+    const list = isObj(data) ? data['seasons'] : undefined;
     if (!Array.isArray(list)) return [];
-    return list.filter(isObj).map((e) => ({
-      userId: str(e['userId']) ?? '',
-      username: str(e['username']) ?? '',
-      mmr: num(e['mmr']),
-      rd: num(e['rd']),
-      rank: str(e['rank']) ?? 'stray',
-      rankName: str(e['rankName']) ?? '',
-      gamesPlayed: num(e['games']),
-      gamesWon: num(e['wins']),
+    return list.filter(isObj).map((s) => ({
+      id: str(s['id']) ?? '',
+      name: str(s['name']) ?? '',
+      startedAt: num(s['startedAt']),
+      endedAt: numOrNull(s['endedAt']),
+      isCurrent: s['isCurrent'] === true,
+    }));
+  } catch {
+    return [];
+  }
+}
+
+/** The signed-in account's own ranked position + standing (current season). */
+export interface MyRank {
+  position: number;
+  mmr: number;
+  rank: string;
+  rankName: string;
+  games: number;
+  wins: number;
+  placements?: { played: number; total: number };
+}
+
+/** `GET /api/me/ranked/rank` — the caller's rank position, or null if unplaced. */
+export async function fetchMyRank(): Promise<MyRank | null> {
+  try {
+    const data = await getJson('/api/me/ranked/rank');
+    const r = isObj(data) ? data['rank'] : null;
+    if (!isObj(r)) return null;
+    const p = isObj(r['placements']) ? r['placements'] : null;
+    return {
+      position: num(r['position']),
+      mmr: num(r['mmr']),
+      rank: str(r['rank']) ?? 'stray',
+      rankName: str(r['rankName']) ?? '',
+      games: num(r['games']),
+      wins: num(r['wins']),
+      ...(p ? { placements: { played: num(p['played']), total: num(p['total']) } } : {}),
+    };
+  } catch {
+    return null;
+  }
+}
+
+/** One row of the caller's recent ranked match history. */
+export interface RankedHistoryEntry {
+  matchId: string;
+  mmrBefore: number;
+  mmrAfter: number;
+  delta: number;
+}
+
+/** `GET /api/me/ranked/history` — the caller's recent ranked results. [] on failure. */
+export async function fetchMyRankedHistory(limit = 20): Promise<RankedHistoryEntry[]> {
+  try {
+    const data = await getJson(`/api/me/ranked/history?limit=${encodeURIComponent(String(limit))}`);
+    const list = isObj(data) ? data['history'] : undefined;
+    if (!Array.isArray(list)) return [];
+    return list.filter(isObj).map((h) => ({
+      matchId: str(h['matchId']) ?? '',
+      mmrBefore: num(h['mmrBefore']),
+      mmrAfter: num(h['mmrAfter']),
+      delta: num(h['delta']),
     }));
   } catch {
     return [];

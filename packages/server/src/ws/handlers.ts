@@ -301,7 +301,11 @@ export class MessageHandlers {
     // mode defaults to 'casual'; 'ranked' is account-gated inside quickPlay
     // (guests get 'not_authenticated' → the client prompts to sign in).
     const err = this.ctx.manager.quickPlay(conn, msg.mode ?? 'casual');
-    if (err) replyError(conn, err as ErrorCode);
+    if (!err) return;
+    // A ranked leaver cooldown is surfaced via the existing `cannot_start` code
+    // with a `cooldown` detail (no new protocol error code), mirroring `no_game`.
+    if (err === 'cooldown') replyError(conn, 'cannot_start', 'cooldown');
+    else replyError(conn, err as ErrorCode);
   }
 
   private onLeaveQueue(conn: Connection): void {

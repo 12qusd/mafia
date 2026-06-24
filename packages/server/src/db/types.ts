@@ -512,6 +512,17 @@ export interface Store {
   getCurrentSeason(): Promise<SeasonRow | null>;
   /** Return the current season, creating one with `name` if none is current. */
   ensureCurrentSeason(name: string): Promise<SeasonRow>;
+  /**
+   * Season rollover (admin-triggered): atomically END the current season
+   * (ended_at=now, is_current=false), OPEN a new current season named `newName`,
+   * and SOFT-RESET every current rating into the new season (mmr pulled toward
+   * the mean, rd re-inflated, vol/games/wins reset) so the old season's ratings
+   * remain archived under their season id. Returns the NEW current season. A
+   * no-op-safe error if there is no current season to roll over.
+   */
+  rolloverSeason(newName: string): Promise<SeasonRow>;
+  /** Recent seasons, newest first (archive browser). `limit` clamped (≤100). */
+  getSeasons(limit: number): Promise<SeasonRow[]>;
   /** A user's rating for a (mode, season), or null if they have not played it. */
   getRating(userId: string, mode: string, seasonId: string): Promise<RatingRow | null>;
   /** Insert-or-update a rating by its (user, mode, season) key; bumps updated_at. */
@@ -522,6 +533,24 @@ export interface Store {
     seasonId: string,
     limit: number,
   ): Promise<RatingLeaderboardEntry[]>;
+  /**
+   * One page of the ranked leaderboard for a (mode, season), highest mmr first
+   * (joined to usernames). `offset`/`limit` are clamped by the store; pair with
+   * {@link getRatingCount} for the total. Used by the paginated public endpoint.
+   */
+  getRatingLeaderboardPage(
+    mode: string,
+    seasonId: string,
+    offset: number,
+    limit: number,
+  ): Promise<RatingLeaderboardEntry[]>;
+  /** Total number of rated players for a (mode, season) (pagination total). */
+  getRatingCount(mode: string, seasonId: string): Promise<number>;
+  /**
+   * A user's 1-based rank position in a (mode, season): the count of ratings with
+   * strictly higher mmr, plus one. Null if the user has no rating in that season.
+   */
+  getRankPosition(userId: string, mode: string, seasonId: string): Promise<number | null>;
   /** A user's role preferences (likes + blacklists). */
   getRolePreferences(userId: string): Promise<RolePreference[]>;
   /** Set or clear (preference=null removes the row) a user's preference for a role. */

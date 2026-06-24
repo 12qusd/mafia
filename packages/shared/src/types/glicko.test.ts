@@ -13,10 +13,17 @@ import {
   fromGlicko2,
   rankForMmr,
   nextRankThreshold,
+  softResetRating,
+  inflateForInactivity,
+  inactivePeriods,
   RANK_TIERS,
   DEFAULT_RATING,
   DEFAULT_RD,
   DEFAULT_VOL,
+  SEASON_MEAN,
+  SEASON_CARRY,
+  SEASON_RESET_RD,
+  RATING_PERIOD_MS,
   type Glicko,
 } from './glicko.js';
 
@@ -108,5 +115,81 @@ describe('rank ladder', () => {
     expect(next?.at).toBe(1700);
     expect(next?.name).toBe('Shadow');
     expect(nextRankThreshold(50000)).toBeNull();
+  });
+});
+
+describe('season soft-reset (softResetRating)', () => {
+  it('pulls a rating toward the mean by SEASON_CARRY', () => {
+    const high = softResetRating({ rating: 2300, rd: 80, vol: 0.05 });
+    // 1500 + (2300-1500)*0.5 = 1900
+    expect(high.rating).toBeCloseTo(SEASON_MEAN + (2300 - SEASON_MEAN) * SEASON_CARRY, 6);
+    expect(high.rating).toBeCloseTo(1900, 6);
+
+    const low = softResetRating({ rating: 1100, rd: 80, vol: 0.05 });
+    expect(low.rating).toBeCloseTo(SEASON_MEAN + (1100 - SEASON_MEAN) * SEASON_CARRY, 6);
+    expect(low.rating).toBeCloseTo(1300, 6);
+  });
+
+  it('preserves relative ordering (a soft-reset is monotonic in old MMR)', () => {
+    const a = softResetRating({ rating: 1800, rd: 80, vol: 0.05 }).rating;
+    const b = softResetRating({ rating: 1600, rd: 80, vol: 0.05 }).rating;
+    expect(a).toBeGreaterThan(b);
+  });
+
+  it('leaves a mean rating at the mean', () => {
+    expect(softResetRating({ rating: SEASON_MEAN, rd: 90, vol: 0.05 }).rating).toBeCloseTo(
+      SEASON_MEAN,
+      6,
+    );
+  });
+
+  it('re-inflates RD up to the reset value and resets volatility', () => {
+    const tight = softResetRating({ rating: 1700, rd: 60, vol: 0.04 });
+    expect(tight.rd).toBe(SEASON_RESET_RD); // widened up from 60
+    expect(tight.vol).toBe(DEFAULT_VOL);
+
+    // An already-wide RD is kept (the reset only RAISES uncertainty).
+    const wide = softResetRating({ rating: 1700, rd: 300, vol: 0.04 });
+    expect(wide.rd).toBe(300);
+  });
+});
+
+describe('inactivity RD inflation (inflateForInactivity)', () => {
+  it('is a no-op for zero or negative periods', () => {
+    expect(inflateForInactivity(120, DEFAULT_VOL, 0)).toBe(120);
+    expect(inflateForInactivity(120, DEFAULT_VOL, -3)).toBe(120);
+  });
+
+  it('grows RD with more inactive periods (monotonic non-decreasing)', () => {
+    const r1 = inflateForInactivity(120, DEFAULT_VOL, 1);
+    const r4 = inflateForInactivity(120, DEFAULT_VOL, 4);
+    const r12 = inflateForInactivity(120, DEFAULT_VOL, 12);
+    expect(r1).toBeGreaterThan(120);
+    expect(r4).toBeGreaterThanOrEqual(r1);
+    expect(r12).toBeGreaterThanOrEqual(r4);
+  });
+
+  it('matches the closed-form Glicko-2 RD-grows-with-time step', () => {
+    // φ' = sqrt(φ² + σ²·t) on the Glicko-2 scale, mapped back. One period from a
+    // tight RD should equal the single did-not-compete step's RD.
+    const player: Glicko = { rating: 1632, rd: 120, vol: 0.058 };
+    const oneStep = updateRating(player, []); // single skipped period
+    const inflated = inflateForInactivity(player.rd, player.vol, 1);
+    expect(inflated).toBeCloseTo(oneStep.rd, 6);
+  });
+
+  it('never exceeds the cold-start ceiling (clamped to DEFAULT_RD)', () => {
+    const huge = inflateForInactivity(340, DEFAULT_VOL, 100_000);
+    expect(huge).toBeLessThanOrEqual(DEFAULT_RD);
+    expect(huge).toBe(DEFAULT_RD);
+  });
+
+  it('whole rating periods are floored from a passed-in clock', () => {
+    const base = 1_000_000_000;
+    expect(inactivePeriods(base, base)).toBe(0);
+    expect(inactivePeriods(base, base + RATING_PERIOD_MS - 1)).toBe(0);
+    expect(inactivePeriods(base, base + RATING_PERIOD_MS)).toBe(1);
+    expect(inactivePeriods(base, base + RATING_PERIOD_MS * 3.9)).toBe(3);
+    expect(inactivePeriods(base, base - 5)).toBe(0); // never negative
   });
 });
