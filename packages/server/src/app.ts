@@ -8,7 +8,7 @@
 
 import { existsSync } from 'node:fs';
 import { resolve } from 'node:path';
-import Fastify, { type FastifyInstance } from 'fastify';
+import Fastify, { type FastifyInstance, type FastifyError } from 'fastify';
 import fastifyCookie from '@fastify/cookie';
 import fastifyStatic from '@fastify/static';
 import type { ServerConfig } from './config.js';
@@ -34,6 +34,7 @@ import { makeEmailTransport } from './email/transport.js';
 import { EmailService } from './email/service.js';
 import { registerAccountRoutes } from './http/account-routes.js';
 import { BotManager, type BotLlmConfig } from './bots/manager.js';
+import { reportError } from './observability/error-sink.js';
 import { log } from './log.js';
 
 export interface BuiltApp {
@@ -60,6 +61,11 @@ export async function buildApp(cfg: ServerConfig): Promise<BuiltApp> {
       throw new Error(`database unreachable: ${String(err)}`);
     }
   }
+
+  // Admin-token boot warning (ops polish): a weak/absent ADMIN_TOKEN must never
+  // pass silently — the admin endpoints + god-powers gate on it. Warn (loudly in
+  // production) when it is unset, too short, or an obvious default placeholder.
+  warnOnWeakAdminToken(cfg.adminToken, cfg.production);
 
   // TEST MODE in production is a deliberate owner-QA escape hatch, but it must
   // never be silently on: any test/audit/debug surface it opens is now admin-
@@ -163,6 +169,25 @@ export async function buildApp(cfg: ServerConfig): Promise<BuiltApp> {
   };
 
   const app = Fastify({ logger: false, bodyLimit: 64 * 1024 });
+  // Error observability (Task 7): forward unhandled route errors to the error
+  // sink (a NO-OP unless SENTRY_DSN is set) AND log them, then preserve Fastify's
+  // default 5xx behaviour. Validation/4xx errors (statusCode < 500) are client
+  // errors — logged at debug only and NOT reported, to avoid noise.
+  app.setErrorHandler((err: FastifyError, req, reply) => {
+    const status = err.statusCode && err.statusCode >= 400 ? err.statusCode : 500;
+    if (status >= 500) {
+      log.error('request error', { method: req.method, url: req.url, err: err.stack ?? err.message });
+      reportError(err);
+    }
+    // Never echo internal exception text to clients: 5xx → 'internal_error',
+    // 4xx → a stable 'bad_request' code (matches the explicit-route convention).
+    // The framework's own error code (e.g. FST_ERR_*) is preserved for the client
+    // to branch on without leaking a raw message.
+    reply.code(status).send({
+      error: status >= 500 ? 'internal_error' : 'bad_request',
+      ...(err.code ? { code: err.code } : {}),
+    });
+  });
   await app.register(fastifyCookie);
   // Form bodies for the admin sanction form.
   app.addContentTypeParser(
@@ -242,6 +267,18 @@ export async function buildApp(cfg: ServerConfig): Promise<BuiltApp> {
       while (manager.activeRooms() > 0 && Date.now() < deadline) {
         await new Promise((r) => setTimeout(r, 1000));
       }
+      // If the drain deadline elapsed with games still running, we are about to
+      // ABANDON them — say so loudly (with the count) rather than exiting quietly,
+      // so the operator knows in-progress matches were dropped on this shutdown.
+      const remaining = manager.activeRooms();
+      if (remaining > 0) {
+        log.warn('drain deadline reached with active games still running; abandoning them', {
+          activeRooms: remaining,
+          drainMaxMs: cfg.drainMaxMs,
+        });
+      } else {
+        log.info('drain complete; no active games remaining');
+      }
     }
     gateway.closeAll();
     manager.disposeAll();
@@ -250,4 +287,36 @@ export async function buildApp(cfg: ServerConfig): Promise<BuiltApp> {
   };
 
   return { app, ctx, gateway, listen, shutdown };
+}
+
+/** Obvious placeholder/default admin tokens that must never guard a real deploy. */
+const WEAK_ADMIN_TOKENS = new Set([
+  'admin',
+  'changeme',
+  'change-me',
+  'secret',
+  'password',
+  'token',
+  'admin-token',
+  'dev',
+  'test',
+  'nocturne',
+]);
+
+/**
+ * Warn at boot when the admin token is unset, suspiciously short (<24 chars), or
+ * an obvious default — so a weak admin gate never passes silently. Pure: takes
+ * the value + production flag, emits a single structured log.warn. Never throws.
+ */
+function warnOnWeakAdminToken(token: string | undefined, production: boolean): void {
+  let reason: string | null = null;
+  if (!token) reason = 'unset';
+  else if (token.length < 24) reason = 'too_short';
+  else if (WEAK_ADMIN_TOKENS.has(token.toLowerCase())) reason = 'default_value';
+  if (!reason) return;
+  log.warn(
+    'ADMIN_TOKEN is weak or unset — admin endpoints + god-powers are guarded by it; ' +
+      'set a long, random ADMIN_TOKEN before exposing this server',
+    { reason, production },
+  );
 }

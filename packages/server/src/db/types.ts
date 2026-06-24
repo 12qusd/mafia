@@ -116,6 +116,13 @@ export interface RecentMatchSummary {
   mode: string | null;
   /** Number of seats in the match (match_players count). */
   players: number;
+  /**
+   * The winning faction for the match (e.g. 'TOWN'), derived from the distinct
+   * faction(s) of seats whose per-player outcome = 'win'. Null when no seat won
+   * or the winners span more than one faction (ambiguous). Used by the home
+   * "Fresh off the table" strip to read e.g. "Town prevailed".
+   */
+  winner: string | null;
 }
 
 /**
@@ -464,9 +471,14 @@ export interface Store {
     username: string;
     email: string | null;
     passwordHash: string;
+    /** Referral/invite tracking: the referrer's user id, or null. The caller
+     *  resolves + validates this (must be a real, different account) first. */
+    referredBy?: string | null;
   }): Promise<UserRow>;
   getUserByUsername(username: string): Promise<UserRow | null>;
   getUserById(id: string): Promise<UserRow | null>;
+  /** How many accounts list `userId` as their referrer (referral/invite count). */
+  getReferralCount(userId: string): Promise<number>;
   /** Resolve a user by email (case-insensitive). Account-only; null in NO_DB.
    *  Used by the password-reset "identifier" lookup. */
   getUserByEmail(email: string): Promise<UserRow | null>;

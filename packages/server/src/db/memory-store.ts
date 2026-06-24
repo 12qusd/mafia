@@ -48,6 +48,20 @@ import type {
   NotificationRow,
 } from './types.js';
 
+/**
+ * Derive the winning faction for a finished match from its seat records: the
+ * single distinct faction among seats whose per-player outcome = 'win'. Returns
+ * null when no seat won OR the winners span more than one faction (ambiguous).
+ * Mirrors the PgStore SQL derivation so both stores agree on the same label.
+ */
+function winningFaction(players: { faction: string; outcome: string }[]): string | null {
+  const factions = new Set<string>();
+  for (const p of players) {
+    if (p.outcome === 'win') factions.add(p.faction);
+  }
+  return factions.size === 1 ? [...factions][0]! : null;
+}
+
 /** Internal friendship record (one per unordered pair). */
 interface MemFriendship {
   id: string;
@@ -230,6 +244,10 @@ export class MemoryStore implements Store {
   async getUserById(): Promise<UserRow | null> {
     return null;
   }
+  // Referral/invite count: NO_DB has no accounts, so nobody is ever referred.
+  async getReferralCount(): Promise<number> {
+    return 0;
+  }
   async getUserByEmail(): Promise<UserRow | null> {
     return null;
   }
@@ -408,6 +426,7 @@ export class MemoryStore implements Store {
         endedAt: m.endedAt,
         mode: m.mode ?? null,
         players: m.players.length,
+        winner: winningFaction(m.players),
       }));
   }
 
@@ -455,7 +474,9 @@ export class MemoryStore implements Store {
       gamesWon: cur.gamesWon + delta.gamesWon,
       gamesSurvived: cur.gamesSurvived + delta.gamesSurvived,
       daysDeadWatched: cur.daysDeadWatched + delta.daysDeadWatched,
-      lastMatchAt: at,
+      // Only advance for a real played game; a points-only award (e.g. referral)
+      // must not overwrite the last-match timestamp (mirrors the PgStore CASE).
+      lastMatchAt: delta.gamesPlayed > 0 ? at : cur.lastMatchAt,
     });
   }
   async recordPoints(_userId: string, _awards: PointAwardRecord[]): Promise<void> {

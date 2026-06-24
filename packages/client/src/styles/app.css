@@ -1590,6 +1590,12 @@ label {
   font-size: calc(13px * var(--scale));
 }
 
+/* Inline positive feedback (e.g. "saved") — the verdigris win-family colour. */
+.success-text {
+  color: var(--c-verdigris);
+  font-size: calc(13px * var(--scale));
+}
+
 /* --- Form fields + validation feedback (a11y) --------------------------- */
 .field {
   display: flex;

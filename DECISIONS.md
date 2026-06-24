@@ -2544,3 +2544,40 @@ empty set, avoiding the uuid=text class of bug) + escaped ILIKE; all verified li
 
 Gate green: tests 867 (shared 220 / server 200 / client 174 / bots 39); eslint 0; leak
 0/200. DB migrated (dm_reads + 3 deleted columns).
+
+---
+
+## Production-readiness Wave 5 — niceties & quality-of-life (5a/5b/5c)
+
+The audit's lower-priority long tail. Client + HTTP + own tables; engine/§5 leak path
+untouched; gate green throughout (final: tests 953, leak 0/200).
+
+### 5a — notifications center + rank-up + report-from-profile
+`notifications` table (+ partial unread idx). Best-effort `notify()` (no-op on
+non-persistent/guest, try/catch+log) so a failed insert never breaks the trigger.
+Hooks: friend request/accept, achievement (newlyUnlocked), rank-rung-up — all additive,
+match-end scoring/MMR/points_awarded fields unchanged. Topbar NotificationsBell (unread
+badge + feed + per-type links, 30s poll); client-side RankUpToast (no protocol change);
+ReportForm on /u/:username → moderation.fileReport.
+
+### 5b — avatars + @mentions + quote/reply + forum search
+Deterministic `<Avatar>` (FNV-hash → noir SVG glyph/monogram, no upload/storage)
+everywhere a username appears. Pure `parseMentions` + `<RichText>` render @user as
+/u/ links over already-sanitized text (no dangerouslySetInnerHTML). Server mention hook
+(≤5 real, non-self, non-blocked accounts → best-effort 'mention' notification). Quote =
+text-convention `>` blockquotes rendered by RichText. `GET /api/forum/search` (ILIKE
+titles+bodies, escaped, excl. deleted) + search box.
+
+### 5c — QoL + perf/ops grab-bag
+Test-mode toggle hidden for non-admins. Recent-games `winner` faction (array_agg DISTINCT
+FILTER outcome='win'; null when ambiguous). Setup-builder field-level error + inline
+success. **Referral**: `users.referred_by` column; register accepts `?ref=` (id|username,
+lenient z.unknown so a garbled ref never blocks signup — caught in review); referrer gets
+REFERRAL_BONUS=100 once; `GET /api/me/referral` (link+count); Invite card. PERF: forum-index
+N+2 → one grouped join + LATERAL; `writeRankedResults` → single multi-row INSERT. OPS:
+pluggable `SENTRY_DSN` error sink (no-op unless set, lazy @sentry/node) wired to crash
+handlers + Fastify error handler; weak-ADMIN_TOKEN boot warning; Retry-After on 429s;
+loud active-room count on drain timeout. Review pass also masked a 4xx err.message echo +
+stopped the referral bonus bumping last_match_at.
+
+Operator: optional `SENTRY_DSN` for error reporting; `users.referred_by` migration applied.

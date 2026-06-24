@@ -58,26 +58,33 @@ export function normalizeAccent(accent: string | null): string {
 }
 
 /**
- * Copy a shareable replay link (`${origin}/replay/:matchId`) to the clipboard.
- * Uses the async Clipboard API when available, falling back to a `prompt` the
- * user can copy from manually. Resolves true when the copy is believed to have
- * succeeded (clipboard write resolved), false otherwise. Never throws.
+ * Copy arbitrary text to the clipboard. Uses the async Clipboard API when
+ * available, falling back to a `prompt` the user can copy from manually.
+ * Resolves true when the copy is believed to have succeeded, false otherwise.
+ * Never throws.
  */
-export async function copyReplayLink(matchId: string): Promise<boolean> {
-  const url = `${globalThis.location?.origin ?? ''}/replay/${encodeURIComponent(matchId)}`;
+export async function copyText(text: string): Promise<boolean> {
   try {
     if (globalThis.navigator?.clipboard?.writeText) {
-      await globalThis.navigator.clipboard.writeText(url);
+      await globalThis.navigator.clipboard.writeText(text);
       return true;
     }
   } catch {
     /* fall through to the prompt fallback */
   }
   try {
-    // Last resort: surface the URL so the user can copy it by hand.
-    globalThis.prompt?.('Copy this link', url);
+    // Last resort: surface the text so the user can copy it by hand.
+    globalThis.prompt?.('Copy this', text);
   } catch {
     /* ignore */
   }
   return false;
+}
+
+/**
+ * Copy a shareable replay link (`${origin}/replay/:matchId`) to the clipboard.
+ * Resolves true when the copy is believed to have succeeded, false otherwise.
+ */
+export async function copyReplayLink(matchId: string): Promise<boolean> {
+  return copyText(`${globalThis.location?.origin ?? ''}/replay/${encodeURIComponent(matchId)}`);
 }

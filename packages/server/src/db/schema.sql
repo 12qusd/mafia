@@ -487,6 +487,13 @@ ON CONFLICT (slug) DO NOTHING;
 -- Whether the user's email has been confirmed (welcome/verify flow).
 ALTER TABLE users ADD COLUMN IF NOT EXISTS email_verified boolean NOT NULL DEFAULT false;
 
+-- Referral / invite tracking: the account (if any) that referred this user, set
+-- at register time when a valid, different referrer id/username is supplied.
+-- ON DELETE SET NULL so removing a referrer never cascades away their referees.
+ALTER TABLE users ADD COLUMN IF NOT EXISTS referred_by uuid NULL REFERENCES users(id) ON DELETE SET NULL;
+-- Fast "how many people did I refer" count (getReferralCount).
+CREATE INDEX IF NOT EXISTS users_referred_by_idx ON users (referred_by);
+
 -- One-time password-reset tokens (only the token HASH is stored; ~1h validity).
 CREATE TABLE IF NOT EXISTS password_resets (
   token_hash text PRIMARY KEY,

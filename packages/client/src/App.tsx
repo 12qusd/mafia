@@ -11,6 +11,7 @@ import { conn } from './ws/connection.js';
 import { useStore } from './store/store.js';
 import { refreshMe } from './lib/me.js';
 import { pingPresence, fetchSocial } from './lib/api.js';
+import { saveRef } from './lib/storage.js';
 import { Toasts } from './components/Toasts.js';
 import { NotificationsBell } from './components/NotificationsBell.js';
 import { RankUpToast } from './components/RankUpToast.js';
@@ -115,6 +116,18 @@ export function App() {
     first?.focus();
     return () => document.removeEventListener('keydown', onKey);
   }, [navOpen]);
+
+  // Referral/invite: capture a `?ref=` from the landing URL ONCE and stash it
+  // transiently (storage), so it survives the visitor poking around before they
+  // register. The register flow reads + clears it. Runs once on mount.
+  useEffect(() => {
+    try {
+      const ref = new URLSearchParams(globalThis.location?.search ?? '').get('ref');
+      if (ref) saveRef(ref);
+    } catch {
+      /* ignore — referral capture is best-effort */
+    }
+  }, []);
 
   // Open the connection once, and bootstrap the signed-in identity (goal 4/8).
   useEffect(() => {

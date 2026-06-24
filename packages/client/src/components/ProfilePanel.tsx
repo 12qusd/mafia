@@ -13,10 +13,11 @@ import { Link } from 'react-router-dom';
 import { ACHIEVEMENTS_BY_KEY } from '@nocturne/shared';
 import { useStore } from '../store/store.js';
 import { DecoHead, TierBadge, RankBadge } from './common.js';
-import { PROFILE, LEADERBOARD } from '../lib/strings-extra.js';
+import { PROFILE, LEADERBOARD, INVITE } from '../lib/strings-extra.js';
 import { sanitizeInline } from '../lib/sanitize.js';
+import { copyText } from '../lib/social.js';
 import * as api from '../lib/api.js';
-import type { AchievementCatalogEntry, MyRank, RankedHistoryEntry } from '../lib/api.js';
+import type { AchievementCatalogEntry, MyRank, RankedHistoryEntry, Referral } from '../lib/api.js';
 
 function winRate(won: number, played: number): string {
   if (played <= 0) return '—';
@@ -175,10 +176,60 @@ export function ProfilePanel() {
               {PROFILE.rolePreferences}
             </Link>
           </div>
+
+          <InviteCard />
         </>
       ) : (
         <p className="muted">{PROFILE.noStats}</p>
       )}
+    </div>
+  );
+}
+
+/**
+ * "Invite friends" widget (referral feature): the caller's shareable invite link
+ * + a Copy button + "N joined via your invite". Self-fetches /api/me/referral;
+ * renders nothing until a link is available (guests/NO_DB get a null link).
+ */
+function InviteCard() {
+  const pushInfo = useStore((s) => s.pushInfo);
+  const [ref, setRef] = useState<Referral | null>(null);
+
+  useEffect(() => {
+    let live = true;
+    void api.fetchReferral().then((r) => {
+      if (live) setRef(r);
+    });
+    return () => {
+      live = false;
+    };
+  }, []);
+
+  if (!ref || !ref.link) return null;
+  const link = ref.link;
+  return (
+    <div className="invite-card stack" style={{ gap: 8 }}>
+      <DecoHead>{INVITE.heading}</DecoHead>
+      <p className="faint" style={{ marginTop: -4 }}>
+        {INVITE.sub(ref.bonusEach)}
+      </p>
+      <div className="field">
+        <label htmlFor="invite-link">{INVITE.linkLabel}</label>
+        <div className="row" style={{ gap: 8 }}>
+          <input id="invite-link" readOnly value={link} onFocus={(e) => e.target.select()} />
+          <button
+            className="btn btn-sm"
+            onClick={() => {
+              void copyText(link).then((ok) =>
+                pushInfo(ok ? INVITE.copied : INVITE.copyFailed),
+              );
+            }}
+          >
+            {INVITE.copy}
+          </button>
+        </div>
+      </div>
+      {ref.count > 0 && <div className="faint">{INVITE.joined(ref.count)}</div>}
     </div>
   );
 }

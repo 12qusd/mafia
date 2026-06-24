@@ -11,6 +11,7 @@ const SETTINGS_KEY = 'nocturne.settings';
 const GUEST_NAME_KEY = 'nocturne.guestName';
 const VERIFY_BANNER_DISMISSED_KEY = 'nocturne.verifyBannerDismissed';
 const ONBOARD_DISMISSED_KEY = 'nocturne.onboardDismissed';
+const REF_KEY = 'nocturne.ref';
 
 export type TextScale = 'small' | 'normal' | 'large';
 
@@ -101,6 +102,21 @@ export function loadOnboardDismissed(): boolean {
 }
 export function saveOnboardDismissed(): void {
   safeSet(ONBOARD_DISMISSED_KEY, '1');
+}
+
+/**
+ * Referral/invite tracking: a `?ref=` value captured from the landing URL and
+ * held transiently until the visitor registers (then passed to /api/register).
+ * Cleared once consumed so it never sticks across accounts.
+ */
+export function loadRef(): string | null {
+  return safeGet(REF_KEY);
+}
+export function saveRef(ref: string): void {
+  safeSet(REF_KEY, ref);
+}
+export function clearRef(): void {
+  safeRemove(REF_KEY);
 }
 
 export function loadSettings(): ClientSettings {

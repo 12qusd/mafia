@@ -180,11 +180,16 @@ export function registerSocialRoutes(app: FastifyInstance, ctx: GatewayContext):
    * post in another channel or a DM — it only deters flooding a single stream.
    * Returns true if the caller is too fast for that scope.
    */
-  function tooFast(userId: string, scope: string): boolean {
+  function tooFast(userId: string, scope: string, reply?: FastifyReply): boolean {
     const key = `${userId}:${scope}`;
     const now = Date.now();
     const last = lastPostAt.get(key) ?? 0;
-    if (now - last < POST_COOLDOWN_MS) return true;
+    if (now - last < POST_COOLDOWN_MS) {
+      // Set a Retry-After (seconds) so the 429 is consistent with the
+      // rate-limit pattern, mirroring makeRateLimiter's guard.
+      if (reply) reply.header('Retry-After', String(Math.ceil((POST_COOLDOWN_MS - (now - last)) / 1000)));
+      return true;
+    }
     lastPostAt.set(key, now);
     return false;
   }
@@ -435,7 +440,7 @@ export function registerSocialRoutes(app: FastifyInstance, ctx: GatewayContext):
     const max = room.kind === 'shoutbox' ? SHOUTBOX_BODY_MAX : CHANNEL_BODY_MAX;
     const parsed = bodySchema(max).safeParse(req.body);
     if (!parsed.success) return reply.code(400).send({ error: 'bad_request' });
-    if (tooFast(poster.id, `room:${room.slug}`))
+    if (tooFast(poster.id, `room:${room.slug}`, reply))
       return reply.code(429).send({ error: 'slow_down' });
     const message = await ctx.store.postRoomMessage(room.id, poster.id, parsed.data.body);
     void recordPresence(poster.id);
@@ -485,7 +490,8 @@ export function registerSocialRoutes(app: FastifyInstance, ctx: GatewayContext):
     }
     const parsed = bodySchema(CHANNEL_BODY_MAX).safeParse(req.body);
     if (!parsed.success) return reply.code(400).send({ error: 'bad_request' });
-    if (tooFast(poster.id, `dm:${other}`)) return reply.code(429).send({ error: 'slow_down' });
+    if (tooFast(poster.id, `dm:${other}`, reply))
+      return reply.code(429).send({ error: 'slow_down' });
     const threadId = await ctx.store.ensureDmThread(poster.id, other);
     const message = await ctx.store.postDm(threadId, poster.id, parsed.data.body);
     void recordPresence(poster.id);

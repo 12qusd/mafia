@@ -8,9 +8,14 @@
 import { loadConfig } from './config.js';
 import { buildApp } from './app.js';
 import { log } from './log.js';
+import { initErrorSink, reportError, flushErrorSink } from './observability/error-sink.js';
 
 export async function main(): Promise<void> {
   const cfg = loadConfig();
+  // Error observability (Task 7): a NO-OP unless SENTRY_DSN is set. Initialized
+  // before the crash handlers below so they can report through it; log.error
+  // remains the primary, always-on path.
+  await initErrorSink(cfg);
   const built = await buildApp(cfg);
   await built.listen();
 
@@ -20,6 +25,7 @@ export async function main(): Promise<void> {
     shuttingDown = true;
     built
       .shutdown(true)
+      .then(() => flushErrorSink())
       .then(() => {
         log.info('drain complete; exiting', { code });
         process.exit(code);
@@ -47,9 +53,11 @@ export async function main(): Promise<void> {
     log.error('unhandledRejection', {
       err: reason instanceof Error ? (reason.stack ?? reason.message) : String(reason),
     });
+    reportError(reason);
   });
   process.on('uncaughtException', (err) => {
     log.error('uncaughtException; shutting down', { err: err.stack ?? err.message });
+    reportError(err);
     drainAndExit(1);
     // Safety net: if graceful drain hangs, force-exit so pm2 can restart us.
     setTimeout(() => process.exit(1), 10_000).unref();

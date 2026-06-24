@@ -12,13 +12,16 @@ import { useLobbyNav } from '../components/useLobbyNav.js';
 import { DecoHead, Switch, TestBadge, CharCount } from '../components/common.js';
 import { ProfilePanel } from '../components/ProfilePanel.js';
 import { SetupPicker } from '../components/SetupPicker.js';
-import { HOME, ONBOARD, SOCIAL_PROOF } from '../lib/strings-extra.js';
+import { HOME, ONBOARD, SOCIAL_PROOF, FACTION_LABEL } from '../lib/strings-extra.js';
+import type { Faction } from '@nocturne/shared';
 import { sanitizeInline } from '../lib/sanitize.js';
 import {
   loadGuestName,
   loadToken,
   loadOnboardDismissed,
   saveOnboardDismissed,
+  loadRef,
+  clearRef,
 } from '../lib/storage.js';
 import { timeAgo } from '../lib/social.js';
 import { useModalA11y } from '../lib/useModalA11y.js';
@@ -193,19 +196,24 @@ function SocialProof() {
           <span className="fresh-label faint">{SOCIAL_PROOF.freshHeading}:</span>
           {recent.map((g) => {
             const setup = sanitizeInline(g.setupId);
-            // The server's `outcome` is just the "completed" status for every
-            // finished game — uninformative, so we omit it and show the cleaner
-            // setup · players · relative-time line (winner derivation is out of
-            // scope). The title mirrors the visible text for the tooltip.
+            // Lead with the WINNING faction when the server derived one (e.g.
+            // "Town prevailed"); fall back to the setup name when it's null
+            // (ambiguous / no winner). Then players · relative-time. The title
+            // mirrors the visible text for the tooltip.
+            const factionLabel =
+              g.winner && g.winner in FACTION_LABEL
+                ? FACTION_LABEL[g.winner as Faction]
+                : null;
+            const lead = factionLabel ? SOCIAL_PROOF.prevailed(factionLabel) : setup;
             const meta = `${SOCIAL_PROOF.players(g.players)} · ${timeAgo(g.endedAt)}`;
             return (
               <Link
                 key={g.id}
                 className="fresh-item"
                 to={`/replay/${encodeURIComponent(g.id)}`}
-                title={`${setup} · ${meta}`}
+                title={`${lead} · ${meta}`}
               >
-                <span className="fresh-setup">{setup}</span>
+                <span className="fresh-setup">{lead}</span>
                 <span className="faint"> · {SOCIAL_PROOF.players(g.players)}</span>
                 <span className="faint"> · {timeAgo(g.endedAt)}</span>
               </Link>
@@ -276,7 +284,12 @@ function AuthCard() {
     try {
       if (mode === 'guest') await api.guest(sanitizeInline(guestName) || undefined);
       else if (mode === 'login') await api.login(username, password);
-      else await api.register(username, password, email || undefined);
+      else {
+        // Referral/invite: pass any `?ref=` captured on landing, then clear it
+        // (in finally) so a stale/garbled ref never carries over to a retry or a
+        // second account. The server treats ref leniently and never blocks on it.
+        await api.register(username, password, email || undefined, loadRef() ?? undefined);
+      }
       // Rebind the live WS session to the identity we just authenticated as,
       // so the chosen name/account actually takes effect (otherwise the socket
       // stays bound to its initial auto-minted guest).
@@ -286,6 +299,9 @@ function AuthCard() {
     } catch {
       setError(HOME.authError);
     } finally {
+      // Consume the captured ref once a register was attempted, so it never
+      // sticks across retries/accounts (no-op for guest/login paths).
+      if (mode === 'register') clearRef();
       setBusy(false);
     }
   }
@@ -426,11 +442,20 @@ function JoinByCode() {
   );
 }
 
-function CreateLobbyCard() {
+// Exported for unit tests (the test-mode toggle is admin-only). Not used as a
+// route on its own — HomeScreen composes it.
+export function CreateLobbyCard() {
+  // The server admin-gates test-lobby creation in production, so a normal user
+  // toggling Test mode just gets rejected. Only show the toggle to admins; for
+  // everyone else `testMode` is hard-false and the control is hidden.
+  const isAdmin = useStore((s) => s.me?.isAdmin ?? false);
   const [name, setName] = useState('');
   const [visibility, setVisibility] = useState<LobbyVisibility>('private');
   const [setupId, setSetupId] = useState(SETUPS[0]?.id ?? '');
-  const [testMode, setTestMode] = useState(false);
+  const [testModeRaw, setTestMode] = useState(false);
+  // Defensive: even if state got set true, a non-admin can never create a test
+  // lobby — clamp to false so the toggle is purely an admin affordance.
+  const testMode = isAdmin && testModeRaw;
   // Test lobbies are forced private (god-view + audit; §5 still law for normal
   // games). The server only honors testMode behind the env/admin gate and will
   // reject with an `error` (forbidden) otherwise — surfaced as a toast.
@@ -463,13 +488,15 @@ function CreateLobbyCard() {
         <label>{HOME.setupLabel}</label>
         <SetupPicker value={setupId} onChange={setSetupId} />
       </div>
-      <div className="toggle">
-        <span className="toggle-label">
-          {HOME.testModeLabel} <TestBadge />
-        </span>
-        <Switch on={testMode} label={HOME.testModeLabel} onChange={setTestMode} />
-      </div>
-      {testMode && (
+      {isAdmin && (
+        <div className="toggle">
+          <span className="toggle-label">
+            {HOME.testModeLabel} <TestBadge />
+          </span>
+          <Switch on={testMode} label={HOME.testModeLabel} onChange={setTestMode} />
+        </div>
+      )}
+      {isAdmin && testMode && (
         <p className="faint" style={{ fontSize: '0.8em' }}>
           {HOME.testModeHint}
         </p>

@@ -53,6 +53,12 @@ export interface ServerConfig {
   email: EmailConfig;
   /** Base URL used to build email links (reset / verify). Default mafia.0cs.me. */
   publicBaseUrl: string;
+  /**
+   * Optional Sentry DSN for error observability. When unset, the error sink is a
+   * complete NO-OP (everything still routes through `log.error` as today). When
+   * set, @sentry/node is lazily loaded + initialized at boot.
+   */
+  sentryDsn: string | undefined;
 }
 
 /** SMTP knobs (all from env). `smtpHost` unset ⇒ LogTransport (dev/unconfigured). */
@@ -131,5 +137,6 @@ export function loadConfig(env: NodeJS.ProcessEnv = process.env): ServerConfig {
       from: env.SMTP_FROM ?? 'Nocturne <no-reply@mafia.0cs.me>',
     },
     publicBaseUrl: (env.PUBLIC_BASE_URL ?? 'https://mafia.0cs.me').replace(/\/+$/, ''),
+    sentryDsn: env.SENTRY_DSN,
   };
 }

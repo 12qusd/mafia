@@ -67,6 +67,58 @@ describe('getRecentMatches (FINISHED-only, newest-first, with counts)', () => {
   });
 });
 
+describe('getRecentMatches.winner (winning faction derivation)', () => {
+  /** A finished match with the given seat outcomes/factions. */
+  function withSeats(id: string, endedAt: number, seats: MatchPlayerRecord[]) {
+    return { ...finished(id, endedAt), players: seats };
+  }
+
+  it('derives the single winning faction when winners are one faction', async () => {
+    const store = new MemoryStore();
+    // u-1 wins as TOWN; the rest lose as MAFIA ⇒ winner = TOWN.
+    await store.writeMatch(withSeats('m', 1000, SEATS) as never);
+    const [m] = await store.getRecentMatches(1);
+    expect(m!.winner).toBe('TOWN');
+  });
+
+  it('returns null when winners span more than one faction (ambiguous)', async () => {
+    const store = new MemoryStore();
+    await store.writeMatch(
+      withSeats('m', 1000, [
+        { userOrGuestId: 'a', seat: 0, role: 'SHERIFF', faction: 'TOWN', outcome: 'win', survived: true, deathDay: null },
+        { userOrGuestId: 'b', seat: 1, role: 'GODFATHER', faction: 'MAFIA', outcome: 'win', survived: true, deathDay: null },
+      ]) as never,
+    );
+    const [m] = await store.getRecentMatches(1);
+    expect(m!.winner).toBeNull();
+  });
+
+  it('returns null when no seat won', async () => {
+    const store = new MemoryStore();
+    await store.writeMatch(
+      withSeats('m', 1000, [
+        { userOrGuestId: 'a', seat: 0, role: 'SHERIFF', faction: 'TOWN', outcome: 'loss', survived: false, deathDay: 2 },
+        { userOrGuestId: 'b', seat: 1, role: 'GODFATHER', faction: 'MAFIA', outcome: 'draw', survived: true, deathDay: null },
+      ]) as never,
+    );
+    const [m] = await store.getRecentMatches(1);
+    expect(m!.winner).toBeNull();
+  });
+
+  it('counts multiple winners of the SAME faction as that faction', async () => {
+    const store = new MemoryStore();
+    await store.writeMatch(
+      withSeats('m', 1000, [
+        { userOrGuestId: 'a', seat: 0, role: 'SHERIFF', faction: 'TOWN', outcome: 'win', survived: true, deathDay: null },
+        { userOrGuestId: 'b', seat: 1, role: 'DOCTOR', faction: 'TOWN', outcome: 'win', survived: true, deathDay: null },
+        { userOrGuestId: 'c', seat: 2, role: 'GODFATHER', faction: 'MAFIA', outcome: 'loss', survived: false, deathDay: 3 },
+      ]) as never,
+    );
+    const [m] = await store.getRecentMatches(1);
+    expect(m!.winner).toBe('TOWN');
+  });
+});
+
 describe('getPublicMatchSummary (FINISHED-only, ordered seats)', () => {
   it('returns null for an unknown id', async () => {
     const store = new MemoryStore();

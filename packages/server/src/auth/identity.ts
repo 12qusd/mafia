@@ -47,6 +47,7 @@ export class IdentityService {
     username: string,
     password: string,
     email: string | null,
+    referredBy: string | null = null,
   ): Promise<{ identity: Identity; token: string } | { error: string }> {
     if (!this.store.persistent) return { error: 'accounts_disabled' };
     const taken = (await this.store.getUserByUsername(username)) !== null;
@@ -56,7 +57,8 @@ export class IdentityService {
     // equalized.
     const passwordHash = await hashPassword(password);
     if (taken) return { error: 'username_taken' };
-    const user = await this.store.createUser({ username, email, passwordHash });
+    // referredBy is resolved + validated by the caller (a real, different account).
+    const user = await this.store.createUser({ username, email, passwordHash, referredBy });
     const token = await this.issueSession(user.id);
     return {
       identity: { id: user.id, name: user.username, isGuest: false, isAdmin: false },

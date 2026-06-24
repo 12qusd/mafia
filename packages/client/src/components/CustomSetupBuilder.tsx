@@ -99,6 +99,17 @@ export function CustomSetupBuilder() {
   const [saving, setSaving] = useState(false);
   const [errors, setErrors] = useState<string[]>([]);
   const [saved, setSaved] = useState<CustomSetupRecord[]>([]);
+  // Field-level validation cues (Wave-3 aria-invalid pattern): only surface
+  // field errors once the author has tried to save, so an empty fresh form is
+  // not pre-painted red. `savedOk` drives the inline success banner.
+  const [submitted, setSubmitted] = useState(false);
+  const [savedOk, setSavedOk] = useState(false);
+
+  // The FIELD-level constraint we can attribute to a specific input: a missing
+  // name (the most common miss). Everything else (slot composition, pools, the
+  // seat range — which the min/max inputs already keep ordered) stays in the
+  // generic problems list below.
+  const nameInvalid = submitted && name.trim().length === 0;
 
   // Refresh the author's saved setups.
   function reloadSaved() {
@@ -192,7 +203,13 @@ export function CustomSetupBuilder() {
   ]);
 
   async function save() {
+    setSubmitted(true);
+    setSavedOk(false);
     setErrors([]);
+    // Field-level guard before composition validation: an empty name is the most
+    // common miss and is now flagged on the input itself (nameInvalid) rather
+    // than only as a disabled button.
+    if (name.trim().length === 0) return;
     const setup = buildSetup();
     const local = validateSetup(setup);
     if (!local.ok) {
@@ -203,6 +220,7 @@ export function CustomSetupBuilder() {
     try {
       const res = await api.saveCustomSetup(setup.name, setup);
       if (res.ok) {
+        setSavedOk(true); // inline success cue (alongside the toast)
         pushInfo(BUILDER.saved);
         reloadSaved();
       } else {
@@ -236,10 +254,20 @@ export function CustomSetupBuilder() {
               value={name}
               maxLength={DISPLAY_NAME_MAX}
               placeholder={BUILDER.namePlaceholder}
-              aria-describedby="setup-name-count"
-              onChange={(e) => setName(e.target.value)}
+              aria-invalid={nameInvalid}
+              aria-describedby={nameInvalid ? 'setup-name-error' : 'setup-name-count'}
+              onChange={(e) => {
+                setName(e.target.value);
+                setSavedOk(false);
+              }}
             />
-            <CharCount id="setup-name-count" len={name.length} max={DISPLAY_NAME_MAX} />
+            {nameInvalid ? (
+              <div className="error-text" id="setup-name-error" role="alert">
+                {BUILDER.nameRequired}
+              </div>
+            ) : (
+              <CharCount id="setup-name-count" len={name.length} max={DISPLAY_NAME_MAX} />
+            )}
           </div>
           <div className="field">
             <label htmlFor="setup-desc">{BUILDER.descLabel}</label>
@@ -257,8 +285,9 @@ export function CustomSetupBuilder() {
 
         <div className="row" style={{ gap: 16, flexWrap: 'wrap' }}>
           <div>
-            <label>{BUILDER.rangeLabel} (min)</label>
+            <label htmlFor="setup-min">{BUILDER.rangeLabel} (min)</label>
             <input
+              id="setup-min"
               type="number"
               min={1}
               max={MAX_PLAYERS}
@@ -268,18 +297,23 @@ export function CustomSetupBuilder() {
                 const n = clampInt(e.target.value, 1, MAX_PLAYERS);
                 setMinPlayers(n);
                 if (n > maxPlayers) setMaxPlayers(n);
+                setSavedOk(false);
               }}
             />
           </div>
           <div>
-            <label>{BUILDER.rangeLabel} (max)</label>
+            <label htmlFor="setup-max">{BUILDER.rangeLabel} (max)</label>
             <input
+              id="setup-max"
               type="number"
               min={1}
               max={MAX_PLAYERS}
               value={maxPlayers}
               style={{ width: 90 }}
-              onChange={(e) => setMaxPlayers(clampInt(e.target.value, minPlayers, MAX_PLAYERS))}
+              onChange={(e) => {
+                setMaxPlayers(clampInt(e.target.value, minPlayers, MAX_PLAYERS));
+                setSavedOk(false);
+              }}
             />
           </div>
         </div>
@@ -363,7 +397,7 @@ export function CustomSetupBuilder() {
         </div>
       )}
 
-      <div className="row">
+      <div className="row" style={{ alignItems: 'center', gap: 12 }}>
         <button
           className="btn btn-primary"
           disabled={saving || !liveValidation.ok || name.trim().length === 0}
@@ -371,6 +405,11 @@ export function CustomSetupBuilder() {
         >
           {saving ? BUILDER.saving : BUILDER.save}
         </button>
+        {savedOk && (
+          <span className="success-text" role="status">
+            {BUILDER.savedInline}
+          </span>
+        )}
       </div>
 
       {/* The author's saved setups. */}

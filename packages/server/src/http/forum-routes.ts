@@ -109,12 +109,19 @@ export function registerForumRoutes(app: FastifyInstance, ctx: GatewayContext): 
     return { id: identity.id, name: identity.name };
   }
 
-  /** True if the caller is too fast for that (user, scope) bucket. */
-  function tooFast(userId: string, scope: string): boolean {
+  /**
+   * True if the caller is too fast for that (user, scope) bucket. When throttled
+   * AND a `reply` is supplied, sets a `Retry-After` header (seconds until the
+   * cooldown elapses) so the 429 is consistent with the rate-limit pattern.
+   */
+  function tooFast(userId: string, scope: string, reply?: FastifyReply): boolean {
     const key = `${userId}:${scope}`;
     const now = Date.now();
     const last = lastPostAt.get(key) ?? 0;
-    if (now - last < POST_COOLDOWN_MS) return true;
+    if (now - last < POST_COOLDOWN_MS) {
+      if (reply) reply.header('Retry-After', String(Math.ceil((POST_COOLDOWN_MS - (now - last)) / 1000)));
+      return true;
+    }
     lastPostAt.set(key, now);
     return false;
   }
@@ -176,7 +183,7 @@ export function registerForumRoutes(app: FastifyInstance, ctx: GatewayContext): 
       if (!parsed.success) return reply.code(400).send({ error: 'bad_request' });
       // Cooldown is per-board: creating a topic in one board never blocks
       // creating one in another (or replying to a thread elsewhere).
-      if (tooFast(poster.id, `board:${board.slug}`))
+      if (tooFast(poster.id, `board:${board.slug}`, reply))
         return reply.code(429).send({ error: 'slow_down' });
       const { threadId, postId } = await ctx.store.createThread(
         board.id,
@@ -234,7 +241,7 @@ export function registerForumRoutes(app: FastifyInstance, ctx: GatewayContext): 
     if (!parsed.success) return reply.code(400).send({ error: 'bad_request' });
     // Cooldown is per-thread: replying in one thread never blocks another thread
     // or a new-topic post.
-    if (tooFast(poster.id, `thread:${req.params.id}`))
+    if (tooFast(poster.id, `thread:${req.params.id}`, reply))
       return reply.code(429).send({ error: 'slow_down' });
     const result = await ctx.store.createPost(req.params.id, poster.id, parsed.data.body);
     if (!result) {

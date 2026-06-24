@@ -23,10 +23,19 @@ export type PointReason =
   | 'survived_to_end'
   | 'loyalty_dead'
   | 'achievement'
-  | 'admin';
+  | 'admin'
+  | 'referral';
 
 export const PointAwardSchema = z.object({
-  code: z.enum(['played', 'win', 'survived_to_end', 'loyalty_dead', 'achievement', 'admin']),
+  code: z.enum([
+    'played',
+    'win',
+    'survived_to_end',
+    'loyalty_dead',
+    'achievement',
+    'admin',
+    'referral',
+  ]),
   /** Human-facing label (original copy, noir register). */
   label: z.string(),
   points: z.number().int(),
@@ -57,6 +66,13 @@ export const POINTS = {
   /** Cap on the loyalty bonus so long games don't dwarf everything else. */
   LOYALTY_MAX: 72,
 } as const;
+
+/**
+ * One-time bonus awarded to the REFERRER when a new account registers via their
+ * invite link (referral / invite feature). Best-effort + never blocks
+ * registration; recorded in the point ledger with reason `referral`.
+ */
+export const REFERRAL_BONUS = 100;
 
 // --------------------------------------------------------------------------
 // Achievements catalog (definitions only; detection lives server-side)

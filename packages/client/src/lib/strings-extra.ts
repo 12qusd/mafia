@@ -341,6 +341,20 @@ export const PROFILE = {
   rankedUnranked: 'Unranked — play a ranked game to earn your standing.',
 } as const;
 
+/** Referral / invite card copy (referral feature). Original noir register. */
+export const INVITE = {
+  heading: 'Bring a friend in',
+  sub: (bonus: number) =>
+    `Send this card. When a new face signs up through it, you bank ${bonus} reputation.`,
+  linkLabel: 'Your invite link',
+  copy: 'Copy link',
+  copied: 'Invite link copied.',
+  copyFailed: 'Could not copy — copy it by hand.',
+  // "N joined via your invite" (singular handled).
+  joined: (n: number) =>
+    n === 1 ? '1 joined via your invite' : `${n} joined via your invite`,
+} as const;
+
 /** Role-preferences screen copy (point-unlocked, goal 3). Original noir register. */
 export const PREFERENCES = {
   heading: 'Standing orders',
@@ -645,7 +659,9 @@ export const BUILDER = {
   save: 'Save setup',
   saving: 'Saving…',
   saved: 'Saved to your setups.',
+  savedInline: 'Filed. Your setup is saved.',
   errors: 'The house found problems:',
+  nameRequired: 'Give the table a name.',
   mySetups: 'Your setups',
   noSetups: 'You have not saved any setups yet.',
   delete: 'Delete',
@@ -983,6 +999,8 @@ export const SOCIAL_PROOF = {
   freshHeading: 'Fresh off the table',
   // A finished-game line: "<faction> took it · <setup> · <relative>".
   result: (faction: string) => `${faction} took it`,
+  // Winning-faction line for the recent-games strip: "Town prevailed".
+  prevailed: (faction: string) => `${faction} prevailed`,
   draw: 'A draw',
   players: (n: number) => `${n}p`,
 } as const;

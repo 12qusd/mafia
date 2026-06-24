@@ -103,10 +103,16 @@ export async function register(
   username: string,
   password: string,
   email?: string,
+  ref?: string,
 ): Promise<AuthResponse> {
   return applyAuth(
     narrowAuth(
-      await postJson('/api/register', { username, password, ...(email ? { email } : {}) }),
+      await postJson('/api/register', {
+        username,
+        password,
+        ...(email ? { email } : {}),
+        ...(ref ? { ref } : {}),
+      }),
     ),
   );
 }
@@ -348,6 +354,31 @@ export async function fetchMyRank(): Promise<MyRank | null> {
       games: num(r['games']),
       wins: num(r['wins']),
       ...(p ? { placements: { played: num(p['played']), total: num(p['total']) } } : {}),
+    };
+  } catch {
+    return null;
+  }
+}
+
+/** The caller's referral/invite link + how many accounts joined via it. */
+export interface Referral {
+  /** The shareable `${base}/?ref=<id>` link, or null for guests/NO_DB. */
+  link: string | null;
+  /** How many accounts registered via this link. */
+  count: number;
+  /** One-time points awarded to the referrer per referee. */
+  bonusEach: number;
+}
+
+/** `GET /api/me/referral` — the caller's invite link + referral count. */
+export async function fetchReferral(): Promise<Referral | null> {
+  try {
+    const data = await getJson('/api/me/referral');
+    if (!isObj(data)) return null;
+    return {
+      link: str(data['link']) ?? null,
+      count: num(data['count']),
+      bonusEach: num(data['bonusEach']),
     };
   } catch {
     return null;
@@ -1911,6 +1942,8 @@ export interface RecentGame {
   endedAt: number;
   mode: string | null;
   players: number;
+  /** Winning faction (e.g. 'TOWN'), or null when ambiguous/none. */
+  winner: string | null;
 }
 
 function narrowRecentGame(v: unknown): RecentGame | null {
@@ -1924,6 +1957,7 @@ function narrowRecentGame(v: unknown): RecentGame | null {
     endedAt: num(v['endedAt']),
     mode: str(v['mode']) ?? null,
     players: num(v['players']),
+    winner: str(v['winner']) ?? null,
   };
 }
 

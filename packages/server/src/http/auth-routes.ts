@@ -7,14 +7,18 @@
 
 import type { FastifyInstance } from 'fastify';
 import { z } from 'zod';
-import { DISPLAY_NAME_MAX } from '@nocturne/shared';
+import { DISPLAY_NAME_MAX, REFERRAL_BONUS } from '@nocturne/shared';
 import type { GatewayContext } from '../ws/context.js';
 import { buildUserStatsSummary } from '../points/stats.js';
 import { buildRankedSummary, RANKED_MODE } from '../ranked/award.js';
 import { clientIp } from './rate-limit.js';
 import { issueEmailVerification } from './account-routes.js';
+import { log } from '../log.js';
 
 const COOKIE = 'nocturne_session';
+
+/** A user uuid (referral `ref` values that look like an account id). */
+const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
 /** Throttle presence DB writes from the /api/me poll to ≥30s per user (Social). */
 const PRESENCE_THROTTLE_MS = 30_000;
@@ -28,7 +32,23 @@ const RegisterBody = z.object({
     .regex(/^[A-Za-z0-9_]+$/, 'alphanumeric/underscore only'),
   password: z.string().min(8).max(200),
   email: z.string().email().max(254).optional(),
+  /**
+   * Referral/invite: a referrer user id (uuid) OR username. Accepted LENIENTLY
+   * (`unknown`) so a garbled/overlong `?ref=` value can NEVER fail validation and
+   * block registration — the handler normalizes it best-effort (a non-string or
+   * unresolvable value is simply ignored). Referral is purely additive.
+   */
+  ref: z.unknown().optional(),
 });
+
+/** Best-effort, never-throwing normalization of a referral `ref` from the body. */
+function normalizeRef(ref: unknown): string | undefined {
+  if (typeof ref !== 'string') return undefined;
+  const trimmed = ref.trim();
+  // Cap defensively (a real id is 36 chars; usernames are short). Over-long input
+  // is truncated, not rejected — resolveReferrer just won't match it.
+  return trimmed.length === 0 ? undefined : trimmed.slice(0, 64);
+}
 
 const LoginBody = z.object({
   username: z.string().min(1).max(DISPLAY_NAME_MAX),
@@ -53,17 +73,55 @@ export function registerAuthRoutes(app: FastifyInstance, ctx: GatewayContext): v
   const loginLimit = ctx.rateLimit({ max: rl.login, windowMs: rl.windowMs });
   const guestLimit = ctx.rateLimit({ max: rl.guest, windowMs: rl.windowMs });
 
+  /**
+   * Resolve a referral `ref` (a referrer user id OR username) to a real
+   * account's id, or null. Returns null on any failure — referral resolution is
+   * best-effort and must NEVER block registration.
+   */
+  async function resolveReferrer(ref: string | undefined): Promise<string | null> {
+    if (!ref || !ctx.store.persistent) return null;
+    try {
+      const byId = UUID_RE.test(ref) ? await ctx.store.getUserById(ref) : null;
+      const user = byId ?? (await ctx.store.getUserByUsername(ref));
+      return user?.id ?? null;
+    } catch {
+      return null;
+    }
+  }
+
   app.post('/api/register', async (req, reply) => {
     if (registerLimit(clientIp(req), reply)) return reply;
     if (!ctx.store.persistent) return reply.code(503).send({ error: 'accounts_disabled' });
     const parsed = RegisterBody.safeParse(req.body);
     if (!parsed.success) return reply.code(400).send({ error: 'bad_request' });
+    // Resolve the referrer (id or username) BEFORE creating the account so the
+    // new user's referred_by is set atomically with creation. A self-referral is
+    // dropped after creation (the new id can't be the referrer); an unknown ref
+    // resolves to null. Best-effort — never blocks registration.
+    const referrerId = await resolveReferrer(normalizeRef(parsed.data.ref));
     const res = await ctx.identity.register(
       parsed.data.username,
       parsed.data.password,
       parsed.data.email ?? null,
+      referrerId,
     );
     if ('error' in res) return reply.code(409).send({ error: res.error });
+    // Award the REFERRER a one-time bonus when the referee is a real, DIFFERENT
+    // account. Best-effort: a failed award never affects the registration result.
+    if (referrerId && referrerId !== res.identity.id) {
+      try {
+        await ctx.store.recordPoints(referrerId, [
+          { matchId: null, reason: 'referral', detail: res.identity.id, points: REFERRAL_BONUS },
+        ]);
+        await ctx.store.addToUserStats(
+          referrerId,
+          { points: REFERRAL_BONUS, gamesPlayed: 0, gamesWon: 0, gamesSurvived: 0, daysDeadWatched: 0 },
+          Date.now(),
+        );
+      } catch (err) {
+        log.error('failed to award referral bonus', { referrerId, err: String(err) });
+      }
+    }
     // Account lifecycle (retention wave): on register with an email, fire the
     // verification + welcome notes. Both best-effort — they never block or fail
     // registration (issueEmailVerification awaits only the token row write; the
@@ -151,6 +209,25 @@ export function registerAuthRoutes(app: FastifyInstance, ctx: GatewayContext): v
       emailVerified,
       hasEmail,
       unreadNotifications,
+    });
+  });
+
+  // --- Referral / invite link (auth) ---------------------------------------
+
+  // The caller's shareable invite link + how many accounts joined via it. The
+  // link encodes the caller's user id as `?ref=`; the home/register flow reads
+  // it and passes it back to /api/register. Guests/NO_DB get a null link + 0.
+  app.get('/api/me/referral', async (req, reply) => {
+    const identity = await ctx.identity.resolveToken(readToken(req));
+    if (!identity) return reply.code(401).send({ error: 'not_authenticated' });
+    if (identity.isGuest || !ctx.store.persistent) {
+      return reply.send({ link: null, count: 0, bonusEach: REFERRAL_BONUS });
+    }
+    const count = await ctx.store.getReferralCount(identity.id).catch(() => 0);
+    return reply.send({
+      link: `${ctx.cfg.publicBaseUrl}/?ref=${encodeURIComponent(identity.id)}`,
+      count,
+      bonusEach: REFERRAL_BONUS,
     });
   });
 

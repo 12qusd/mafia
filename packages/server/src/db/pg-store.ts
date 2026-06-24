@@ -80,13 +80,22 @@ export class PgStore implements Store {
     username: string;
     email: string | null;
     passwordHash: string;
+    referredBy?: string | null;
   }): Promise<UserRow> {
     const { rows } = await this.pool.query<PgUser>(
-      `INSERT INTO users (username, email, password_hash)
-       VALUES ($1, $2, $3) RETURNING id, username, email, password_hash, flags`,
-      [input.username, input.email, input.passwordHash],
+      `INSERT INTO users (username, email, password_hash, referred_by)
+       VALUES ($1, $2, $3, $4) RETURNING id, username, email, password_hash, flags`,
+      [input.username, input.email, input.passwordHash, input.referredBy ?? null],
     );
     return this.mapUser(rows[0] as PgUser);
+  }
+
+  async getReferralCount(userId: string): Promise<number> {
+    const { rows } = await this.pool.query<{ n: string }>(
+      `SELECT count(*)::text AS n FROM users WHERE referred_by = $1`,
+      [userId],
+    );
+    return Number(rows[0]?.n ?? 0) || 0;
   }
 
   async getUserByUsername(username: string): Promise<UserRow | null> {
@@ -544,6 +553,11 @@ export class PgStore implements Store {
 
   async getRecentMatches(limit: number): Promise<RecentMatchSummary[]> {
     const cap = Math.max(1, Math.min(Math.floor(limit) || 0, 30));
+    // The seat count AND the winning faction are both derived from match_players
+    // in the same grouped pass (one extra aggregate, no extra round-trip). The
+    // winner is the array of DISTINCT factions among seats whose outcome = 'win';
+    // a single-element array is an unambiguous winner, anything else (0 or >1) is
+    // null — exactly the MemoryStore.winningFaction semantics.
     const { rows } = await this.pool.query<{
       id: string;
       setup_id: string;
@@ -551,9 +565,11 @@ export class PgStore implements Store {
       ended_at: Date;
       mode: string | null;
       players: string;
+      winners: string[] | null;
     }>(
       `SELECT m.id, m.setup_id, m.outcome, m.ended_at, m.mode,
-              COUNT(mp.match_id)::text AS players
+              COUNT(mp.match_id)::text AS players,
+              array_agg(DISTINCT mp.faction) FILTER (WHERE mp.outcome = 'win') AS winners
          FROM matches m
          LEFT JOIN match_players mp ON mp.match_id = m.id
         WHERE m.ended_at IS NOT NULL
@@ -569,6 +585,8 @@ export class PgStore implements Store {
       endedAt: r.ended_at.getTime(),
       mode: r.mode,
       players: Number(r.players) || 0,
+      // A single distinct winning faction is unambiguous; 0 or >1 ⇒ null.
+      winner: Array.isArray(r.winners) && r.winners.length === 1 ? r.winners[0]! : null,
     }));
   }
 
@@ -640,7 +658,12 @@ export class PgStore implements Store {
          games_won         = user_stats.games_won + EXCLUDED.games_won,
          games_survived    = user_stats.games_survived + EXCLUDED.games_survived,
          days_dead_watched = user_stats.days_dead_watched + EXCLUDED.days_dead_watched,
-         last_match_at     = EXCLUDED.last_match_at`,
+         -- Only advance last_match_at for deltas that include a real played game
+         -- (games_played > 0). A non-match award (e.g. a referral bonus, which is
+         -- points-only) must NOT masquerade as the user's last match.
+         last_match_at     = CASE WHEN EXCLUDED.games_played > 0
+                                  THEN EXCLUDED.last_match_at
+                                  ELSE user_stats.last_match_at END`,
       [
         userId,
         delta.points,
@@ -1119,15 +1142,27 @@ export class PgStore implements Store {
   }
 
   async writeRankedResults(rows: RankedResultInput[]): Promise<void> {
-    for (const r of rows) {
-      await this.pool.query(
-        `INSERT INTO ranked_results
-           (match_id, user_id, mode, mmr_before, mmr_after, rd_before, rd_after, delta)
-         VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
-         ON CONFLICT (match_id, user_id) DO NOTHING`,
-        [r.matchId, r.userId, r.mode, r.mmrBefore, r.mmrAfter, r.rdBefore, r.rdAfter, r.delta],
+    if (rows.length === 0) return;
+    // One multi-row parameterized INSERT instead of N round-trips (7 per match).
+    // The VALUES list is built from the row index (8 columns each); ON CONFLICT
+    // preserves the "ignore already-written (match,user)" semantics unchanged.
+    const cols = 8;
+    const values: string[] = [];
+    const params: unknown[] = [];
+    rows.forEach((r, i) => {
+      const base = i * cols;
+      values.push(
+        `($${base + 1}, $${base + 2}, $${base + 3}, $${base + 4}, $${base + 5}, $${base + 6}, $${base + 7}, $${base + 8})`,
       );
-    }
+      params.push(r.matchId, r.userId, r.mode, r.mmrBefore, r.mmrAfter, r.rdBefore, r.rdAfter, r.delta);
+    });
+    await this.pool.query(
+      `INSERT INTO ranked_results
+         (match_id, user_id, mode, mmr_before, mmr_after, rd_before, rd_after, delta)
+       VALUES ${values.join(', ')}
+       ON CONFLICT (match_id, user_id) DO NOTHING`,
+      params,
+    );
   }
 
   async getRankedResults(userId: string, limit: number): Promise<RankedResultInput[]> {
@@ -1708,6 +1743,10 @@ export class PgStore implements Store {
       last_post_at: Date | null;
       last_post_username: string | null;
     }>(
+      // Per-board thread/post counts come from ONE grouped aggregate over
+      // forum_threads (a single LEFT JOIN), not two correlated subqueries per
+      // board row (the N+2 the audit flagged). The latest post per board stays a
+      // LEFT JOIN LATERAL (one indexed lookup per board). Return shape unchanged.
       `SELECT
          c.slug AS category_slug,
          c.name AS category_name,
@@ -1716,14 +1755,21 @@ export class PgStore implements Store {
          b.name AS board_name,
          b.description AS board_description,
          b.sort AS board_sort,
-         (SELECT count(*) FROM forum_threads t WHERE t.board_id = b.id) AS thread_count,
-         COALESCE((SELECT sum(t.post_count) FROM forum_threads t WHERE t.board_id = b.id), 0) AS post_count,
+         COALESCE(tc.thread_count, 0) AS thread_count,
+         COALESCE(tc.post_count, 0) AS post_count,
          lp.thread_id AS last_thread_id,
          lp.thread_title AS last_thread_title,
          lp.created_at AS last_post_at,
          lp.username AS last_post_username
        FROM forum_categories c
        LEFT JOIN forum_boards b ON b.category_id = c.id
+       LEFT JOIN (
+         SELECT t.board_id,
+                count(*) AS thread_count,
+                COALESCE(sum(t.post_count), 0) AS post_count
+         FROM forum_threads t
+         GROUP BY t.board_id
+       ) tc ON tc.board_id = b.id
        LEFT JOIN LATERAL (
          SELECT p.created_at, t.id AS thread_id, t.title AS thread_title, u.username
          FROM forum_posts p
