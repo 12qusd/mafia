@@ -588,6 +588,9 @@ export class LobbyManager {
       this.deps.clock,
     );
     room.onGameOver = (r) => void this.onGameOver(r);
+    // Record the forming lobby's host so a later "play again" can attribute the
+    // rematch (§7.7). The lingering room carries this through game-over.
+    room.hostIdentityId = lobby.hostId;
     // Queue mode is persisted with the MatchRecord (§10); quickplay for
     // matchmade tables, undefined (casual) otherwise. Ranked tables also carry
     // the season id so MMR updates at game over are season-scoped.
@@ -664,6 +667,79 @@ export class LobbyManager {
   leaveQueue(conn: Connection): void {
     this.matchmaker.leave(conn);
     this.rankedMatchmaker.leave(conn);
+  }
+
+  // --- Play again / rematch (§7.7) -----------------------------------------
+
+  /**
+   * "Play again" from a finished game (§7.7). Keeps the crowd together: the
+   * FIRST finished player to call this CREATES a fresh private lobby (becomes
+   * host) seeded with the finished game's setup and stamps its id on the
+   * lingering room; subsequent callers JOIN that same lobby so the group
+   * reconvenes. The created lobby is a NORMAL game (testMode forced off — a
+   * rematch never inherits a test/god room).
+   *
+   * Returns null on success (a `lobby_state` was broadcast to the caller by the
+   * reused create/join path), or an error string:
+   *  - 'no_game' when the caller is no longer scoped to a finished room (e.g.
+   *    they already left). The client falls back to Quick Play.
+   *
+   * Mirrors the {@link quickPlay}/{@link startGame} return convention.
+   */
+  async playAgain(conn: Connection): Promise<string | null> {
+    const identityId = conn.identityId;
+    if (!identityId) return 'not_authenticated';
+    const room = this.roomOf(conn);
+    // Not in a (finished) room anymore → caller falls back to Quick Play.
+    if (!room) return 'no_game';
+
+    // Detach this connection from the dead room scope exactly as the disconnect
+    // path does, so the player is no longer scoped to the finished room and may
+    // enter a lobby (createLobby/joinLobby both reject an already-scoped id).
+    const seat = room.seatForIdentity(identityId);
+    if (seat !== undefined) room.detach(identityId);
+    else room.removeSpectator(identityId);
+    this.identityScope.delete(identityId);
+    conn.lobbyId = null;
+    conn.spectator = false;
+
+    // JOIN the existing rematch lobby if one was already created and still open.
+    // (Host migration on that lobby already handles a departed original host.)
+    if (room.rematchLobbyId && this.lobbies.has(room.rematchLobbyId)) {
+      const res = this.joinLobby(conn, { lobbyId: room.rematchLobbyId });
+      this.disposeRoomIfEmpty(room);
+      if ('error' in res) return res.error;
+      return null;
+    }
+
+    // Else CREATE a fresh private rematch lobby hosted by this connection, seeded
+    // with the finished room's setup + config (testMode forced false). The create
+    // path broadcasts `lobby_state` to the new host.
+    const res = await this.createLobby(conn, {
+      name: 'Rematch',
+      visibility: 'private',
+      setupId: room.setupId,
+      config: { ...room.config, testMode: false },
+    });
+    if ('error' in res) {
+      this.disposeRoomIfEmpty(room);
+      return res.error;
+    }
+    room.rematchLobbyId = res.lobby.id;
+    this.disposeRoomIfEmpty(room);
+    return null;
+  }
+
+  /**
+   * Dispose a finished room once no live connection remains attached to it, so
+   * "play again" departures don't leak the lingering room (§7.7). Mirrors the
+   * dispose used elsewhere (cancel timers via Room.dispose + drop from the map).
+   */
+  private disposeRoomIfEmpty(room: Room): void {
+    if (room.hasAttachedConnections()) return;
+    room.dispose();
+    this.rooms.delete(room.id);
+    this.deps.bots?.cleanup(room.id);
   }
 
   /** Refresh the MMR cache for an identity (async; best-effort for bucketing). */
@@ -826,9 +902,11 @@ export class LobbyManager {
     } catch (err) {
       log.error('failed to persist match', { err: String(err) });
     }
-    // Roster flows back into a fresh lobby (§7.7 play again). We create a new
-    // waiting lobby keyed off the room; clients send create/join again. MVP:
-    // simply dispose the room after a grace; "play again" is host re-creating.
+    // Roster flows back into a fresh lobby (§7.7 play again). The room is NOT
+    // disposed here: it lingers so its `rematchLobbyId` persists for the group.
+    // The FIRST finished player to send `play_again` creates a fresh private
+    // lobby (see {@link playAgain}); others join it. The room is disposed once
+    // the last connection detaches via `play_again` (disposeRoomIfEmpty).
     log.info('game over', { room: room.id });
   }
 

@@ -227,6 +227,7 @@ export const GAME = {
   yourResult: 'Your result',
   seedLabel: 'Match seed',
   playAgain: 'Same crowd, again',
+  playAgainPending: 'Reconvening…',
   backToTables: 'Back to the tables',
   report: 'Report',
   mute: 'Mute',

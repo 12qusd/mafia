@@ -231,3 +231,82 @@ describe('reconnect snapshot equivalence (§8, §12.4)', () => {
     expect(room.seats[reconnSeat]!.connected).toBe(true);
   });
 });
+
+// "Play again" / rematch (§7.7). After a game ends the room lingers so the crowd
+// can reconvene: the FIRST finished player to send `play_again` CREATES a fresh
+// private waiting lobby (becomes host); subsequent senders JOIN that same lobby.
+// The finished room is disposed once the last connection detaches.
+describe('play again / rematch (§7.7)', () => {
+  it('first player creates a fresh waiting lobby; a second joins the same lobby; the room disposes when empty', async () => {
+    const clock = new FakeClock();
+    const { ctx } = buildTestContext({ clock });
+    const { gw, socks, conns, lobbyId } = await startGame(ctx, 7);
+
+    // Drive to game_over (quiet game resolves via the stalemate guard, §6.9).
+    clock.advance(60 * 60 * 1000);
+    const room = ctx.manager.getRoom(lobbyId)!;
+    expect(room.isOver).toBe(true);
+    // The room lingers (NOT disposed at game-over) so its rematch id can persist.
+    expect(ctx.manager.getRoom(lobbyId)).toBeDefined();
+
+    // FIRST player clicks "play again": creates a fresh PRIVATE WAITING lobby and
+    // becomes its host. Its id is stamped on the lingering room.
+    await gw.deliverForTest(conns[0]!, JSON.stringify({ v: 1, type: 'play_again' }));
+    const created = socks[0]!.lastOfType('lobby_state') as
+      | { lobby: { id: string; status: string; hostUserOrGuestId: string; members: unknown[] } }
+      | undefined;
+    expect(created).toBeDefined();
+    const rematchLobbyId = created!.lobby.id;
+    // A brand-new lobby (NOT the finished room id) in the WAITING state.
+    expect(rematchLobbyId).not.toBe(lobbyId);
+    expect(created!.lobby.status).toBe('waiting');
+    expect(room.rematchLobbyId).toBe(rematchLobbyId);
+    // The caller is the host and the sole member so far.
+    expect(created!.lobby.hostUserOrGuestId).toBe(conns[0]!.identityId);
+    expect(created!.lobby.members.length).toBe(1);
+    // The new lobby is a NORMAL game (a rematch never inherits test/god mode).
+    const rematchLobby = ctx.manager.getLobby(rematchLobbyId)!;
+    expect(rematchLobby.config.testMode).not.toBe(true);
+    // The caller is no longer scoped to the dead room; now scoped to the lobby.
+    expect(ctx.manager.scopeIdOf(conns[0]!.identityId!)).toBe(rematchLobbyId);
+
+    // SECOND player clicks "play again": JOINS the SAME lobby (roster grows).
+    await gw.deliverForTest(conns[1]!, JSON.stringify({ v: 1, type: 'play_again' }));
+    const joined = socks[1]!.lastOfType('lobby_state') as
+      | { lobby: { id: string; members: unknown[] } }
+      | undefined;
+    expect(joined).toBeDefined();
+    expect(joined!.lobby.id).toBe(rematchLobbyId);
+    expect(joined!.lobby.members.length).toBe(2);
+    expect(ctx.manager.scopeIdOf(conns[1]!.identityId!)).toBe(rematchLobbyId);
+
+    // The rest click "play again" too → all reconvene in the one rematch lobby.
+    for (let i = 2; i < conns.length; i++) {
+      await gw.deliverForTest(conns[i]!, JSON.stringify({ v: 1, type: 'play_again' }));
+    }
+    const finalState = ctx.manager.getLobby(rematchLobbyId)!;
+    expect(finalState.playerCount).toBe(7);
+
+    // The last detach disposed the finished room (no connections left): no leak.
+    expect(ctx.manager.getRoom(lobbyId)).toBeUndefined();
+  });
+
+  it("returns 'no_game' when the caller is not in a finished room (fall back to Quick Play)", async () => {
+    const { ctx } = buildTestContext();
+    const gw = new Gateway(ctx);
+    const sock = new FakeSocket();
+    const conn = await hello(gw, sock);
+
+    // Never created/joined a lobby or game → no room scope → 'no_game'.
+    const err = await ctx.manager.playAgain(conn);
+    expect(err).toBe('no_game');
+
+    // Over the gateway, the handler surfaces it as cannot_start + a 'no_game'
+    // detail so the client can fall back to Quick Play.
+    await gw.deliverForTest(conn, JSON.stringify({ v: 1, type: 'play_again' }));
+    const errFrame = sock.lastOfType('error') as { code: string; detail?: string } | undefined;
+    expect(errFrame).toBeDefined();
+    expect(errFrame!.code).toBe('cannot_start');
+    expect(errFrame!.detail).toBe('no_game');
+  });
+});

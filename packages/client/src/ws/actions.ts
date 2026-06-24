@@ -83,6 +83,17 @@ export function leaveQueue(): void {
   conn.send({ v: V, type: 'leave_queue' });
 }
 
+/**
+ * "Play again" from the game-over screen (§7.7). The FIRST finished player to
+ * send this makes the server create a fresh private lobby (they become host);
+ * subsequent senders join the same lobby. On no-game the server replies an
+ * `error{code:'cannot_start', detail:'no_game'}` and the screen falls back to
+ * Quick Play.
+ */
+export function playAgain(): void {
+  conn.send({ v: V, type: 'play_again' });
+}
+
 export function sendChat(channel: ChatChannel, text: string): void {
   conn.send({ v: V, type: 'chat', channel, text });
 }

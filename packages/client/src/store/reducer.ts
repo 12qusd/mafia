@@ -153,8 +153,27 @@ export function reduce(state: StoreState, msg: ServerMessage): Partial<StoreStat
         name: sanitizeInline(msg.lobby.name),
         members: msg.lobby.members.map((m) => ({ ...m, name: sanitizeInline(m.name) })),
       };
+      const patch: Partial<StoreState> = { lobby, matchmaking: null };
+      // "Play again" (§7.7): a fresh WAITING lobby arriving while a finished game
+      // view is still mounted means we just entered the rematch lobby. Drop the
+      // stale game/game-over view so `useLobbyNav` (inGame → false) routes us to
+      // the lobby. (Guarded on `waiting` so an in-progress lobby_state — e.g. a
+      // reconnect resend — never clears a live game.)
+      if (state.game && msg.lobby.status === 'waiting') {
+        patch.game = null;
+        patch.own = null;
+        patch.gameOver = null;
+        patch.pointsAward = null;
+        patch.chat = [];
+        patch.whisperMeta = [];
+        patch.privateLog = [];
+        patch.jailedThisNight = false;
+        patch.silencedToday = false;
+        patch.whisperArm = null;
+        patch.debug = emptyDebug();
+      }
       // Entering any lobby (incl. a matchmade one) ends the queue overlay.
-      return { lobby, matchmaking: null };
+      return patch;
     }
 
     case 'game_started': {

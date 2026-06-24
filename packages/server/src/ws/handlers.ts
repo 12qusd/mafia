@@ -73,6 +73,8 @@ export class MessageHandlers {
         return this.onQuickPlay(conn, msg);
       case 'leave_queue':
         return this.onLeaveQueue(conn);
+      case 'play_again':
+        return this.onPlayAgain(conn);
       case 'chat':
         return this.onChat(conn, msg);
       case 'whisper':
@@ -304,6 +306,26 @@ export class MessageHandlers {
 
   private onLeaveQueue(conn: Connection): void {
     this.ctx.manager.leaveQueue(conn);
+  }
+
+  // --- Play again / rematch (§7.7) -----------------------------------------
+
+  /**
+   * "Play again" from the game-over screen. The manager keeps the crowd together
+   * (first caller creates a fresh private lobby, others join it) and broadcasts
+   * `lobby_state` on success. On 'no_game' (the caller already left the finished
+   * room) we reply `cannot_start` with a `no_game` detail so the client can fall
+   * back to Quick Play; other error strings surface as their own code (mirrors
+   * how {@link onQuickPlay}/{@link onStartGame} surface manager errors).
+   */
+  private async onPlayAgain(conn: Connection): Promise<void> {
+    const err = await this.ctx.manager.playAgain(conn);
+    if (!err) return;
+    if (err === 'no_game') {
+      replyError(conn, 'cannot_start', 'no_game');
+      return;
+    }
+    replyError(conn, err as ErrorCode);
   }
 
   // --- In-game commands (§5.5, §6) -----------------------------------------

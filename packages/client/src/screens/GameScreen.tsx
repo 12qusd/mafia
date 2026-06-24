@@ -30,10 +30,14 @@ import { AdminPanel } from '../components/AdminPanel.js';
 import { AnimationStage } from '../components/AnimationStage.js';
 import { TestBadge } from '../components/common.js';
 import { GAME_MOBILE_PANES, type GameMobilePane } from '../components/gameMobilePanes.js';
+import { useLobbyNav } from '../components/useLobbyNav.js';
 import { sendChat, sendWhisper } from '../ws/actions.js';
 
 export function GameScreen() {
   const navigate = useNavigate();
+  // "Play again" (§7.7): when the rematch `lobby_state` arrives the reducer drops
+  // the game view (inGame → false), so this routes us to the new `/lobby/:id`.
+  useLobbyNav();
   const game = useStore((s) => s.game);
   const own = useStore((s) => s.own);
   const chat = useStore((s) => s.chat);

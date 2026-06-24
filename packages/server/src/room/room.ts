@@ -113,6 +113,19 @@ export class Room implements AudienceProvider {
   private chatSeq = 0;
   onGameOver: ((room: Room) => void) | null = null;
 
+  /**
+   * Rematch lobby id ("play again", §7.7). After a game ends the room lingers so
+   * the group can reconvene: the FIRST finished player to click "Play again"
+   * CREATES a fresh private lobby and stamps its id here; subsequent clickers
+   * JOIN that same lobby. Null until the first rematch is created.
+   */
+  rematchLobbyId: string | null = null;
+  /**
+   * Identity id of the lobby host this room was formed from (§7.7). Recorded at
+   * `formGame` so a rematch can attribute/seed the new lobby; informational.
+   */
+  hostIdentityId: string | null = null;
+
   // --- TEST MODE god-view (gated; §5 still law for normal games) ------------
   /**
    * The god audience: the test lobby's host identity. Only set in a test-mode
@@ -304,6 +317,16 @@ export class Room implements AudienceProvider {
 
   isMember(identityId: string): boolean {
     return this.identityToSeat.has(identityId) || this.spectators.has(identityId);
+  }
+
+  /**
+   * Whether any live connection is still attached to this room — a seated player
+   * with a bound socket, or a spectator. Used after a "play again" detach to
+   * decide if a finished room can be disposed (§7.7) so it does not leak.
+   */
+  hasAttachedConnections(): boolean {
+    for (const s of this.seats) if (s?.conn) return true;
+    return this.spectators.size > 0;
   }
 
   // --- Game loop (§6.2) ----------------------------------------------------

@@ -77,6 +77,14 @@ export const QuickPlaySchema = envelope('quick_play', {
 // leave_queue {}  — leave the matchmaking queue (either mode) before a match forms.
 export const LeaveQueueSchema = envelope('leave_queue', {});
 
+// play_again {}  — "play again" from the game-over screen (§7.7). Keeps the crowd
+// together: the FIRST finished player to send this creates a fresh private lobby
+// (becomes host) seeded with the finished game's setup; subsequent senders JOIN
+// that same lobby. On no-game (the caller already left) the server replies
+// `error{code:'cannot_start', detail:'no_game'}` so the client falls back to
+// Quick Play.
+export const PlayAgainSchema = envelope('play_again', {});
+
 // chat {channel, text}
 export const ChatSchema = envelope('chat', {
   channel: ChatChannelSchema,
@@ -172,6 +180,7 @@ export const ClientMessageSchema = z.union([
   StartGameSchema,
   QuickPlaySchema,
   LeaveQueueSchema,
+  PlayAgainSchema,
   ChatSchema,
   WhisperClientSchema,
   VoteSchema,
@@ -198,6 +207,7 @@ export type Kick = z.infer<typeof KickSchema>;
 export type StartGame = z.infer<typeof StartGameSchema>;
 export type QuickPlay = z.infer<typeof QuickPlaySchema>;
 export type LeaveQueue = z.infer<typeof LeaveQueueSchema>;
+export type PlayAgain = z.infer<typeof PlayAgainSchema>;
 export type Chat = z.infer<typeof ChatSchema>;
 export type WhisperClient = z.infer<typeof WhisperClientSchema>;
 export type Vote = z.infer<typeof VoteSchema>;

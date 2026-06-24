@@ -3,6 +3,7 @@
  * result, seed, and a "play again" button (keeps the crowd together, §7.7).
  */
 
+import { useEffect, useRef, useState } from 'react';
 import { getRole } from '@nocturne/shared';
 import { Link, useNavigate } from 'react-router-dom';
 import { useStore } from '../store/store.js';
@@ -10,10 +11,13 @@ import { DecoHead, FactionTag, RankBadge } from './common.js';
 import { PointsCelebration } from './PointsCelebration.js';
 import { GAME, WINNER_LABEL, OUTCOME_LABEL, POINTS } from '../lib/strings-extra.js';
 import { sanitizeInline } from '../lib/sanitize.js';
-import { leaveLobby } from '../ws/actions.js';
+import { leaveLobby, playAgain, quickPlay } from '../ws/actions.js';
 
 // Stable empty reference (avoids the Zustand v5 fresh-array selector loop, #185).
 const NO_SEATS: readonly never[] = [];
+
+/** Grace window before "play again" falls back to Quick Play (§7.7). */
+const REMATCH_FALLBACK_MS = 4000;
 
 export function GameOver() {
   const navigate = useNavigate();
@@ -21,7 +25,34 @@ export function GameOver() {
   const seats = useStore((s) => s.game?.seats ?? NO_SEATS);
   const ownSeat = useStore((s) => s.own?.seat ?? null);
   const pointsAward = useStore((s) => s.pointsAward);
-  const resetGame = useStore((s) => s.resetGame);
+  // "Play again" pending state: once clicked we wait for the rematch lobby_state
+  // (the screen routes away via useLobbyNav). If the server says 'no_game' or no
+  // lobby appears within the grace window, we fall back to Quick Play (§7.7).
+  const [rematching, setRematching] = useState(false);
+  const fellBack = useRef(false);
+
+  useEffect(() => {
+    if (!rematching) return;
+    fellBack.current = false;
+    const fallback = (): void => {
+      if (fellBack.current) return;
+      fellBack.current = true;
+      quickPlay();
+    };
+    // 1) Explicit server signal: a 'no_game' error (detail) ⇒ fall back now.
+    const unsub = useStore.subscribe((s, prev) => {
+      if (s.toasts === prev.toasts) return;
+      const fresh = s.toasts[s.toasts.length - 1];
+      if (fresh && fresh.code === 'cannot_start' && fresh.detail === 'no_game') fallback();
+    });
+    // 2) Belt-and-suspenders: no rematch lobby after the grace window ⇒ fall back.
+    const t = setTimeout(fallback, REMATCH_FALLBACK_MS);
+    return () => {
+      unsub();
+      clearTimeout(t);
+    };
+  }, [rematching]);
+
   if (!over) return null;
 
   // Surface the points celebration only when it belongs to THIS match (a stale
@@ -118,13 +149,18 @@ export function GameOver() {
         <div className="row">
           <button
             className="btn btn-primary grow"
+            disabled={rematching}
             onClick={() => {
-              // "Play again" returns the group to a fresh lobby (§7.7). The
-              // server keeps the roster; we drop the finished game view.
-              resetGame();
+              // "Play again" reconvenes the crowd in a fresh lobby (§7.7). The
+              // FIRST clicker creates the rematch lobby (becomes host); others
+              // join it. The rematch `lobby_state` clears the game view and
+              // routes us to the lobby. A 'no_game' reply or a quiet grace
+              // window falls back to Quick Play (see the effect above).
+              setRematching(true);
+              playAgain();
             }}
           >
-            {GAME.playAgain}
+            {rematching ? GAME.playAgainPending : GAME.playAgain}
           </button>
           <button
             className="btn"
