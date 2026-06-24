@@ -1039,6 +1039,49 @@ export const HOWTO = {
   back: 'Back to tables',
 } as const;
 
+/**
+ * Notifications center (QoL wave) — the topbar bell feed. Noir register; the
+ * human text builders take already-sanitized names.
+ */
+export const NOTIFICATIONS = {
+  open: 'The wire',
+  title: 'Word from the street',
+  empty: 'No word yet. The wire is quiet.',
+  markAllRead: 'Mark all read',
+  unreadLabel: (n: number) => `${n} unread`,
+  // Per-type human lines (names are sanitized before being passed in).
+  friendRequest: (who: string) => `${who} wants in with you.`,
+  friendAccepted: (who: string) => `${who} took your hand.`,
+  mention: (who: string) => `${who} put your name in the room.`,
+  rankUp: (rank: string) => `You climbed to ${rank}.`,
+  achievement: (name: string) => `Commendation earned — ${name}.`,
+  // Rank-up celebration (game-over / post-match toast).
+  ascendTitle: 'You ascend',
+  ascend: (rank: string) => `You rise to ${rank}.`,
+} as const;
+
+/** Report-from-profile form copy (QoL wave). */
+export const REPORT = {
+  open: 'Report',
+  heading: 'File a word with the house',
+  categoryLabel: 'What for',
+  commentLabel: 'Anything to add (optional)',
+  commentPlaceholder: 'Keep it brief (500)…',
+  submit: 'File it',
+  submitting: 'Filing…',
+  cancel: 'Cancel',
+  success: 'Filed. The house will look into it.',
+  failed: 'That word did not reach the house.',
+  // Category display labels (keys mirror the shared REPORT_CATEGORIES enum).
+  categories: {
+    harassment: 'Harassment',
+    hate: 'Hate speech',
+    spam: 'Spam',
+    gamethrowing: 'Throwing the game',
+    cheating: 'Cheating',
+  } as Record<string, string>,
+} as const;
+
 /** A seat's display label, e.g. "7 · Capone". */
 export function seatLabel(seat: number, name: string): string {
   return `${seat + 1} · ${name}`;

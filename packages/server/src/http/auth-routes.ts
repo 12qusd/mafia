@@ -132,6 +132,16 @@ export function registerAuthRoutes(app: FastifyInstance, ctx: GatewayContext): v
         hasEmail = user.email !== null && user.email !== '';
       }
     }
+    // Notifications center (QoL wave): fold the unread bell count into /api/me so
+    // the topbar badge is warm on first load. Additive field; 0 for guests/NO_DB.
+    let unreadNotifications = 0;
+    if (!identity.isGuest && ctx.store.persistent) {
+      try {
+        unreadNotifications = await ctx.store.getUnreadNotificationCount(identity.id);
+      } catch {
+        unreadNotifications = 0; // best-effort: never break /api/me
+      }
+    }
     return reply.send({
       id: identity.id,
       name: identity.name,
@@ -140,7 +150,51 @@ export function registerAuthRoutes(app: FastifyInstance, ctx: GatewayContext): v
       stats,
       emailVerified,
       hasEmail,
+      unreadNotifications,
     });
+  });
+
+  // --- Notifications center (QoL wave; auth + persistent) ------------------
+
+  // The caller's recent notifications (newest first, cap 50) + the unread count.
+  // Empty + 0 for guests / NO_DB (account-only feature).
+  app.get<{ Querystring: { limit?: string } }>('/api/me/notifications', async (req, reply) => {
+    const identity = await ctx.identity.resolveToken(readToken(req));
+    if (!identity) return reply.code(401).send({ error: 'not_authenticated' });
+    if (identity.isGuest || !ctx.store.persistent) {
+      return reply.send({ notifications: [], unread: 0 });
+    }
+    const limit = Math.max(1, Math.min(Number(req.query.limit) || 50, 50));
+    const [notifications, unread] = await Promise.all([
+      ctx.store.listNotifications(identity.id, limit),
+      ctx.store.getUnreadNotificationCount(identity.id),
+    ]);
+    return reply.send({
+      notifications: notifications.map((n) => ({
+        id: n.id,
+        type: n.type,
+        payload: n.payload,
+        createdAt: n.createdAt,
+        readAt: n.readAt,
+      })),
+      unread,
+    });
+  });
+
+  // Mark notifications read: the given ids, or ALL when `ids` is omitted.
+  app.post<{ Body: { ids?: unknown } }>('/api/me/notifications/read', async (req, reply) => {
+    const identity = await ctx.identity.resolveToken(readToken(req));
+    if (!identity) return reply.code(401).send({ error: 'not_authenticated' });
+    if (identity.isGuest) return reply.code(403).send({ error: 'forbidden' });
+    if (!ctx.store.persistent) return reply.send({ ok: true, unread: 0 });
+    // Accept an array of string ids (cap defensively), or omit to mark all read.
+    const raw = (req.body ?? {}) as { ids?: unknown };
+    let ids: string[] | undefined;
+    if (Array.isArray(raw.ids)) {
+      ids = raw.ids.filter((x): x is string => typeof x === 'string').slice(0, 200);
+    }
+    const unread = await ctx.store.markNotificationsRead(identity.id, ids);
+    return reply.send({ ok: true, unread });
   });
 
   // --- Ranked self-rank + match history (auth, persistent) -----------------

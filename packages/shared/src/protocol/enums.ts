@@ -15,6 +15,29 @@ export const REPORT_CATEGORIES = [
 export const ReportCategorySchema = z.enum(REPORT_CATEGORIES);
 export type ReportCategory = z.infer<typeof ReportCategorySchema>;
 
+/**
+ * In-app notification kinds (notifications center QoL wave). Account-only,
+ * delivered over HTTP via the bell feed — never the game WS protocol or the §5
+ * leak path. Payloads are small (ids + names + numbers; names sanitized on
+ * render). `mention` is reserved for a later wave (forum/chat @mentions) but is
+ * defined now so the type + render switch are stable.
+ *
+ *  - friend_request  — someone sent you a friend request   {fromId, fromUsername}
+ *  - friend_accepted — someone accepted your request        {byId, byUsername}
+ *  - mention         — someone @mentioned you (future wave)  {byId, byUsername, where, refId}
+ *  - rank_up         — you climbed a ranked rung            {rank, rankName, mmr}
+ *  - achievement     — you unlocked an achievement          {key, name, points}
+ */
+export const NOTIFICATION_TYPES = [
+  'friend_request',
+  'friend_accepted',
+  'mention',
+  'rank_up',
+  'achievement',
+] as const;
+export const NotificationTypeSchema = z.enum(NOTIFICATION_TYPES);
+export type NotificationType = z.infer<typeof NotificationTypeSchema>;
+
 /** Trial judgment verdict values (BUILD_SPEC §6.3, §9.1 `verdict`). */
 export const VERDICT_VALUES = ['guilty', 'innocent', 'abstain'] as const;
 export const VerdictValueSchema = z.enum(VERDICT_VALUES);

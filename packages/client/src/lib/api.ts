@@ -1382,6 +1382,110 @@ export async function postDm(otherUserId: string, body: string): Promise<PostRes
   }
 }
 
+// ---------------------------------------------------------------------------
+// Notifications center (QoL wave): the topbar bell feed + report-from-profile.
+// Account-only; all server-derived names are sanitized at the render layer.
+// ---------------------------------------------------------------------------
+
+/** A notification kind (mirrors shared `NotificationType`). */
+export type NotificationKind =
+  | 'friend_request'
+  | 'friend_accepted'
+  | 'mention'
+  | 'rank_up'
+  | 'achievement';
+
+/** One notification from the bell feed. `payload` is small, render-safe JSON. */
+export interface NotificationItem {
+  id: string;
+  type: NotificationKind;
+  payload: Record<string, unknown>;
+  createdAt: number;
+  readAt: number | null;
+}
+
+const NOTIFICATION_KINDS: ReadonlySet<string> = new Set([
+  'friend_request',
+  'friend_accepted',
+  'mention',
+  'rank_up',
+  'achievement',
+]);
+
+function narrowNotification(v: unknown): NotificationItem | null {
+  if (!isObj(v)) return null;
+  const id = str(v['id']);
+  const type = str(v['type']);
+  if (id === undefined || type === undefined || !NOTIFICATION_KINDS.has(type)) return null;
+  const payload = isObj(v['payload']) ? (v['payload'] as Record<string, unknown>) : {};
+  return {
+    id,
+    type: type as NotificationKind,
+    payload,
+    createdAt: num(v['createdAt']),
+    readAt: numOrNull(v['readAt']),
+  };
+}
+
+/** The bell feed plus the unread count. */
+export interface NotificationsState {
+  notifications: NotificationItem[];
+  unread: number;
+}
+
+const EMPTY_NOTIFICATIONS: NotificationsState = { notifications: [], unread: 0 };
+
+/** `GET /api/me/notifications?limit=` — recent notifications + unread count. */
+export async function fetchNotifications(limit = 30): Promise<NotificationsState> {
+  try {
+    const d = await getJson(`/api/me/notifications?limit=${encodeURIComponent(String(limit))}`);
+    if (!isObj(d)) return EMPTY_NOTIFICATIONS;
+    const list = Array.isArray(d['notifications'])
+      ? d['notifications'].map(narrowNotification).filter((n): n is NotificationItem => n !== null)
+      : [];
+    return { notifications: list, unread: num(d['unread']) };
+  } catch {
+    return EMPTY_NOTIFICATIONS;
+  }
+}
+
+/**
+ * `POST /api/me/notifications/read` { ids? } — mark the given ids read, or ALL
+ * when omitted. Returns the new unread count (-1 on failure so callers can
+ * distinguish an error from a genuine 0).
+ */
+export async function markNotificationsRead(ids?: string[]): Promise<number> {
+  try {
+    const d = await postJson('/api/me/notifications/read', ids ? { ids } : {});
+    return isObj(d) && typeof d['unread'] === 'number' ? (d['unread'] as number) : 0;
+  } catch {
+    return -1;
+  }
+}
+
+/** The result of reporting a user from their profile (QoL wave). */
+export type ReportUserResult = { ok: true } | { ok: false; status: number };
+
+/** `POST /api/users/:username/report` { category, comment? }. */
+export async function reportUser(
+  username: string,
+  category: string,
+  comment?: string,
+): Promise<ReportUserResult> {
+  try {
+    const res = await fetch(`/api/users/${encodeURIComponent(username)}/report`, {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      credentials: 'include',
+      body: JSON.stringify({ category, ...(comment ? { comment } : {}) }),
+    });
+    if (res.ok) return { ok: true };
+    return { ok: false, status: res.status };
+  } catch {
+    return { ok: false, status: 0 };
+  }
+}
+
 /** `POST /api/presence/ping` — best-effort heartbeat (ignored on failure). */
 export async function pingPresence(): Promise<void> {
   try {

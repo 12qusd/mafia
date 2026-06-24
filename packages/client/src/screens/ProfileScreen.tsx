@@ -12,10 +12,10 @@
 
 import { useEffect, useState } from 'react';
 import { Link, useNavigate, useParams } from 'react-router-dom';
-import { ACHIEVEMENTS_BY_KEY } from '@nocturne/shared';
+import { ACHIEVEMENTS_BY_KEY, REPORT_CATEGORIES } from '@nocturne/shared';
 import { useStore } from '../store/store.js';
 import { DecoHead, TierBadge, RankBadge, CharCount, InlineLoader } from '../components/common.js';
-import { PUBLIC_PROFILE } from '../lib/strings-extra.js';
+import { PUBLIC_PROFILE, REPORT } from '../lib/strings-extra.js';
 import { sanitizeInline, sanitizeText } from '../lib/sanitize.js';
 import { ACCENT_OPTIONS, memberSinceLabel, normalizeAccent, isOnline } from '../lib/social.js';
 import * as api from '../lib/api.js';
@@ -218,31 +218,116 @@ function FriendActions({
           ? PUBLIC_PROFILE.respond
           : PUBLIC_PROFILE.addFriend;
   return (
-    <div className="row" style={{ flexWrap: 'wrap' }}>
-      <button
-        type="button"
-        className={`btn btn-sm ${profile.friendship === 'none' ? 'btn-primary' : ''}`}
-        onClick={onAction}
-        disabled={profile.friendship === 'pending_out'}
-      >
-        {label}
-      </button>
-      <button
-        type="button"
-        className="btn btn-sm"
-        onClick={() => navigate(`/friends?to=${encodeURIComponent(profile.id)}`)}
-      >
-        {PUBLIC_PROFILE.message}
-      </button>
-      <button
-        type="button"
-        className={`btn btn-sm ${profile.blocked ? '' : 'btn-ghost'}`}
-        onClick={onBlockToggle}
-        aria-pressed={!!profile.blocked}
-      >
-        {profile.blocked ? PUBLIC_PROFILE.unblock : PUBLIC_PROFILE.block}
-      </button>
+    <div className="stack" style={{ gap: 8 }}>
+      <div className="row" style={{ flexWrap: 'wrap' }}>
+        <button
+          type="button"
+          className={`btn btn-sm ${profile.friendship === 'none' ? 'btn-primary' : ''}`}
+          onClick={onAction}
+          disabled={profile.friendship === 'pending_out'}
+        >
+          {label}
+        </button>
+        <button
+          type="button"
+          className="btn btn-sm"
+          onClick={() => navigate(`/friends?to=${encodeURIComponent(profile.id)}`)}
+        >
+          {PUBLIC_PROFILE.message}
+        </button>
+        <button
+          type="button"
+          className={`btn btn-sm ${profile.blocked ? '' : 'btn-ghost'}`}
+          onClick={onBlockToggle}
+          aria-pressed={!!profile.blocked}
+        >
+          {profile.blocked ? PUBLIC_PROFILE.unblock : PUBLIC_PROFILE.block}
+        </button>
+      </div>
+      <ReportForm username={profile.username} />
     </div>
+  );
+}
+
+/** Report-from-profile form (QoL wave): a category + optional comment, account-only. */
+function ReportForm({ username }: { username: string }) {
+  const pushInfo = useStore((s) => s.pushInfo);
+  const [open, setOpen] = useState(false);
+  const [category, setCategory] = useState<string>(REPORT_CATEGORIES[0]);
+  const [comment, setComment] = useState('');
+  const [submitting, setSubmitting] = useState(false);
+
+  if (!open) {
+    return (
+      <div className="row">
+        <button type="button" className="btn btn-sm btn-ghost report-open" onClick={() => setOpen(true)}>
+          {REPORT.open}
+        </button>
+      </div>
+    );
+  }
+
+  async function submit(e: React.FormEvent): Promise<void> {
+    e.preventDefault();
+    setSubmitting(true);
+    const res = await api.reportUser(username, category, comment.trim() || undefined);
+    setSubmitting(false);
+    if (res.ok) {
+      pushInfo(REPORT.success);
+      setOpen(false);
+      setComment('');
+    } else {
+      pushInfo(REPORT.failed);
+    }
+  }
+
+  return (
+    <form className="stack report-form" onSubmit={submit}>
+      <DecoHead>{REPORT.heading}</DecoHead>
+      <div className="field">
+        <label htmlFor="report-category">{REPORT.categoryLabel}</label>
+        <select
+          id="report-category"
+          className="board-input"
+          value={category}
+          onChange={(e) => setCategory(e.target.value)}
+          style={{ maxWidth: 240 }}
+        >
+          {REPORT_CATEGORIES.map((c) => (
+            <option key={c} value={c}>
+              {REPORT.categories[c] ?? c}
+            </option>
+          ))}
+        </select>
+      </div>
+      <div className="field">
+        <label htmlFor="report-comment">{REPORT.commentLabel}</label>
+        <textarea
+          id="report-comment"
+          className="board-input"
+          value={comment}
+          onChange={(e) => setComment(e.target.value.slice(0, 500))}
+          placeholder={REPORT.commentPlaceholder}
+          maxLength={500}
+          rows={3}
+          aria-describedby="report-comment-count"
+        />
+        <CharCount id="report-comment-count" len={comment.length} max={500} />
+      </div>
+      <div className="row">
+        <button type="submit" className="btn btn-sm btn-primary" disabled={submitting}>
+          {submitting ? REPORT.submitting : REPORT.submit}
+        </button>
+        <button
+          type="button"
+          className="btn btn-sm"
+          onClick={() => setOpen(false)}
+          disabled={submitting}
+        >
+          {REPORT.cancel}
+        </button>
+      </div>
+    </form>
   );
 }
 

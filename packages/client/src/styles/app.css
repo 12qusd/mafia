@@ -3982,3 +3982,197 @@ table {
 .howto .howto-loop li::marker {
   color: var(--c-brass);
 }
+
+/* --------------------------------------------------------------------------
+   Notifications center (QoL wave): the topbar bell + its dropdown panel, the
+   rank-up celebration toast, and the report-from-profile form.
+   -------------------------------------------------------------------------- */
+
+/* The bell sits at the end of the topbar, after the nav. */
+.notif-bell {
+  position: relative;
+  display: inline-flex;
+  align-items: center;
+  margin-left: 10px;
+}
+.notif-bell-btn {
+  position: relative;
+  display: inline-flex;
+  align-items: center;
+  gap: 0;
+  line-height: 1;
+  text-decoration: none;
+}
+.notif-bell-glyph {
+  font-size: calc(17px * var(--scale));
+  color: var(--c-brass);
+}
+.notif-bell-btn:hover .notif-bell-glyph {
+  color: var(--c-amber);
+}
+/* The unread pill overlaps the glyph's top-right corner. */
+.notif-badge {
+  position: absolute;
+  top: -6px;
+  right: -8px;
+  margin-left: 0;
+}
+
+/* The dropdown panel — anchored to the bell's right edge. */
+.notif-panel {
+  position: absolute;
+  top: calc(100% + 10px);
+  right: 0;
+  width: min(340px, 86vw);
+  max-height: min(70vh, 460px);
+  overflow-y: auto;
+  padding: 0;
+  z-index: 70;
+  box-shadow: var(--shadow-md);
+  animation: notif-in var(--t-med) var(--ease-deco);
+}
+@keyframes notif-in {
+  from {
+    opacity: 0;
+    transform: translateY(-6px);
+  }
+}
+.notif-panel-head {
+  position: sticky;
+  top: 0;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  padding: 10px 14px;
+  border-bottom: 1px solid var(--c-line-soft);
+  background: var(--c-panel-2);
+}
+.notif-panel-title {
+  font-family: var(--font-display);
+  letter-spacing: var(--ls-marquee);
+  text-transform: uppercase;
+  font-size: var(--fs-sm);
+  color: var(--c-brass);
+}
+.notif-empty {
+  padding: 18px 14px;
+  text-align: center;
+}
+.notif-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+}
+.notif-item {
+  border-bottom: 1px solid var(--c-line-soft);
+}
+.notif-item:last-child {
+  border-bottom: none;
+}
+.notif-link {
+  display: flex;
+  gap: 10px;
+  align-items: flex-start;
+  padding: 11px 14px;
+  text-decoration: none;
+  color: var(--c-text);
+}
+a.notif-link:hover {
+  background: color-mix(in srgb, var(--c-brass) 10%, transparent);
+}
+.notif-link-static {
+  cursor: default;
+}
+/* Unread rows carry a brass rail so it is never a colour-only signal. */
+.notif-unread .notif-link {
+  border-left: 3px solid var(--c-brass);
+  padding-left: 11px;
+}
+.notif-item:not(.notif-unread) .notif-link {
+  border-left: 3px solid transparent;
+  padding-left: 11px;
+}
+.notif-icon {
+  flex: 0 0 auto;
+  width: 18px;
+  text-align: center;
+  color: var(--c-brass);
+}
+.notif-body {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  min-width: 0;
+}
+.notif-text {
+  font-size: calc(13px * var(--scale));
+  line-height: 1.35;
+}
+.notif-when {
+  font-size: var(--fs-xs);
+}
+
+/* Rank-up celebration — a centered noir announcement that lingers, then fades. */
+.rankup-toast {
+  position: fixed;
+  left: 50%;
+  top: 18%;
+  transform: translateX(-50%);
+  z-index: 80;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 8px;
+  padding: 18px 26px;
+  text-align: center;
+  border-radius: var(--radius);
+  border: 1px solid var(--c-brass-dim);
+  background: linear-gradient(
+    180deg,
+    var(--c-panel-2),
+    color-mix(in srgb, var(--c-panel) 88%, #000)
+  );
+  box-shadow: 0 0 40px rgba(201, 164, 90, 0.22), var(--shadow-md);
+  cursor: pointer;
+}
+.rankup-rise {
+  animation: rankup-rise var(--t-slow, 480ms) var(--ease-deco);
+}
+@keyframes rankup-rise {
+  from {
+    opacity: 0;
+    transform: translate(-50%, 14px);
+  }
+  to {
+    opacity: 1;
+    transform: translate(-50%, 0);
+  }
+}
+.rankup-title {
+  font-family: var(--font-display);
+  letter-spacing: var(--ls-marquee);
+  text-transform: uppercase;
+  font-size: var(--fs-lg);
+  color: var(--c-brass);
+}
+.rankup-sub {
+  font-size: calc(13px * var(--scale));
+  color: var(--c-text-dim);
+}
+@media (prefers-reduced-motion: reduce) {
+  .notif-panel,
+  .rankup-rise {
+    animation: none;
+  }
+}
+
+/* Report-from-profile form (collapsed behind a "Report" affordance). */
+.report-open {
+  color: var(--c-text-faint);
+}
+.report-form {
+  gap: 10px;
+  padding: 12px 0 4px;
+  border-top: 1px solid var(--c-line-soft);
+}

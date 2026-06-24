@@ -505,3 +505,23 @@ CREATE TABLE IF NOT EXISTS email_verifications (
   created_at timestamptz DEFAULT now()
 );
 CREATE INDEX IF NOT EXISTS email_verifications_user_idx ON email_verifications(user_id);
+
+-- --------------------------------------------------------------------------
+-- Notifications center (QoL wave) — HTTP-only, its own table; never touched in
+-- the game hot path or the §5 leak path. Unifies friend-requests, accepts,
+-- @mentions (future), rank-ups, and achievements into one account-only feed.
+-- type: friend_request | friend_accepted | mention | rank_up | achievement.
+-- payload is small JSON (ids + names + numbers; the client sanitizes names).
+-- --------------------------------------------------------------------------
+CREATE TABLE IF NOT EXISTS notifications (
+  id         uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+  user_id    uuid NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+  type       text NOT NULL,
+  payload    jsonb NOT NULL DEFAULT '{}',
+  created_at timestamptz NOT NULL DEFAULT now(),
+  read_at    timestamptz NULL
+);
+-- Feed read (newest first) per user.
+CREATE INDEX IF NOT EXISTS notifications_user_idx ON notifications (user_id, created_at DESC);
+-- Fast unread count (partial index over only the unread rows).
+CREATE INDEX IF NOT EXISTS notifications_unread_idx ON notifications (user_id) WHERE read_at IS NULL;

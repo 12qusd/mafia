@@ -5,7 +5,7 @@
  */
 
 import { Pool } from 'pg';
-import { softResetRating, type GameSetup } from '@nocturne/shared';
+import { softResetRating, type GameSetup, type NotificationType } from '@nocturne/shared';
 import { newId } from '../ids.js';
 import type {
   Store,
@@ -42,6 +42,7 @@ import type {
   ForumPostRow,
   UserSearchHit,
   DmThreadSummary,
+  NotificationRow,
 } from './types.js';
 
 interface PgUser {
@@ -2083,6 +2084,73 @@ export class PgStore implements Store {
       params,
     );
     return (res.rowCount ?? 0) > 0;
+  }
+
+  // --- Notifications center (QoL wave) -------------------------------------
+
+  async createNotification(
+    userId: string,
+    type: NotificationType,
+    payload: Record<string, unknown>,
+  ): Promise<void> {
+    // We do NOT prune on insert (keeping it simple per the spec): reads cap at
+    // 50 via LIMIT, the unread count uses a partial index, and a future cron can
+    // age out read rows >30d. Both indexes keep these queries cheap regardless.
+    await this.pool.query(
+      `INSERT INTO notifications (id, user_id, type, payload) VALUES ($1, $2, $3, $4)`,
+      [newId(), userId, type, JSON.stringify(payload ?? {})],
+    );
+  }
+
+  async listNotifications(userId: string, limit: number): Promise<NotificationRow[]> {
+    const cap = Math.max(1, Math.min(Math.floor(limit) || 50, 50));
+    const { rows } = await this.pool.query<{
+      id: string;
+      type: string;
+      payload: unknown;
+      created_at: Date;
+      read_at: Date | null;
+    }>(
+      `SELECT id, type, payload, created_at, read_at
+       FROM notifications WHERE user_id = $1
+       ORDER BY created_at DESC, id DESC LIMIT $2`,
+      [userId, cap],
+    );
+    return rows.map((r) => ({
+      id: r.id,
+      type: r.type as NotificationType,
+      payload:
+        r.payload && typeof r.payload === 'object'
+          ? (r.payload as Record<string, unknown>)
+          : {},
+      createdAt: r.created_at.getTime(),
+      readAt: r.read_at ? r.read_at.getTime() : null,
+    }));
+  }
+
+  async getUnreadNotificationCount(userId: string): Promise<number> {
+    const { rows } = await this.pool.query<{ n: string }>(
+      `SELECT count(*)::text AS n FROM notifications WHERE user_id = $1 AND read_at IS NULL`,
+      [userId],
+    );
+    return Number(rows[0]?.n ?? 0);
+  }
+
+  async markNotificationsRead(userId: string, ids?: string[]): Promise<number> {
+    if (ids && ids.length > 0) {
+      await this.pool.query(
+        `UPDATE notifications SET read_at = now()
+         WHERE user_id = $1 AND read_at IS NULL AND id = ANY($2::uuid[])`,
+        [userId, ids],
+      );
+    } else if (!ids) {
+      // Omitted → mark all read. (An explicit empty array marks nothing.)
+      await this.pool.query(
+        `UPDATE notifications SET read_at = now() WHERE user_id = $1 AND read_at IS NULL`,
+        [userId],
+      );
+    }
+    return this.getUnreadNotificationCount(userId);
   }
 
   async close(): Promise<void> {

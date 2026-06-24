@@ -6,7 +6,7 @@
  * it only at login/lobby-join (ban/mute checks) and at match end (bulk write).
  */
 
-import type { ReportCategory, GameSetup } from '@nocturne/shared';
+import type { ReportCategory, GameSetup, NotificationType } from '@nocturne/shared';
 
 export interface UserRow {
   id: string;
@@ -418,6 +418,22 @@ export interface ForumPostRow {
   deleted?: boolean;
 }
 
+// --------------------------------------------------------------------------
+// Notifications center (QoL wave) — HTTP-only, its own table; never in the game
+// hot path or the §5 leak path. Account-only (guests/bots have no user row).
+// --------------------------------------------------------------------------
+
+/** One persisted notification (the bell feed). `payload` is small, render-safe JSON. */
+export interface NotificationRow {
+  id: string;
+  type: NotificationType;
+  /** Small JSON: ids + names + numbers; the client sanitizes names on render. */
+  payload: Record<string, unknown>;
+  createdAt: number;
+  /** Epoch ms the user marked it read, or null while unread. */
+  readAt: number | null;
+}
+
 export interface Store {
   readonly persistent: boolean;
 
@@ -772,6 +788,27 @@ export interface Store {
   ): Promise<'ok' | 'forbidden' | 'not_found'>;
   /** Admin moderation: set a thread's locked/pinned flags. */
   setThreadFlags(threadId: string, flags: { locked?: boolean; pinned?: boolean }): Promise<boolean>;
+
+  // --- Notifications center (QoL wave) -------------------------------------
+  /**
+   * Append a notification for a user (best-effort: callers wrap in try/catch so
+   * a failed insert never breaks the triggering action). `payload` is small JSON
+   * (ids + names + numbers). Inert under a non-persistent store.
+   */
+  createNotification(
+    userId: string,
+    type: NotificationType,
+    payload: Record<string, unknown>,
+  ): Promise<void>;
+  /** A user's notifications, newest first. `limit` clamped (≤50). */
+  listNotifications(userId: string, limit: number): Promise<NotificationRow[]>;
+  /** The user's unread notification count. */
+  getUnreadNotificationCount(userId: string): Promise<number>;
+  /**
+   * Mark notifications read for a user: the given ids, or ALL when `ids` is
+   * omitted/undefined. Returns the user's unread count AFTER the update.
+   */
+  markNotificationsRead(userId: string, ids?: string[]): Promise<number>;
 
   close(): Promise<void>;
 }

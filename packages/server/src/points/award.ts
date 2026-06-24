@@ -20,6 +20,7 @@ import {
 import type { Store, MatchPlayerRecord } from '../db/types.js';
 import type { Room } from '../room/room.js';
 import { buildRankedSummary } from '../ranked/award.js';
+import { notify } from '../notifications/notify.js';
 import { log } from '../log.js';
 
 export interface AwardInput {
@@ -216,6 +217,21 @@ export async function awardMatchPoints(input: AwardInput): Promise<void> {
         newAchievements: newlyUnlocked,
         ...(rankedDelta !== undefined ? { rankedDelta } : {}),
       });
+
+      // Notifications center (QoL wave): a PERSISTENT record of each achievement
+      // newly unlocked this match (the in-match toast already rode the
+      // points_awarded frame above). Additive + best-effort — `notify` swallows
+      // any failure, so this never affects scoring or the frame. Runs AFTER the
+      // frame is sent so even a (swallowed) hiccup can't delay it.
+      for (const key of newlyUnlocked) {
+        const def = ACHIEVEMENTS_BY_KEY[key];
+        if (!def) continue;
+        await notify(store, userId, 'achievement', {
+          key,
+          name: def.name,
+          points: def.points,
+        });
+      }
     } catch (err) {
       log.error('failed to award points', { userId, err: String(err) });
     }

@@ -25,6 +25,7 @@ import {
 import type { Store, MatchPlayerRecord, RankedResultInput, RatingRow } from '../db/types.js';
 import { rateMatch, type RankedSeatInput, BOT_BASELINE_MMR, BOT_BASELINE_RD } from './rate.js';
 import { DEFAULT_RATING, DEFAULT_RD, DEFAULT_VOL } from '@nocturne/shared';
+import { notify } from '../notifications/notify.js';
 import { log } from '../log.js';
 
 /** The persisted ranked mode tag (matches.mode / ratings.mode / ranked_results.mode). */
@@ -145,6 +146,24 @@ export async function awardRankedRatings(input: RankedAwardInput): Promise<Ranke
         delta: finalDelta,
       });
       deltas.set(r.userId, finalDelta);
+
+      // Notifications center (QoL wave): a rank-UP (the rung climbed) earns a
+      // persistent `rank_up` notification. Only a strictly-higher rung counts —
+      // never a placement, a sideways move, or a drop. Best-effort + additive:
+      // `notify` swallows any failure, so this never affects MMR/the ledger. The
+      // client celebration (the noir "you ascend" toast) is driven separately,
+      // client-side, by comparing the post-match `stats.ranked.rank` it already
+      // receives on the points_awarded frame against the rank it had before — so
+      // no game WS protocol field is added here.
+      const rungBefore = rankForMmr(r.before.rating).index;
+      const rankAfter = rankForMmr(finalMmr);
+      if (rankAfter.index > rungBefore) {
+        await notify(store, r.userId, 'rank_up', {
+          rank: rankAfter.key,
+          rankName: rankAfter.name,
+          mmr: Math.round(finalMmr),
+        });
+      }
     }
     if (rankedRows.length > 0) await store.writeRankedResults(rankedRows);
   } catch (err) {

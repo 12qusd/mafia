@@ -18,10 +18,12 @@
 
 import type { FastifyInstance, FastifyReply } from 'fastify';
 import { z } from 'zod';
+import { ReportCategorySchema } from '@nocturne/shared';
 import type { GatewayContext } from '../ws/context.js';
 import { buildUserStatsSummary } from '../points/stats.js';
 import { buildRankedSummary } from '../ranked/award.js';
 import { readToken } from './auth-routes.js';
+import { notify } from '../notifications/notify.js';
 
 // --- Length caps (zod) -------------------------------------------------------
 const TAGLINE_MAX = 80;
@@ -37,6 +39,12 @@ const ProfileBody = z.object({
 });
 
 const FriendRequestBody = z.object({ username: z.string().min(1).max(64) });
+/** Report-from-profile body (QoL wave): a valid category + an optional comment. */
+const REPORT_COMMENT_MAX = 500;
+const ReportBody = z.object({
+  category: ReportCategorySchema,
+  comment: z.string().trim().max(REPORT_COMMENT_MAX).optional(),
+});
 const FriendRespondBody = z.object({ id: z.string().min(1).max(128), accept: z.boolean() });
 /** Block/unblock a user by username or id (account-only). */
 const BlockBody = z
@@ -83,6 +91,13 @@ export function registerSocialRoutes(app: FastifyInstance, ctx: GatewayContext):
   });
   const profileEditLimit = ctx.rateLimit({
     max: ctx.cfg.rateLimit.profileEdit,
+    windowMs: ctx.cfg.rateLimit.windowMs,
+  });
+  // Report-from-profile (QoL wave): per-user guard, reusing the friend-request
+  // cap as a sensible "deliberate action" rate. No-op under a non-persistent
+  // store (NO_DB/test), like every other guard here.
+  const reportLimit = ctx.rateLimit({
+    max: ctx.cfg.rateLimit.friendRequest,
     windowMs: ctx.cfg.rateLimit.windowMs,
   });
 
@@ -238,6 +253,33 @@ export function registerSocialRoutes(app: FastifyInstance, ctx: GatewayContext):
     },
   );
 
+  // Report a user from their profile (QoL wave; account-only, not self). Resolves
+  // username→id and files a report via the moderation service (no match context).
+  // Category is validated against the report-category enum; the comment is
+  // length-capped. Dedupe (per reporter/target/match) is handled by the store, so
+  // a repeat report is a 200 no-op. Rate-limited per user.
+  app.post<{ Params: { username: string } }>('/api/users/:username/report', async (req, reply) => {
+    const identity = await ctx.identity.resolveToken(readToken(req));
+    if (!identity) return reply.code(401).send({ error: 'not_authenticated' });
+    if (identity.isGuest) return reply.code(403).send({ error: 'forbidden' });
+    if (!ctx.store.persistent) return reply.code(503).send({ error: 'accounts_disabled' });
+    if (reportLimit(identity.id, reply)) return reply;
+    const parsed = ReportBody.safeParse(req.body);
+    if (!parsed.success) return reply.code(400).send({ error: 'bad_request' });
+    const target = await ctx.store.getUserByUsername(req.params.username);
+    if (!target) return reply.code(404).send({ error: 'not_found' });
+    if (target.id === identity.id) return reply.code(400).send({ error: 'self' });
+    await ctx.moderation.report({
+      reporter: identity.id,
+      targetUser: target.id,
+      matchId: null,
+      category: parsed.data.category,
+      comment: parsed.data.comment ?? null,
+      chatContext: [],
+    });
+    return reply.send({ ok: true });
+  });
+
   // Edit own profile (account-only).
   app.post('/api/me/profile', async (req, reply) => {
     const identity = await ctx.identity.resolveToken(readToken(req));
@@ -293,6 +335,21 @@ export function registerSocialRoutes(app: FastifyInstance, ctx: GatewayContext):
       return reply.code(403).send({ error: 'blocked' });
     }
     const result = await ctx.store.requestFriend(identity.id, target.id);
+    // Notifications center (QoL wave; best-effort, never blocks the request):
+    //  - a NEW pending request → notify the TARGET (someone wants in).
+    //  - an auto-accept of a reverse-pending row → notify the ORIGINAL requester
+    //    (which is `target` here) that the caller accepted them.
+    if (result === 'created') {
+      await notify(ctx.store, target.id, 'friend_request', {
+        fromId: identity.id,
+        fromUsername: identity.name,
+      });
+    } else if (result === 'accepted') {
+      await notify(ctx.store, target.id, 'friend_accepted', {
+        byId: identity.id,
+        byUsername: identity.name,
+      });
+    }
     return reply.send({ result });
   });
 
@@ -303,8 +360,25 @@ export function registerSocialRoutes(app: FastifyInstance, ctx: GatewayContext):
     if (!ctx.store.persistent) return reply.code(503).send({ error: 'accounts_disabled' });
     const parsed = FriendRespondBody.safeParse(req.body);
     if (!parsed.success) return reply.code(400).send({ error: 'bad_request' });
+    // Resolve the original requester BEFORE responding (the pending row is gone
+    // afterwards) so an accept can notify them. Best-effort: a lookup miss just
+    // means no notification — it never blocks the response.
+    let requester: { id: string; username: string } | null = null;
+    if (parsed.data.accept) {
+      const reqs = await ctx.store.listFriendRequests(identity.id);
+      const match = reqs.incoming.find((r) => r.id === parsed.data.id);
+      if (match) requester = { id: match.userId, username: match.username };
+    }
     const ok = await ctx.store.respondFriend(identity.id, parsed.data.id, parsed.data.accept);
     if (!ok) return reply.code(403).send({ error: 'forbidden' });
+    // Notifications center (QoL wave; best-effort): on accept, tell the original
+    // requester their request was accepted.
+    if (parsed.data.accept && requester) {
+      await notify(ctx.store, requester.id, 'friend_accepted', {
+        byId: identity.id,
+        byUsername: identity.name,
+      });
+    }
     return reply.send({ ok: true });
   });
 

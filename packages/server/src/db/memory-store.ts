@@ -6,7 +6,7 @@
  * for the process lifetime; match writes are dropped.
  */
 
-import { softResetRating, type GameSetup } from '@nocturne/shared';
+import { softResetRating, type GameSetup, type NotificationType } from '@nocturne/shared';
 import { newId } from '../ids.js';
 import { log } from '../log.js';
 import { DEFAULT_ROOMS } from './default-rooms.js';
@@ -44,6 +44,7 @@ import type {
   ForumPostRow,
   UserSearchHit,
   DmThreadSummary,
+  NotificationRow,
 } from './types.js';
 
 /** Internal friendship record (one per unordered pair). */
@@ -54,6 +55,16 @@ interface MemFriendship {
   status: 'pending' | 'accepted';
   createdAt: number;
   respondedAt: number | null;
+}
+
+/** Internal notification record (the bell feed; QoL wave). */
+interface MemNotification {
+  id: string;
+  userId: string;
+  type: NotificationType;
+  payload: Record<string, unknown>;
+  createdAt: number;
+  readAt: number | null;
 }
 
 /** Internal DM thread record (canonical lo<hi ordering). */
@@ -126,6 +137,8 @@ export class MemoryStore implements Store {
   private readonly profiles = new Map<string, ProfileRow>();
   private readonly lastSeen = new Map<string, number>();
   private readonly friendships: MemFriendship[] = [];
+  /** Notifications center (QoL wave; process-lifetime only). */
+  private readonly notifications: MemNotification[] = [];
   private readonly rooms: ChatRoomRow[] = [];
   private readonly roomMessages: RoomMessageRow[] = [];
   private readonly dmThreads: MemDmThread[] = [];
@@ -1243,6 +1256,54 @@ export class MemoryStore implements Store {
     if (flags.locked !== undefined) t.locked = flags.locked;
     if (flags.pinned !== undefined) t.pinned = flags.pinned;
     return true;
+  }
+
+  // --- Notifications center (QoL wave) -------------------------------------
+
+  async createNotification(
+    userId: string,
+    type: NotificationType,
+    payload: Record<string, unknown>,
+  ): Promise<void> {
+    this.notifications.push({
+      id: newId(),
+      userId,
+      type,
+      payload: payload ?? {},
+      createdAt: this.now(),
+      readAt: null,
+    });
+  }
+
+  async listNotifications(userId: string, limit: number): Promise<NotificationRow[]> {
+    const cap = Math.max(1, Math.min(Math.floor(limit) || 50, 50));
+    return this.notifications
+      .filter((n) => n.userId === userId)
+      .sort((a, b) => b.createdAt - a.createdAt)
+      .slice(0, cap)
+      .map((n) => ({
+        id: n.id,
+        type: n.type,
+        payload: n.payload,
+        createdAt: n.createdAt,
+        readAt: n.readAt,
+      }));
+  }
+
+  async getUnreadNotificationCount(userId: string): Promise<number> {
+    return this.notifications.filter((n) => n.userId === userId && n.readAt === null).length;
+  }
+
+  async markNotificationsRead(userId: string, ids?: string[]): Promise<number> {
+    const now = this.now();
+    // Omitted ids → mark all read; an explicit array marks only those ids.
+    const idSet = ids ? new Set(ids) : null;
+    for (const n of this.notifications) {
+      if (n.userId !== userId || n.readAt !== null) continue;
+      if (idSet && !idSet.has(n.id)) continue;
+      n.readAt = now;
+    }
+    return this.getUnreadNotificationCount(userId);
   }
 
   async close(): Promise<void> {}

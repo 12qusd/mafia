@@ -12,6 +12,8 @@ import { useStore } from './store/store.js';
 import { refreshMe } from './lib/me.js';
 import { pingPresence, fetchSocial } from './lib/api.js';
 import { Toasts } from './components/Toasts.js';
+import { NotificationsBell } from './components/NotificationsBell.js';
+import { RankUpToast } from './components/RankUpToast.js';
 import { ForceUpdateModal } from './components/ForceUpdateModal.js';
 import { Glossary } from './components/Glossary.js';
 import { RouteFallback } from './components/RouteFallback.js';
@@ -239,6 +241,8 @@ export function App() {
               Settings
             </Link>
           </nav>
+          {/* Notifications bell — account-only (hidden for guests / signed-out). */}
+          {meId && <NotificationsBell />}
         </div>
         <VerifyEmailBanner />
         <main id="main">
@@ -269,6 +273,7 @@ export function App() {
         </main>
       </div>
       <Toasts />
+      <RankUpToast />
       <ForceUpdateModal />
       <Glossary open={glossaryOpen} onClose={() => setGlossaryOpen(false)} />
     </div>
