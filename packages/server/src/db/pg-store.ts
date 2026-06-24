@@ -10,6 +10,7 @@ import { newId } from '../ids.js';
 import type {
   Store,
   UserRow,
+  PasswordResetRow,
   ReportRow,
   SanctionRow,
   ActiveSanctions,
@@ -46,6 +47,7 @@ interface PgUser {
   password_hash: string;
   flags: number;
   created_at?: Date;
+  email_verified?: boolean;
 }
 
 export class PgStore implements Store {
@@ -64,6 +66,7 @@ export class PgStore implements Store {
       passwordHash: r.password_hash,
       flags: r.flags,
       ...(r.created_at ? { createdAt: r.created_at.getTime() } : {}),
+      ...(r.email_verified !== undefined ? { emailVerified: r.email_verified } : {}),
     };
   }
 
@@ -82,7 +85,8 @@ export class PgStore implements Store {
 
   async getUserByUsername(username: string): Promise<UserRow | null> {
     const { rows } = await this.pool.query<PgUser>(
-      `SELECT id, username, email, password_hash, flags, created_at FROM users WHERE username = $1`,
+      `SELECT id, username, email, password_hash, flags, created_at, email_verified
+       FROM users WHERE username = $1`,
       [username],
     );
     return rows[0] ? this.mapUser(rows[0]) : null;
@@ -90,8 +94,19 @@ export class PgStore implements Store {
 
   async getUserById(id: string): Promise<UserRow | null> {
     const { rows } = await this.pool.query<PgUser>(
-      `SELECT id, username, email, password_hash, flags, created_at FROM users WHERE id = $1`,
+      `SELECT id, username, email, password_hash, flags, created_at, email_verified
+       FROM users WHERE id = $1`,
       [id],
+    );
+    return rows[0] ? this.mapUser(rows[0]) : null;
+  }
+
+  /** Resolve a user by email (citext, case-insensitive). Used by password reset. */
+  async getUserByEmail(email: string): Promise<UserRow | null> {
+    const { rows } = await this.pool.query<PgUser>(
+      `SELECT id, username, email, password_hash, flags, created_at, email_verified
+       FROM users WHERE email = $1`,
+      [email],
     );
     return rows[0] ? this.mapUser(rows[0]) : null;
   }
@@ -140,6 +155,70 @@ export class PgStore implements Store {
        WHERE token_hash = $1 AND NOT revoked`,
       [tokenHash, expiresAt],
     );
+  }
+
+  // --- Account lifecycle: password reset + email verification ---------------
+
+  async createPasswordReset(userId: string, tokenHash: string, expiresAt: number): Promise<void> {
+    await this.pool.query(
+      `INSERT INTO password_resets (token_hash, user_id, expires_at)
+       VALUES ($1, $2, to_timestamp($3 / 1000.0))`,
+      [tokenHash, userId, expiresAt],
+    );
+  }
+
+  async getPasswordReset(tokenHash: string): Promise<PasswordResetRow | null> {
+    const { rows } = await this.pool.query<{ user_id: string; expires_at: Date; used: boolean }>(
+      `SELECT user_id, expires_at, used FROM password_resets WHERE token_hash = $1`,
+      [tokenHash],
+    );
+    const row = rows[0];
+    if (!row) return null;
+    return { userId: row.user_id, expiresAt: row.expires_at.getTime(), used: row.used };
+  }
+
+  async markPasswordResetUsed(tokenHash: string): Promise<void> {
+    await this.pool.query(`UPDATE password_resets SET used = true WHERE token_hash = $1`, [
+      tokenHash,
+    ]);
+  }
+
+  async updateUserPassword(userId: string, passwordHash: string): Promise<void> {
+    await this.pool.query(`UPDATE users SET password_hash = $2 WHERE id = $1`, [
+      userId,
+      passwordHash,
+    ]);
+  }
+
+  async revokeAllSessions(userId: string): Promise<void> {
+    await this.pool.query(`UPDATE sessions SET revoked = true WHERE user_id = $1`, [userId]);
+  }
+
+  async createEmailVerification(
+    userId: string,
+    tokenHash: string,
+    expiresAt: number,
+  ): Promise<void> {
+    await this.pool.query(
+      `INSERT INTO email_verifications (token_hash, user_id, expires_at)
+       VALUES ($1, $2, to_timestamp($3 / 1000.0))`,
+      [tokenHash, userId, expiresAt],
+    );
+  }
+
+  async consumeEmailVerification(tokenHash: string): Promise<string | null> {
+    // Single-use: delete the row and return its user id only if still valid.
+    const { rows } = await this.pool.query<{ user_id: string }>(
+      `DELETE FROM email_verifications
+       WHERE token_hash = $1 AND expires_at > now()
+       RETURNING user_id`,
+      [tokenHash],
+    );
+    return rows[0]?.user_id ?? null;
+  }
+
+  async setEmailVerified(userId: string): Promise<void> {
+    await this.pool.query(`UPDATE users SET email_verified = true WHERE id = $1`, [userId]);
   }
 
   async getActiveSanctions(userId: string): Promise<ActiveSanctions> {

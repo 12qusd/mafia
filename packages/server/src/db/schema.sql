@@ -456,3 +456,30 @@ FROM (VALUES
 ) AS b(category_slug, slug, name, description, sort)
 JOIN forum_categories c ON c.slug = b.category_slug
 ON CONFLICT (slug) DO NOTHING;
+
+-- --------------------------------------------------------------------------
+-- Account lifecycle: password reset + email verification (retention wave).
+-- Additive + idempotent; account-only (the in-memory NO_DB store no-ops these).
+-- --------------------------------------------------------------------------
+
+-- Whether the user's email has been confirmed (welcome/verify flow).
+ALTER TABLE users ADD COLUMN IF NOT EXISTS email_verified boolean NOT NULL DEFAULT false;
+
+-- One-time password-reset tokens (only the token HASH is stored; ~1h validity).
+CREATE TABLE IF NOT EXISTS password_resets (
+  token_hash text PRIMARY KEY,
+  user_id    uuid NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+  expires_at timestamptz NOT NULL,
+  used       boolean NOT NULL DEFAULT false,
+  created_at timestamptz DEFAULT now()
+);
+CREATE INDEX IF NOT EXISTS password_resets_user_idx ON password_resets(user_id);
+
+-- One-time email-verification tokens (token HASH only; consumed on verify).
+CREATE TABLE IF NOT EXISTS email_verifications (
+  token_hash text PRIMARY KEY,
+  user_id    uuid NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+  expires_at timestamptz NOT NULL,
+  created_at timestamptz DEFAULT now()
+);
+CREATE INDEX IF NOT EXISTS email_verifications_user_idx ON email_verifications(user_id);

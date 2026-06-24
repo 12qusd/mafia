@@ -22,7 +22,7 @@ vi.mock('../lib/api.js', () => ({
 
 function asRegistered() {
   useStore.setState({
-    me: { id: 'u1', name: 'Author', isGuest: false, isAdmin: false, stats: null },
+    me: { id: 'u1', name: 'Author', isGuest: false, isAdmin: false, stats: null, emailVerified: null, hasEmail: false },
   });
 }
 

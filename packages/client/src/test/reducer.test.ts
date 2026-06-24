@@ -495,7 +495,7 @@ describe('reduce: points_awarded (goal 3)', () => {
 
   it('refreshes the cached me.stats when the award is the local account', () => {
     let s = baseState();
-    s.me = { id: 'u1', name: 'Capone', isGuest: false, isAdmin: false, stats: null };
+    s.me = { id: 'u1', name: 'Capone', isGuest: false, isAdmin: false, stats: null, emailVerified: null, hasEmail: false };
     s = apply(s, {
       v: PROTOCOL_VERSION,
       type: 'points_awarded',
@@ -509,7 +509,7 @@ describe('reduce: points_awarded (goal 3)', () => {
 
   it('does not clobber me.stats for a different account', () => {
     let s = baseState();
-    s.me = { id: 'other', name: 'X', isGuest: false, isAdmin: false, stats: null };
+    s.me = { id: 'other', name: 'X', isGuest: false, isAdmin: false, stats: null, emailVerified: null, hasEmail: false };
     s = apply(s, {
       v: PROTOCOL_VERSION,
       type: 'points_awarded',

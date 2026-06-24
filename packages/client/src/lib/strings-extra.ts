@@ -57,6 +57,7 @@ export const HOME = {
   authError: 'Those credentials did not check out.',
   switchToRegister: 'No account? Open one.',
   switchToLogin: 'Already have an account? Sign in.',
+  forgotPassword: 'Forgot your password?',
   orPlayAsGuest: 'or slip in as a guest',
   testModeLabel: 'Test mode',
   testModeHint:
@@ -840,6 +841,52 @@ export const DAY_PHASES: ReadonlySet<Phase> = new Set<Phase>([
   'TRIAL_JUDGMENT',
   'EXECUTION',
 ]);
+
+/**
+ * Account-lifecycle copy (retention wave): password reset, email verification.
+ * 1920s-noir voice — no account-enumeration tells in the forgot/reset flow.
+ */
+export const ACCOUNT = {
+  // Forgot-password screen.
+  forgotHeading: 'Lost your key',
+  forgotSub: 'Give us the name or the address on the account. If it checks out, a way back in is on its way.',
+  forgotIdentifierLabel: 'Name at the door or email',
+  forgotSubmit: 'Send the link',
+  forgotSent:
+    'If that account exists, a reset link is already on its way. Check your mail — and your spam, the courier is not always reliable.',
+  forgotError: 'Something jammed on our end. Try again in a moment.',
+
+  // Reset-password screen.
+  resetHeading: 'Set a new password',
+  resetSub: 'Pick something only you would know. Setting it logs out every other device.',
+  resetPasswordLabel: 'New password',
+  resetConfirmLabel: 'Confirm password',
+  resetSubmit: 'Set password',
+  resetSuccess: 'Done. Your new password is in the books.',
+  resetSignInLink: 'Back to sign in',
+  resetMismatch: 'Those two do not match.',
+  resetTooShort: 'A password needs at least 8 characters.',
+  resetInvalid: 'That link is no good — used already, or long expired. Ask for a fresh one.',
+  resetNoToken: 'This link is missing its key. Request a new reset from the sign-in screen.',
+  resetBusy: 'Setting…',
+
+  // Verify-email screen.
+  verifyHeadingWorking: 'Confirming your address…',
+  verifyHeadingDone: 'Address confirmed',
+  verifyHeadingFailed: 'Could not confirm',
+  verifyWorking: 'One moment while we check the paperwork.',
+  verifyDone: 'Your email is verified. The family takes your word now.',
+  verifyFailed: 'That link is no good — used already, or long expired. Sign in and ask for a new one.',
+  verifyNoToken: 'This link is missing its key.',
+  verifyHomeLink: 'To the floor',
+
+  // "Verify your email" banner (signed-in, unverified).
+  bannerText: 'Your email is not yet confirmed. Confirm it to keep your account — and your standing.',
+  bannerResend: 'Resend link',
+  bannerResent: 'Sent. Check your mail for the confirmation link.',
+  bannerResendError: 'Could not send right now. Try again shortly.',
+  bannerDismiss: 'Dismiss',
+} as const;
 
 /** A seat's display label, e.g. "7 · Capone". */
 export function seatLabel(seat: number, name: string): string {

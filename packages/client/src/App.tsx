@@ -31,6 +31,10 @@ import { BoardScreen } from './screens/BoardScreen.js';
 import { ThreadScreen } from './screens/ThreadScreen.js';
 import { ProfileScreen } from './screens/ProfileScreen.js';
 import { FriendsScreen } from './screens/FriendsScreen.js';
+import { ForgotPasswordScreen } from './screens/ForgotPasswordScreen.js';
+import { ResetPasswordScreen } from './screens/ResetPasswordScreen.js';
+import { VerifyEmailScreen } from './screens/VerifyEmailScreen.js';
+import { VerifyEmailBanner } from './components/VerifyEmailBanner.js';
 
 export function App() {
   const settings = useStore((s) => s.settings);
@@ -136,6 +140,7 @@ export function App() {
             </Link>
           </nav>
         </div>
+        <VerifyEmailBanner />
         <Routes>
           <Route path="/" element={<HomeScreen />} />
           <Route path="/join/:code" element={<JoinScreen />} />
@@ -147,6 +152,9 @@ export function App() {
           <Route path="/forum/thread/:id" element={<ThreadScreen />} />
           <Route path="/forum/:boardSlug" element={<BoardScreen />} />
           <Route path="/friends" element={<FriendsScreen />} />
+          <Route path="/forgot" element={<ForgotPasswordScreen />} />
+          <Route path="/reset" element={<ResetPasswordScreen />} />
+          <Route path="/verify-email" element={<VerifyEmailScreen />} />
           <Route path="/u/:username" element={<ProfileScreen />} />
           <Route path="/setups" element={<SetupsScreen />} />
           <Route path="/replay/:matchId" element={<ReplayScreen />} />

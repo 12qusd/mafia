@@ -9,6 +9,7 @@
 const TOKEN_KEY = 'nocturne.token';
 const SETTINGS_KEY = 'nocturne.settings';
 const GUEST_NAME_KEY = 'nocturne.guestName';
+const VERIFY_BANNER_DISMISSED_KEY = 'nocturne.verifyBannerDismissed';
 
 export type TextScale = 'small' | 'normal' | 'large';
 
@@ -83,6 +84,14 @@ export function loadGuestName(): string | null {
 }
 export function saveGuestName(name: string): void {
   safeSet(GUEST_NAME_KEY, name);
+}
+
+/** Whether the user dismissed the "verify your email" banner (account lifecycle). */
+export function loadVerifyBannerDismissed(): boolean {
+  return safeGet(VERIFY_BANNER_DISMISSED_KEY) === '1';
+}
+export function saveVerifyBannerDismissed(): void {
+  safeSet(VERIFY_BANNER_DISMISSED_KEY, '1');
 }
 
 export function loadSettings(): ClientSettings {

@@ -12,6 +12,7 @@ import type { LobbyManager } from '../lobby/manager.js';
 import type { Moderation } from '../moderation/moderation.js';
 import type { Telemetry } from '../telemetry.js';
 import type { RouteGuardFactory } from '../http/rate-limit.js';
+import type { EmailService } from '../email/service.js';
 
 export interface GatewayContext {
   cfg: ServerConfig;
@@ -28,4 +29,10 @@ export interface GatewayContext {
    * non-persistent (NO_DB/test) so the suite is never throttled.
    */
   rateLimit: RouteGuardFactory;
+  /**
+   * Account-lifecycle email (password reset, verification, welcome). Backed by
+   * SMTP when configured, else a log transport (so the flows work unconfigured).
+   * All sends are best-effort — a mail failure never affects the request.
+   */
+  email: EmailService;
 }

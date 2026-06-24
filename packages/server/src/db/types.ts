@@ -16,6 +16,17 @@ export interface UserRow {
   flags: number;
   /** Account creation time (epoch ms). Optional: not all read paths select it. */
   createdAt?: number;
+  /** Whether the user's email is confirmed (account lifecycle). Optional: not
+   *  every read path selects it. */
+  emailVerified?: boolean;
+}
+
+/** A persisted password-reset token's state (account lifecycle). */
+export interface PasswordResetRow {
+  userId: string;
+  /** Epoch ms the token expires. */
+  expiresAt: number;
+  used: boolean;
 }
 
 export type SanctionType = 'warning' | 'mute' | 'temp_ban' | 'perma_ban';
@@ -355,6 +366,9 @@ export interface Store {
   }): Promise<UserRow>;
   getUserByUsername(username: string): Promise<UserRow | null>;
   getUserById(id: string): Promise<UserRow | null>;
+  /** Resolve a user by email (case-insensitive). Account-only; null in NO_DB.
+   *  Used by the password-reset "identifier" lookup. */
+  getUserByEmail(email: string): Promise<UserRow | null>;
   setLastLogin(id: string): Promise<void>;
 
   // Sessions (§7.1)
@@ -370,6 +384,26 @@ export interface Store {
   getSession(tokenHash: string): Promise<{ userId: string; expiresAt: number } | null>;
   /** Extend a live session's expiry to `expiresAt` (sliding refresh, Task C). */
   extendSession(tokenHash: string, expiresAt: number): Promise<void>;
+
+  // Account lifecycle: password reset + email verification (retention wave).
+  // Persistent-only flows; the in-memory NO_DB store implements these minimally
+  // (no-op / null) since accounts do not exist there.
+  /** Store a password-reset token hash for a user (~1h expiry). */
+  createPasswordReset(userId: string, tokenHash: string, expiresAt: number): Promise<void>;
+  /** Read a reset token's state, or null if the hash is unknown. */
+  getPasswordReset(tokenHash: string): Promise<PasswordResetRow | null>;
+  /** Mark a reset token consumed so it cannot be replayed. */
+  markPasswordResetUsed(tokenHash: string): Promise<void>;
+  /** Replace a user's password hash (after a validated reset). */
+  updateUserPassword(userId: string, passwordHash: string): Promise<void>;
+  /** Revoke every session for a user (so a reset logs out other devices). */
+  revokeAllSessions(userId: string): Promise<void>;
+  /** Store an email-verification token hash for a user. */
+  createEmailVerification(userId: string, tokenHash: string, expiresAt: number): Promise<void>;
+  /** Consume a verification token (single-use): returns its user id, or null. */
+  consumeEmailVerification(tokenHash: string): Promise<string | null>;
+  /** Mark a user's email confirmed. */
+  setEmailVerified(userId: string): Promise<void>;
 
   // Moderation (§11)
   getActiveSanctions(userId: string): Promise<ActiveSanctions>;

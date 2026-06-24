@@ -1207,6 +1207,32 @@ label {
   }
 }
 
+/* "Verify your email" banner (account lifecycle) — a subtle, dismissible strip
+   under the topbar. Reuses panel/brass tokens to stay on-theme. */
+.verify-banner {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--sp-2);
+  padding: 8px 14px;
+  margin-bottom: var(--sp-2);
+  border: 1px solid var(--c-line);
+  border-left: 3px solid var(--c-brass);
+  border-radius: var(--radius);
+  background: color-mix(in srgb, var(--c-panel-2) 88%, transparent);
+  font-size: calc(13px * var(--scale));
+  color: var(--c-text-dim);
+}
+.verify-banner-text {
+  flex: 1 1 240px;
+}
+.verify-banner-actions {
+  display: flex;
+  gap: var(--sp-3, 16px);
+  align-items: center;
+}
+
 /* Game-over modal — the grand brass reveal. A wider frame, a gold top edge, and
    a warm sunburst behind the result. */
 .gameover-modal {

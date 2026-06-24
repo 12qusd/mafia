@@ -163,12 +163,15 @@ export async function fetchMe(): Promise<MeState | null> {
     const id = str(data['id']);
     const name = str(data['name']);
     if (id === undefined || name === undefined) return null;
+    const emailVerifiedRaw = data['emailVerified'];
     return {
       id,
       name,
       isGuest: bool(data['isGuest']),
       isAdmin: bool(data['isAdmin']),
       stats: narrowStats(data['stats']),
+      emailVerified: typeof emailVerifiedRaw === 'boolean' ? emailVerifiedRaw : null,
+      hasEmail: bool(data['hasEmail']),
     };
   } catch {
     return null;
@@ -669,6 +672,64 @@ export async function logout(): Promise<void> {
     await postJson('/api/logout', {});
   } catch {
     /* ignore — best effort */
+  }
+}
+
+// ---------------------------------------------------------------------------
+// Account lifecycle: password reset + email verification (retention wave)
+// ---------------------------------------------------------------------------
+
+/**
+ * `POST /api/password/forgot` — request a reset link for a username OR email.
+ * Always resolves (the server returns 200 regardless to avoid account
+ * enumeration); resolves false only on a transport error so the caller can
+ * still show the neutral "if that account exists…" copy.
+ */
+export async function forgotPassword(identifier: string): Promise<boolean> {
+  try {
+    await postJson('/api/password/forgot', { identifier });
+    return true;
+  } catch {
+    return false;
+  }
+}
+
+/**
+ * `POST /api/password/reset` — set a new password from a reset token. Returns
+ * true on success, false if the token was invalid/expired or on any error.
+ */
+export async function resetPassword(token: string, password: string): Promise<boolean> {
+  try {
+    const data = await postJson('/api/password/reset', { token, password });
+    return isObj(data) && data['ok'] === true;
+  } catch {
+    return false;
+  }
+}
+
+/**
+ * `POST /api/email/verify` — confirm an email from a verification token.
+ * Returns true on success, false on an invalid/expired token or any error.
+ */
+export async function verifyEmail(token: string): Promise<boolean> {
+  try {
+    const data = await postJson('/api/email/verify', { token });
+    return isObj(data) && data['ok'] === true;
+  } catch {
+    return false;
+  }
+}
+
+/**
+ * `POST /api/email/resend` — re-issue a verification link for the signed-in
+ * account's email (when unverified). Best-effort; true unless the call errored.
+ */
+export async function resendVerification(): Promise<boolean> {
+  try {
+    await postJson('/api/email/resend', {});
+    return true;
+  } catch {
+    return false;
   }
 }
 

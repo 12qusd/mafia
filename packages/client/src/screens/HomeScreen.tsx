@@ -4,7 +4,7 @@
  */
 
 import { useEffect, useState } from 'react';
-import { useNavigate } from 'react-router-dom';
+import { useNavigate, Link } from 'react-router-dom';
 import { strings, SETUPS, MIN_PLAYERS, MAX_PLAYERS, type LobbyVisibility } from '@nocturne/shared';
 import { useStore } from '../store/store.js';
 import { conn } from '../ws/connection.js';
@@ -221,6 +221,11 @@ function AuthCard() {
           <button className="linkbtn" onClick={() => setMode('login')}>
             {HOME.switchToLogin}
           </button>
+        )}
+        {mode === 'login' && (
+          <Link className="linkbtn" to="/forgot">
+            {HOME.forgotPassword}
+          </Link>
         )}
       </div>
     </div>

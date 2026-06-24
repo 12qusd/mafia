@@ -14,6 +14,7 @@ import { DEFAULT_FORUM } from './default-forum.js';
 import type {
   Store,
   UserRow,
+  PasswordResetRow,
   ReportRow,
   SanctionRow,
   ActiveSanctions,
@@ -200,7 +201,25 @@ export class MemoryStore implements Store {
   async getUserById(): Promise<UserRow | null> {
     return null;
   }
+  async getUserByEmail(): Promise<UserRow | null> {
+    return null;
+  }
   async setLastLogin(): Promise<void> {}
+
+  // Account lifecycle (retention wave): persistent-only. NO_DB has no accounts,
+  // so these are inert — the routes gate on store.persistent before calling.
+  async createPasswordReset(): Promise<void> {}
+  async getPasswordReset(): Promise<PasswordResetRow | null> {
+    return null;
+  }
+  async markPasswordResetUsed(): Promise<void> {}
+  async updateUserPassword(): Promise<void> {}
+  async revokeAllSessions(): Promise<void> {}
+  async createEmailVerification(): Promise<void> {}
+  async consumeEmailVerification(): Promise<string | null> {
+    return null;
+  }
+  async setEmailVerified(): Promise<void> {}
 
   async createSession(tokenHash: string, userId: string, expiresAt: number): Promise<void> {
     this.sessions.set(tokenHash, { userId, expiresAt });

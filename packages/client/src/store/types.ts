@@ -40,6 +40,11 @@ export interface MeState {
   isGuest: boolean;
   isAdmin: boolean;
   stats: UserStatsSummary | null;
+  /** Account lifecycle: whether the account's email is confirmed. null for
+   *  guests / when the server did not report it. */
+  emailVerified: boolean | null;
+  /** Whether the account has an email on file (drives the "verify" banner). */
+  hasEmail: boolean;
 }
 
 /**

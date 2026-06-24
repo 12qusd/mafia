@@ -12,6 +12,7 @@ import type { GatewayContext } from '../ws/context.js';
 import { buildUserStatsSummary } from '../points/stats.js';
 import { buildRankedSummary } from '../ranked/award.js';
 import { clientIp } from './rate-limit.js';
+import { issueEmailVerification } from './account-routes.js';
 
 const COOKIE = 'nocturne_session';
 
@@ -63,6 +64,15 @@ export function registerAuthRoutes(app: FastifyInstance, ctx: GatewayContext): v
       parsed.data.email ?? null,
     );
     if ('error' in res) return reply.code(409).send({ error: res.error });
+    // Account lifecycle (retention wave): on register with an email, fire the
+    // verification + welcome notes. Both best-effort — they never block or fail
+    // registration (issueEmailVerification awaits only the token row write; the
+    // mail send is fire-and-forget inside the EmailService).
+    const email = parsed.data.email;
+    if (email) {
+      await issueEmailVerification(ctx, res.identity.id, email).catch(() => {});
+      void ctx.email.sendWelcome(email, res.identity.name);
+    }
     reply.setCookie(COOKIE, res.token, cookieOpts);
     return reply.send({ userId: res.identity.id, name: res.identity.name, token: res.token });
   });
@@ -105,12 +115,21 @@ export function registerAuthRoutes(app: FastifyInstance, ctx: GatewayContext): v
       if (ranked) stats.ranked = ranked;
     }
     // Presence (Social): record activity for non-guests, throttled to ≥30s/user.
+    // Email-verification state (account lifecycle) is read from the same user row
+    // so the client can surface a "verify your email" banner; null for guests.
+    let emailVerified: boolean | null = null;
+    let hasEmail = false;
     if (!identity.isGuest && ctx.store.persistent) {
       const now = Date.now();
       const last = lastPresenceWrite.get(identity.id) ?? 0;
       if (now - last >= PRESENCE_THROTTLE_MS) {
         lastPresenceWrite.set(identity.id, now);
         await ctx.store.touchPresence(identity.id, now);
+      }
+      const user = await ctx.store.getUserById(identity.id);
+      if (user) {
+        emailVerified = user.emailVerified ?? false;
+        hasEmail = user.email !== null && user.email !== '';
       }
     }
     return reply.send({
@@ -119,6 +138,8 @@ export function registerAuthRoutes(app: FastifyInstance, ctx: GatewayContext): v
       isGuest: identity.isGuest,
       isAdmin: identity.isAdmin,
       stats,
+      emailVerified,
+      hasEmail,
     });
   });
 

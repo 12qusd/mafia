@@ -11,6 +11,8 @@ import { Moderation } from '../moderation/moderation.js';
 import { Telemetry } from '../telemetry.js';
 import { makeFallbackEngine } from '../engine-fallback.js';
 import { makeRateLimiter } from '../http/rate-limit.js';
+import { makeEmailTransport } from '../email/transport.js';
+import { EmailService } from '../email/service.js';
 import type { ScheduleFn } from '../room/room.js';
 import type { GatewayContext } from '../ws/context.js';
 import type { RawSocket } from '../ws/connection.js';
@@ -134,6 +136,8 @@ export function buildTestContext(opts: { clock?: FakeClock; testModeEnv?: boolea
     nameOf,
     // Store is non-persistent in tests ⇒ limiter disabled (every guard a no-op).
     rateLimit: makeRateLimiter(store.persistent),
+    // No SMTP in tests ⇒ log transport (the email flows are inert/no-op output).
+    email: new EmailService(makeEmailTransport(cfg.email), cfg),
   };
   return { ctx, store };
 }

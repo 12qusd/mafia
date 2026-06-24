@@ -29,6 +29,9 @@ import { registerForumRoutes } from './http/forum-routes.js';
 import { registerAdminRoutes } from './http/admin-routes.js';
 import { registerTestRoutes } from './http/test-routes.js';
 import { makeRateLimiter } from './http/rate-limit.js';
+import { makeEmailTransport } from './email/transport.js';
+import { EmailService } from './email/service.js';
+import { registerAccountRoutes } from './http/account-routes.js';
 import { BotManager, type BotLlmConfig } from './bots/manager.js';
 import { log } from './log.js';
 
@@ -122,6 +125,10 @@ export async function buildApp(cfg: ServerConfig): Promise<BuiltApp> {
   // NO_DB test suite (which hammers auth/account endpoints) is never throttled.
   const rateLimit = makeRateLimiter(store.persistent);
 
+  // Account-lifecycle email: SMTP when configured, else a log transport (so the
+  // reset/verify/welcome flows are fully functional in dev/unconfigured prod).
+  const email = new EmailService(makeEmailTransport(cfg.email), cfg);
+
   const ctx: GatewayContext = {
     cfg,
     store,
@@ -131,6 +138,7 @@ export async function buildApp(cfg: ServerConfig): Promise<BuiltApp> {
     telemetry,
     nameOf,
     rateLimit,
+    email,
   };
 
   // Capture names when identities are bound (the gateway calls onIdentityBound).
@@ -168,6 +176,7 @@ export async function buildApp(cfg: ServerConfig): Promise<BuiltApp> {
 
   registerPublicRoutes(app, ctx);
   registerAuthRoutes(app, ctx);
+  registerAccountRoutes(app, ctx);
   registerSetupRoutes(app, ctx);
   registerPreferencesRoutes(app, ctx);
   registerSocialRoutes(app, ctx);

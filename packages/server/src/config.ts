@@ -44,6 +44,25 @@ export interface ServerConfig {
   llmApiKey: string | undefined;
   llmMaxConcurrency: number;
   llmTimeoutMs: number;
+  /**
+   * Outbound email (account lifecycle: password reset, verification, welcome).
+   * When `smtpHost` is unset the transport LOGS each message instead of sending
+   * (so the flows are fully functional in dev/unconfigured prod — the operator
+   * just drops in SMTP creds later). No secrets ever live in code.
+   */
+  email: EmailConfig;
+  /** Base URL used to build email links (reset / verify). Default mafia.0cs.me. */
+  publicBaseUrl: string;
+}
+
+/** SMTP knobs (all from env). `smtpHost` unset ⇒ LogTransport (dev/unconfigured). */
+export interface EmailConfig {
+  smtpHost: string | undefined;
+  smtpPort: number;
+  smtpUser: string | undefined;
+  smtpPass: string | undefined;
+  /** From address on every outgoing message. */
+  from: string;
 }
 
 /**
@@ -104,5 +123,13 @@ export function loadConfig(env: NodeJS.ProcessEnv = process.env): ServerConfig {
     llmApiKey: env.LLM_API_KEY,
     llmMaxConcurrency: envInt('LLM_MAX_CONCURRENCY', 2),
     llmTimeoutMs: envInt('LLM_TIMEOUT_MS', 8000),
+    email: {
+      smtpHost: env.SMTP_HOST,
+      smtpPort: envInt('SMTP_PORT', 587),
+      smtpUser: env.SMTP_USER,
+      smtpPass: env.SMTP_PASS,
+      from: env.SMTP_FROM ?? 'Nocturne <no-reply@mafia.0cs.me>',
+    },
+    publicBaseUrl: (env.PUBLIC_BASE_URL ?? 'https://mafia.0cs.me').replace(/\/+$/, ''),
   };
 }
