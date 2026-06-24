@@ -13,7 +13,7 @@
  * `FactionTag` (colorblind requirement, never color alone).
  */
 
-import { useEffect, useMemo, useRef, useState } from 'react';
+import { useMemo, useRef, useState } from 'react';
 import {
   ALL_ROLES,
   FACTIONS,
@@ -22,6 +22,7 @@ import {
 } from '@nocturne/shared';
 import { FactionTag } from './common.js';
 import { FACTION_LABEL, GLOSSARY } from '../lib/strings-extra.js';
+import { useModalA11y } from '../lib/useModalA11y.js';
 
 /** Faction grouping order for the section headers (Town first, neutrals last). */
 const FACTION_ORDER: readonly Faction[] = [
@@ -114,21 +115,11 @@ function GlossaryEntry({ def }: { def: RoleDefinition }) {
 export function Glossary({ open, onClose }: { open: boolean; onClose: () => void }) {
   const [query, setQuery] = useState('');
   const searchRef = useRef<HTMLInputElement>(null);
+  const dialogRef = useRef<HTMLDivElement>(null);
 
-  // Esc to close + focus the search field when the modal opens.
-  useEffect(() => {
-    if (!open) return;
-    const onKey = (e: KeyboardEvent) => {
-      if (e.key === 'Escape') onClose();
-    };
-    document.addEventListener('keydown', onKey);
-    // Focus after paint so the dialog is in the DOM.
-    const t = setTimeout(() => searchRef.current?.focus(), 0);
-    return () => {
-      document.removeEventListener('keydown', onKey);
-      clearTimeout(t);
-    };
-  }, [open, onClose]);
+  // Focus management: trap Tab, Esc to close, restore focus to the trigger on
+  // close, and focus the search field first (shared modal-a11y hook).
+  useModalA11y(dialogRef, open, { onClose, initialFocus: searchRef });
 
   // Filter by role name, faction key, or faction label (case-insensitive).
   const filtered = useMemo(() => {
@@ -165,16 +156,17 @@ export function Glossary({ open, onClose }: { open: boolean; onClose: () => void
       data-testid="glossary-overlay"
     >
       <div
+        ref={dialogRef}
         className="panel glossary-modal"
         role="dialog"
         aria-modal="true"
-        aria-label={GLOSSARY.heading}
+        aria-labelledby="glossary-title"
         onClick={(e) => e.stopPropagation()}
       >
         <div className="glossary-header">
           <div className="spread">
             <div className="stack" style={{ gap: 2 }}>
-              <h2 className="glossary-title">{GLOSSARY.heading}</h2>
+              <h2 className="glossary-title" id="glossary-title">{GLOSSARY.heading}</h2>
               <span className="faint">{GLOSSARY.sub}</span>
             </div>
             <button

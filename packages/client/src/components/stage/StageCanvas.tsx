@@ -140,6 +140,15 @@ export default function StageCanvas() {
     return () => window.clearTimeout(id);
   }, [deathFeed, ownSeat, tier, seatNameOf]);
 
+  // Performance: on narrow viewports (phones/tablets) cap the device-pixel-ratio
+  // and drop MSAA so the WebGL fill cost stays bounded on mobile GPUs. Desktop
+  // keeps the crisper [1, 1.75] range with antialiasing. Computed once at mount
+  // (a stage remount on resize is unnecessary for this perf gate).
+  const narrow =
+    typeof window !== 'undefined' && window.matchMedia?.('(max-width: 820px)').matches;
+  const maxDpr = narrow ? Math.min(window.devicePixelRatio || 1, 1.5) : 1.75;
+  const antialias = !narrow;
+
   // Pause work when the tab is hidden; resume with a brief render window.
   const [hidden, setHidden] = useState<boolean>(
     typeof document !== 'undefined' ? document.hidden : false,
@@ -157,8 +166,8 @@ export default function StageCanvas() {
   return (
     <Canvas
       frameloop={hidden ? 'never' : 'demand'}
-      dpr={[1, 1.75]}
-      gl={{ antialias: true, alpha: false, powerPreference: 'low-power' }}
+      dpr={[1, maxDpr]}
+      gl={{ antialias, alpha: false, powerPreference: 'low-power' }}
       camera={{ position: [0, 0, 12], fov: 55 }}
       style={{ width: '100%', height: '100%' }}
     >

@@ -2443,3 +2443,39 @@ Gate green across all three: tests 818 (shared 211 / engine 234 / client 167 /
 server 167 / bots 39); eslint 0; leak 0/200. DB migrated (2a tables). Known minor
 follow-up: the recent-games strip shows the 'completed' status rather than the
 winning faction (matches.outcome stores status, not winner) — deferred to the UX pass.
+
+---
+
+## Production-readiness Wave 3 — accessibility + UX polish
+
+Client-only pass (no engine/server/transport/leak-path). Audit a11y findings closed.
+
+- **Keyboard**: roster seat names + chat author names were clickable `<span>`s →
+  real `<button>` (whisper-arming + seat-select, a core mechanic, now keyboard-
+  reachable) with `:focus-visible` rings. Skip-to-main link + `<main id>` landmark;
+  topbar `<nav aria-label>`; tablist + arrow-key roving-tabindex on chat/leaderboard/
+  director/community tabs.
+- **Screen readers**: chat log `role="log"`+`aria-live="polite"`; new `LiveAnnouncer`
+  (`.sr-only` assertive region) announces phase/day/death/verdict transitions.
+- **Focus mgmt**: reusable `useModalA11y` (focus-in, Tab trap, Escape, restore-to-
+  trigger) on Glossary, QuickPlay overlay, ForceUpdate, GameOver, mobile nav drawer;
+  `role="dialog"`+`aria-modal`+labels.
+- **Contrast (AA)**: `--c-text-faint` #6f6b60 (~2.9–3.7:1) → #948f80 (4.82:1 worst).
+  New AA text tokens `--c-error #d96b70` (5.13:1) + `--c-verdigris-text #6fb3a0`
+  (7.05:1) for field validation.
+- **Forms**: `<label htmlFor>`/`aria-invalid`/`aria-describedby`/`role=alert` +
+  visible error borders + `{len}/{max}` char counters across auth/profile/forum/
+  setup/reset; inline success on profile edit.
+- **Touch/mobile**: `.chat-tab`+`.btn-sm`→44px, desktop `.btn`≥40px; Replay roster
+  table horizontally scrollable; setup-builder ≤560px single-column.
+- **Perf**: 14 non-initial routes `React.lazy`+Suspense (noir fallback) → initial JS
+  558→456 kB (gzip 162→137); three.js StageCanvas stays lazy + mobile DPR capped at
+  1.5 / antialias off ≤820px.
+- Polish: recent-games strip drops the noise `completed` token (now setup·Np·time);
+  `InlineLoader` spinners + `aria-busy` replace bare "Loading…". +7 client tests.
+
+Known minor follow-up: the create-table TEST MODE toggle still renders for non-admins
+(server already rejects it in production — security boundary holds — but the UI should
+hide it unless me.isAdmin).
+
+Gate green: build clean; tests 825 (client 174); eslint 0; leak 0/200.

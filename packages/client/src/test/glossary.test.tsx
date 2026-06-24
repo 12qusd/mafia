@@ -109,7 +109,9 @@ describe('Glossary — "The Cast"', () => {
     render(<Glossary open onClose={() => {}} />);
     const dialog = screen.getByRole('dialog');
     expect(dialog).toHaveAttribute('aria-modal', 'true');
-    expect(dialog).toHaveAttribute('aria-label');
+    // Labelled via aria-labelledby → the visible <h2 id="glossary-title"> heading.
+    expect(dialog).toHaveAttribute('aria-labelledby', 'glossary-title');
+    expect(document.getElementById('glossary-title')?.textContent).toBeTruthy();
   });
 
   it('derives a non-empty ability summary for every role', () => {

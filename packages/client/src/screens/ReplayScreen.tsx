@@ -64,9 +64,10 @@ export function ReplayScreen() {
 
   if (loading) {
     return (
-      <div className="page center" style={{ minHeight: '40vh' }}>
-        <div className="panel panel-pad center">
-          <span className="muted">{REPLAY.loading}</span>
+      <div className="page center" style={{ minHeight: '40vh' }} aria-busy="true">
+        <div className="route-loading" role="status" aria-live="polite">
+          <div className="noir-spinner" aria-hidden="true" />
+          <span className="faint route-loading-text">{REPLAY.loading}</span>
         </div>
       </div>
     );
@@ -142,6 +143,7 @@ export function ReplayScreen() {
         {/* Final roster. */}
         <div className="panel panel-pad stack">
           <DecoHead>{REPLAY.roster}</DecoHead>
+          <div className="table-scroll">
           <table className="reveal-table">
             <thead>
               <tr>
@@ -184,6 +186,7 @@ export function ReplayScreen() {
               })}
             </tbody>
           </table>
+          </div>
         </div>
 
         {/* Timeline scrubber. */}

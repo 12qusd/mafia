@@ -555,12 +555,28 @@ export function DirectorPanel({ state, roomId }: { state: DebugState; roomId: st
 
       {!collapsed && (
         <div className="director-body">
-          <nav className="director-tabs" role="tablist">
+          <nav
+            className="director-tabs"
+            role="tablist"
+            aria-label="Director sections"
+            onKeyDown={(e) => {
+              if (e.key !== 'ArrowRight' && e.key !== 'ArrowLeft') return;
+              e.preventDefault();
+              const idx = SECTIONS.findIndex((s) => s.id === section);
+              const dir = e.key === 'ArrowRight' ? 1 : -1;
+              const next = SECTIONS[(idx + dir + SECTIONS.length) % SECTIONS.length]!;
+              setSection(next.id);
+              document.getElementById(`director-tab-${next.id}`)?.focus();
+            }}
+          >
             {SECTIONS.map((s) => (
               <button
                 key={s.id}
+                id={`director-tab-${s.id}`}
                 role="tab"
                 aria-selected={section === s.id}
+                aria-controls="director-tabpanel"
+                tabIndex={section === s.id ? 0 : -1}
                 className={`btn btn-sm ${section === s.id ? 'btn-active' : ''}`}
                 onClick={() => setSection(s.id)}
               >
@@ -568,7 +584,12 @@ export function DirectorPanel({ state, roomId }: { state: DebugState; roomId: st
               </button>
             ))}
           </nav>
-          <div className="director-section">
+          <div
+            id="director-tabpanel"
+            role="tabpanel"
+            aria-labelledby={`director-tab-${section}`}
+            className="director-section"
+          >
             {section === 'board' && <BoardSection state={state} />}
             {section === 'intents' && <IntentsSection state={state} />}
             {section === 'votes' && <VotesSection state={state} />}

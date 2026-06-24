@@ -31,6 +31,7 @@ export function ForgotPasswordScreen() {
 
   return (
     <div className="page stack" style={{ maxWidth: 480 }}>
+      <h1 className="sr-only">{ACCOUNT.forgotHeading}</h1>
       <div className="panel panel-pad stack">
         <DecoHead>{ACCOUNT.forgotHeading}</DecoHead>
         {sent ? (
@@ -43,18 +44,26 @@ export function ForgotPasswordScreen() {
         ) : (
           <>
             <p className="muted">{ACCOUNT.forgotSub}</p>
-            <div>
-              <label>{ACCOUNT.forgotIdentifierLabel}</label>
+            <div className="field">
+              <label htmlFor="forgot-identifier">{ACCOUNT.forgotIdentifierLabel}</label>
               <input
+                id="forgot-identifier"
                 value={identifier}
                 maxLength={254}
+                autoComplete="username"
+                aria-invalid={!!error}
+                aria-describedby={error ? 'forgot-error' : undefined}
                 onChange={(e) => setIdentifier(e.target.value)}
                 onKeyDown={(e) => {
                   if (e.key === 'Enter') void submit();
                 }}
               />
             </div>
-            {error && <div className="error-text">{error}</div>}
+            {error && (
+              <div className="error-text" id="forgot-error" role="alert">
+                {error}
+              </div>
+            )}
             <button className="btn btn-primary" disabled={busy} onClick={() => void submit()}>
               {ACCOUNT.forgotSubmit}
             </button>

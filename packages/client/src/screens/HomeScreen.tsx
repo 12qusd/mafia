@@ -3,13 +3,13 @@
  * create lobby, and the public lobby browser (auto-refreshing).
  */
 
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { useNavigate, Link } from 'react-router-dom';
 import { strings, SETUPS, MIN_PLAYERS, MAX_PLAYERS, type LobbyVisibility } from '@nocturne/shared';
 import { useStore } from '../store/store.js';
 import { conn } from '../ws/connection.js';
 import { useLobbyNav } from '../components/useLobbyNav.js';
-import { DecoHead, Switch, TestBadge } from '../components/common.js';
+import { DecoHead, Switch, TestBadge, CharCount } from '../components/common.js';
 import { ProfilePanel } from '../components/ProfilePanel.js';
 import { SetupPicker } from '../components/SetupPicker.js';
 import { HOME, ONBOARD, SOCIAL_PROOF } from '../lib/strings-extra.js';
@@ -21,6 +21,7 @@ import {
   saveOnboardDismissed,
 } from '../lib/storage.js';
 import { timeAgo } from '../lib/social.js';
+import { useModalA11y } from '../lib/useModalA11y.js';
 import { refreshMe } from '../lib/me.js';
 import * as api from '../lib/api.js';
 import { createLobby, joinLobby, quickPlay, rankedPlay, leaveQueue } from '../ws/actions.js';
@@ -191,17 +192,20 @@ function SocialProof() {
         <span className="fresh">
           <span className="fresh-label faint">{SOCIAL_PROOF.freshHeading}:</span>
           {recent.map((g) => {
-            const faction = factionLabel(g.outcome);
-            const result = faction ? SOCIAL_PROOF.result(faction) : SOCIAL_PROOF.draw;
+            const setup = sanitizeInline(g.setupId);
+            // The server's `outcome` is just the "completed" status for every
+            // finished game — uninformative, so we omit it and show the cleaner
+            // setup · players · relative-time line (winner derivation is out of
+            // scope). The title mirrors the visible text for the tooltip.
+            const meta = `${SOCIAL_PROOF.players(g.players)} · ${timeAgo(g.endedAt)}`;
             return (
               <Link
                 key={g.id}
                 className="fresh-item"
                 to={`/replay/${encodeURIComponent(g.id)}`}
-                title={`${result} · ${sanitizeInline(g.setupId)}`}
+                title={`${setup} · ${meta}`}
               >
-                <span className="fresh-setup">{sanitizeInline(g.setupId)}</span>
-                <span className="faint"> · {result}</span>
+                <span className="fresh-setup">{setup}</span>
                 <span className="faint"> · {SOCIAL_PROOF.players(g.players)}</span>
                 <span className="faint"> · {timeAgo(g.endedAt)}</span>
               </Link>
@@ -214,17 +218,6 @@ function SocialProof() {
 }
 
 /**
- * Human faction label for a recent-game outcome token (TOWN → "Town"), or null
- * for a draw/unknown so the strip shows "A draw" instead.
- */
-function factionLabel(outcome: string | null): string | null {
-  if (!outcome) return null;
-  const cleaned = outcome.replace(/_/g, ' ').trim().toLowerCase();
-  if (cleaned.length === 0) return null;
-  return cleaned.replace(/\b\w/g, (c) => c.toUpperCase());
-}
-
-/**
  * "Finding a table…" overlay, shown while the player is in the quick-play queue
  * (`matchmaking` slice, server-sourced). A Cancel sends `leave_queue`; once a
  * table forms the matchmaking slice clears (lobby_state/game_started arrives)
@@ -232,14 +225,20 @@ function factionLabel(outcome: string | null): string | null {
  */
 function QuickPlayOverlay() {
   const matchmaking = useStore((s) => s.matchmaking);
+  const dialogRef = useRef<HTMLDivElement>(null);
+  const matched = matchmaking?.state === 'matched';
+  // Esc cancels the search while still queuing (no-op once matched — the table
+  // is forming and the overlay clears itself). Focus is trapped on the dialog.
+  useModalA11y(dialogRef, !!matchmaking && !matched, {
+    onClose: () => leaveQueue(),
+  });
   if (!matchmaking) return null;
-  const matched = matchmaking.state === 'matched';
   const ranked = matchmaking.mode === 'ranked';
   const searchTitle = ranked ? HOME.rankedSearching : HOME.quickPlaySearching;
   const searchSub = ranked ? HOME.rankedSearchingSub : HOME.quickPlaySearchingSub;
   return (
     <div className="overlay" role="dialog" aria-modal="true" aria-label={searchTitle}>
-      <div className="modal quickplay-modal">
+      <div className="modal quickplay-modal" ref={dialogRef}>
         <div className="panel panel-pad">
           <div className="qp-spinner" aria-hidden="true" />
           <h2 className="qp-title">{matched ? HOME.quickPlayMatched : searchTitle}</h2>
@@ -306,37 +305,66 @@ function AuthCard() {
       ) : null}
 
       {mode === 'guest' && (
-        <div>
-          <label>{HOME.guestNameLabel}</label>
+        <div className="field">
+          <label htmlFor="auth-guest-name">{HOME.guestNameLabel}</label>
           <input
+            id="auth-guest-name"
             value={guestName}
             maxLength={24}
             placeholder={HOME.newGuestName}
+            aria-invalid={!!error}
+            aria-describedby={error ? 'auth-error' : 'auth-guest-name-count'}
             onChange={(e) => setGuestName(e.target.value)}
           />
+          <CharCount id="auth-guest-name-count" len={guestName.length} max={24} />
         </div>
       )}
 
       {mode !== 'guest' && (
         <>
-          <div>
-            <label>{HOME.usernameLabel}</label>
-            <input value={username} onChange={(e) => setUsername(e.target.value)} />
+          <div className="field">
+            <label htmlFor="auth-username">{HOME.usernameLabel}</label>
+            <input
+              id="auth-username"
+              value={username}
+              autoComplete="username"
+              aria-invalid={!!error}
+              aria-describedby={error ? 'auth-error' : undefined}
+              onChange={(e) => setUsername(e.target.value)}
+            />
           </div>
-          <div>
-            <label>{HOME.passwordLabel}</label>
-            <input type="password" value={password} onChange={(e) => setPassword(e.target.value)} />
+          <div className="field">
+            <label htmlFor="auth-password">{HOME.passwordLabel}</label>
+            <input
+              id="auth-password"
+              type="password"
+              value={password}
+              autoComplete={mode === 'register' ? 'new-password' : 'current-password'}
+              aria-invalid={!!error}
+              aria-describedby={error ? 'auth-error' : undefined}
+              onChange={(e) => setPassword(e.target.value)}
+            />
           </div>
           {mode === 'register' && (
-            <div>
-              <label>{HOME.emailLabel}</label>
-              <input type="email" value={email} onChange={(e) => setEmail(e.target.value)} />
+            <div className="field">
+              <label htmlFor="auth-email">{HOME.emailLabel}</label>
+              <input
+                id="auth-email"
+                type="email"
+                value={email}
+                autoComplete="email"
+                onChange={(e) => setEmail(e.target.value)}
+              />
             </div>
           )}
         </>
       )}
 
-      {error && <div className="error-text">{error}</div>}
+      {error && (
+        <div className="error-text" id="auth-error" role="alert">
+          {error}
+        </div>
+      )}
 
       <button className="btn btn-primary" disabled={busy} onClick={submit}>
         {mode === 'guest'

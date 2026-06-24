@@ -39,6 +39,7 @@ export function ResetPasswordScreen() {
 
   return (
     <div className="page stack" style={{ maxWidth: 480 }}>
+      <h1 className="sr-only">{ACCOUNT.resetHeading}</h1>
       <div className="panel panel-pad stack">
         <DecoHead>{ACCOUNT.resetHeading}</DecoHead>
         {!token ? (
@@ -58,28 +59,40 @@ export function ResetPasswordScreen() {
         ) : (
           <>
             <p className="muted">{ACCOUNT.resetSub}</p>
-            <div>
-              <label>{ACCOUNT.resetPasswordLabel}</label>
+            <div className="field">
+              <label htmlFor="reset-password">{ACCOUNT.resetPasswordLabel}</label>
               <input
+                id="reset-password"
                 type="password"
                 value={password}
                 maxLength={200}
+                autoComplete="new-password"
+                aria-invalid={!!error}
+                aria-describedby={error ? 'reset-error' : undefined}
                 onChange={(e) => setPassword(e.target.value)}
               />
             </div>
-            <div>
-              <label>{ACCOUNT.resetConfirmLabel}</label>
+            <div className="field">
+              <label htmlFor="reset-confirm">{ACCOUNT.resetConfirmLabel}</label>
               <input
+                id="reset-confirm"
                 type="password"
                 value={confirm}
                 maxLength={200}
+                autoComplete="new-password"
+                aria-invalid={!!error}
+                aria-describedby={error ? 'reset-error' : undefined}
                 onChange={(e) => setConfirm(e.target.value)}
                 onKeyDown={(e) => {
                   if (e.key === 'Enter') void submit();
                 }}
               />
             </div>
-            {error && <div className="error-text">{error}</div>}
+            {error && (
+              <div className="error-text" id="reset-error" role="alert">
+                {error}
+              </div>
+            )}
             <button className="btn btn-primary" disabled={busy} onClick={() => void submit()}>
               {busy ? ACCOUNT.resetBusy : ACCOUNT.resetSubmit}
             </button>

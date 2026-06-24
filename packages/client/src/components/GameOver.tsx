@@ -12,6 +12,7 @@ import { PointsCelebration } from './PointsCelebration.js';
 import { GAME, WINNER_LABEL, OUTCOME_LABEL, POINTS, SHARE } from '../lib/strings-extra.js';
 import { sanitizeInline } from '../lib/sanitize.js';
 import { copyReplayLink } from '../lib/social.js';
+import { useModalA11y } from '../lib/useModalA11y.js';
 import { leaveLobby, playAgain, quickPlay } from '../ws/actions.js';
 
 // Stable empty reference (avoids the Zustand v5 fresh-array selector loop, #185).
@@ -32,6 +33,10 @@ export function GameOver() {
   // lobby appears within the grace window, we fall back to Quick Play (§7.7).
   const [rematching, setRematching] = useState(false);
   const fellBack = useRef(false);
+  const dialogRef = useRef<HTMLDivElement>(null);
+  // Trap focus within the terminal game-over modal. It is not Escape-dismissable
+  // (the player chooses Play Again / Leave), so onClose is a no-op.
+  useModalA11y(dialogRef, !!over, { onClose: () => {} });
 
   useEffect(() => {
     if (!rematching) return;
@@ -67,8 +72,15 @@ export function GameOver() {
 
   return (
     <div className="overlay">
-      <div className="panel panel-pad modal stack gameover-modal" style={{ maxWidth: 680 }}>
-        <div className="win-result">{GAME.gameOver}</div>
+      <div
+        ref={dialogRef}
+        className="panel panel-pad modal stack gameover-modal"
+        style={{ maxWidth: 680 }}
+        role="dialog"
+        aria-modal="true"
+        aria-labelledby="gameover-title"
+      >
+        <div className="win-result" id="gameover-title">{GAME.gameOver}</div>
         <div className="stack" style={{ alignItems: 'center' }}>
           {over.winners.map((w) => (
             <div key={w} className="win-loss win" style={{ fontFamily: 'var(--font-display)' }}>

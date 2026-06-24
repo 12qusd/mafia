@@ -28,6 +28,7 @@ import { PrivateLog } from '../components/PrivateLog.js';
 import { DirectorGate } from '../components/DirectorPanel.js';
 import { AdminPanel } from '../components/AdminPanel.js';
 import { AnimationStage } from '../components/AnimationStage.js';
+import { LiveAnnouncer } from '../components/LiveAnnouncer.js';
 import { TestBadge } from '../components/common.js';
 import { GAME_MOBILE_PANES, type GameMobilePane } from '../components/gameMobilePanes.js';
 import { useLobbyNav } from '../components/useLobbyNav.js';
@@ -119,6 +120,7 @@ export function GameScreen() {
   return (
     <>
       <AnimationStage />
+      <LiveAnnouncer />
       {testMode && (
         <div className="row" style={{ margin: '4px 8px 0', justifyContent: 'flex-end' }}>
           <TestBadge />

@@ -10,7 +10,7 @@
 import { useEffect, useState } from 'react';
 import { Link, useParams, useNavigate } from 'react-router-dom';
 import { useStore } from '../store/store.js';
-import { DecoHead } from '../components/common.js';
+import { DecoHead, CharCount } from '../components/common.js';
 import { FORUM } from '../lib/strings-extra.js';
 import { sanitizeInline } from '../lib/sanitize.js';
 import { timeAgo } from '../lib/social.js';
@@ -121,23 +121,33 @@ export function BoardScreen() {
         <div className="panel panel-pad stack forum-composer">
           <DecoHead>{FORUM.newTopicHeading}</DecoHead>
           <form className="stack" onSubmit={submit} style={{ gap: 10 }}>
-            <input
-              className="board-input"
-              value={title}
-              onChange={(e) => setTitle(e.target.value.slice(0, TITLE_MAX))}
-              placeholder={FORUM.titlePlaceholder}
-              maxLength={TITLE_MAX}
-              aria-label={FORUM.titleLabel}
-            />
-            <textarea
-              className="forum-textarea"
-              value={body}
-              onChange={(e) => setBody(e.target.value.slice(0, BODY_MAX))}
-              placeholder={FORUM.bodyPlaceholder}
-              maxLength={BODY_MAX}
-              rows={6}
-              aria-label={FORUM.bodyLabel}
-            />
+            <div className="field">
+              <label htmlFor="forum-title">{FORUM.titleLabel}</label>
+              <input
+                id="forum-title"
+                className="board-input"
+                value={title}
+                onChange={(e) => setTitle(e.target.value.slice(0, TITLE_MAX))}
+                placeholder={FORUM.titlePlaceholder}
+                maxLength={TITLE_MAX}
+                aria-describedby="forum-title-count"
+              />
+              <CharCount id="forum-title-count" len={title.length} max={TITLE_MAX} />
+            </div>
+            <div className="field">
+              <label htmlFor="forum-body">{FORUM.bodyLabel}</label>
+              <textarea
+                id="forum-body"
+                className="forum-textarea"
+                value={body}
+                onChange={(e) => setBody(e.target.value.slice(0, BODY_MAX))}
+                placeholder={FORUM.bodyPlaceholder}
+                maxLength={BODY_MAX}
+                rows={6}
+                aria-describedby="forum-body-count"
+              />
+              <CharCount id="forum-body-count" len={body.length} max={BODY_MAX} />
+            </div>
             <div className="row" style={{ gap: 8 }}>
               <button
                 type="submit"

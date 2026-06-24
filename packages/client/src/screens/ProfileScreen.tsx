@@ -14,7 +14,7 @@ import { useEffect, useState } from 'react';
 import { Link, useNavigate, useParams } from 'react-router-dom';
 import { ACHIEVEMENTS_BY_KEY } from '@nocturne/shared';
 import { useStore } from '../store/store.js';
-import { DecoHead, TierBadge, RankBadge } from '../components/common.js';
+import { DecoHead, TierBadge, RankBadge, CharCount, InlineLoader } from '../components/common.js';
 import { PUBLIC_PROFILE } from '../lib/strings-extra.js';
 import { sanitizeInline, sanitizeText } from '../lib/sanitize.js';
 import { ACCENT_OPTIONS, memberSinceLabel, normalizeAccent, isOnline } from '../lib/social.js';
@@ -53,7 +53,7 @@ export function ProfileScreen() {
     return (
       <div className="page stack">
         <div className="panel panel-pad center" style={{ minHeight: 120 }}>
-          <span className="muted">{PUBLIC_PROFILE.loading}</span>
+          <InlineLoader label={PUBLIC_PROFILE.loading} />
         </div>
       </div>
     );
@@ -227,6 +227,8 @@ function EditForm({ profile, onSaved }: { profile: PublicProfile; onSaved: () =>
   const [bio, setBio] = useState(profile.bio ?? '');
   const [accent, setAccent] = useState(normalizeAccent(profile.accent));
   const [saving, setSaving] = useState(false);
+  const [saved, setSaved] = useState(false);
+  const [error, setError] = useState(false);
 
   if (!open) {
     return (
@@ -241,6 +243,7 @@ function EditForm({ profile, onSaved }: { profile: PublicProfile; onSaved: () =>
   async function save(e: React.FormEvent): Promise<void> {
     e.preventDefault();
     setSaving(true);
+    setError(false);
     const ok = await api.saveProfile({
       tagline: tagline.slice(0, 80),
       bio: bio.slice(0, 500),
@@ -249,9 +252,10 @@ function EditForm({ profile, onSaved }: { profile: PublicProfile; onSaved: () =>
     setSaving(false);
     if (ok) {
       pushInfo(PUBLIC_PROFILE.saved);
-      setOpen(false);
+      setSaved(true);
       onSaved();
     } else {
+      setError(true);
       pushInfo(PUBLIC_PROFILE.saveFailed);
     }
   }
@@ -259,23 +263,39 @@ function EditForm({ profile, onSaved }: { profile: PublicProfile; onSaved: () =>
   return (
     <form className="stack profile-edit" onSubmit={save}>
       <DecoHead>{PUBLIC_PROFILE.editHeading}</DecoHead>
-      <input
-        className="board-input"
-        value={tagline}
-        onChange={(e) => setTagline(e.target.value.slice(0, 80))}
-        placeholder={PUBLIC_PROFILE.taglinePlaceholder}
-        maxLength={80}
-        aria-label={PUBLIC_PROFILE.taglinePlaceholder}
-      />
-      <textarea
-        className="board-input profile-bio-input"
-        value={bio}
-        onChange={(e) => setBio(e.target.value.slice(0, 500))}
-        placeholder={PUBLIC_PROFILE.bioPlaceholder}
-        maxLength={500}
-        rows={4}
-        aria-label={PUBLIC_PROFILE.bioPlaceholder}
-      />
+      <div className="field">
+        <label htmlFor="profile-tagline">{PUBLIC_PROFILE.taglinePlaceholder}</label>
+        <input
+          id="profile-tagline"
+          className="board-input"
+          value={tagline}
+          onChange={(e) => {
+            setTagline(e.target.value.slice(0, 80));
+            setSaved(false);
+          }}
+          placeholder={PUBLIC_PROFILE.taglinePlaceholder}
+          maxLength={80}
+          aria-describedby="profile-tagline-count"
+        />
+        <CharCount id="profile-tagline-count" len={tagline.length} max={80} />
+      </div>
+      <div className="field">
+        <label htmlFor="profile-bio">{PUBLIC_PROFILE.bioPlaceholder}</label>
+        <textarea
+          id="profile-bio"
+          className="board-input profile-bio-input"
+          value={bio}
+          onChange={(e) => {
+            setBio(e.target.value.slice(0, 500));
+            setSaved(false);
+          }}
+          placeholder={PUBLIC_PROFILE.bioPlaceholder}
+          maxLength={500}
+          rows={4}
+          aria-describedby="profile-bio-count"
+        />
+        <CharCount id="profile-bio-count" len={bio.length} max={500} />
+      </div>
       <label className="row" style={{ gap: 8 }}>
         <span className="faint">{PUBLIC_PROFILE.accentLabel}</span>
         <select
@@ -291,6 +311,16 @@ function EditForm({ profile, onSaved }: { profile: PublicProfile; onSaved: () =>
           ))}
         </select>
       </label>
+      {saved && (
+        <div className="field-success" role="status">
+          {PUBLIC_PROFILE.saved}
+        </div>
+      )}
+      {error && (
+        <div className="error-text" role="alert">
+          {PUBLIC_PROFILE.saveFailed}
+        </div>
+      )}
       <div className="row">
         <button type="submit" className="btn btn-sm btn-primary" disabled={saving}>
           {saving ? PUBLIC_PROFILE.saving : PUBLIC_PROFILE.save}

@@ -85,11 +85,31 @@ export function CommunityScreen() {
         <div className="stack community-side">
           <div className="panel panel-pad stack">
             <DecoHead>{COMMUNITY.channelsHeading}</DecoHead>
-            <div className="channel-list">
+            <div
+              className="channel-list"
+              role="tablist"
+              aria-label={COMMUNITY.channelsHeading}
+              aria-orientation="vertical"
+              onKeyDown={(e) => {
+                if (e.key !== 'ArrowDown' && e.key !== 'ArrowUp') return;
+                e.preventDefault();
+                const idx = channels.findIndex((c) => c.slug === activeSlug);
+                const dir = e.key === 'ArrowDown' ? 1 : -1;
+                const next = channels[(idx + dir + channels.length) % channels.length];
+                if (next) {
+                  setActiveSlug(next.slug);
+                  document.getElementById(`channel-tab-${next.slug}`)?.focus();
+                }
+              }}
+            >
               {channels.map((c) => (
                 <button
                   key={c.slug}
+                  id={`channel-tab-${c.slug}`}
                   type="button"
+                  role="tab"
+                  aria-selected={c.slug === activeSlug}
+                  tabIndex={c.slug === activeSlug ? 0 : -1}
                   className={`channel-tab ${c.slug === activeSlug ? 'active' : ''}`}
                   onClick={() => setActiveSlug(c.slug)}
                 >

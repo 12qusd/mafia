@@ -129,3 +129,36 @@ export function Switch({
     />
   );
 }
+
+/**
+ * Inline panel loader: a small noir spinner + caption, marked `aria-busy` with a
+ * polite live region so a screen reader knows content is on the way. Use inside a
+ * panel where data is being fetched (leaderboard, forum, profile, …).
+ */
+export function InlineLoader({ label }: { label: string }) {
+  return (
+    <div className="inline-loader" role="status" aria-busy="true" aria-live="polite">
+      <span className="noir-spinner noir-spinner-sm" aria-hidden="true" />
+      <span className="faint">{label}</span>
+    </div>
+  );
+}
+
+/**
+ * A `{len}/{max}` character counter for capped text inputs — the same pattern as
+ * the last-will editor (OwnPanel). Link it to its input via `aria-describedby`
+ * (pass a matching `id`). It turns amber as the limit nears so the cap is visible
+ * before it bites. Decorative-ish, but kept in the a11y tree so SR users hear it.
+ */
+export function CharCount({ id, len, max }: { id?: string; len: number; max: number }) {
+  const near = len >= max * 0.9;
+  return (
+    <span
+      id={id}
+      className={`char-count faint ${near ? 'char-count-near' : ''}`}
+      aria-live="polite"
+    >
+      {len}/{max}
+    </span>
+  );
+}

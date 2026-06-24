@@ -11,6 +11,45 @@
  * All entrance/hover motion is gated behind prefers-reduced-motion.
  */
 
+/* --- Accessibility primitives ------------------------------------------- */
+/* Visually-hidden but available to assistive tech (screen readers). Used for the
+   skip link (made visible on focus), the live-region announcers, and any label
+   that should be read aloud without taking visual space. */
+.sr-only {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  padding: 0;
+  margin: -1px;
+  overflow: hidden;
+  clip: rect(0, 0, 0, 0);
+  white-space: nowrap;
+  border: 0;
+}
+/* The skip-to-content link: the first focusable element, off-screen until it
+   receives keyboard focus, then it slides into the top-left as a brass pill. */
+.skip-link {
+  position: absolute;
+  left: 8px;
+  top: -48px;
+  z-index: 100;
+  padding: 9px 16px;
+  background: var(--grad-brass-btn);
+  color: #1a1206;
+  font-weight: 700;
+  letter-spacing: 0.04em;
+  border-radius: var(--radius);
+  box-shadow: var(--shadow), var(--glow-brass);
+  text-decoration: none;
+  transition: top var(--t-fast) var(--ease-out);
+}
+.skip-link:focus,
+.skip-link:focus-visible {
+  top: 8px;
+  outline: 2px solid var(--c-amber);
+  outline-offset: 2px;
+}
+
 /* --- Generic primitives ------------------------------------------------- */
 /* Panels are FROSTED GLASS: a high-opacity (~84%) tinted gradient over an 8px
    backdrop-blur, framed with a hairline gold edge + layered shadow for depth.
@@ -161,6 +200,9 @@ label {
   display: inline-flex;
   align-items: center;
   justify-content: center;
+  /* Comfortable desktop hit target — min-height (not a fixed height) so dense
+     layouts can still grow with content; padding keeps the look. */
+  min-height: 40px;
   gap: 6px;
   border: 1px solid var(--c-line);
   background: linear-gradient(
@@ -507,6 +549,55 @@ label {
   .qp-spinner {
     animation-duration: 2.4s;
   }
+}
+
+/* Lazy-route Suspense fallback: a centered noir spinner + muted caption. */
+.route-loading {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 14px;
+  min-height: 50vh;
+  padding: var(--sp-6);
+}
+.noir-spinner {
+  width: 40px;
+  height: 40px;
+  border-radius: 50%;
+  border: 3px solid rgba(201, 164, 90, 0.16);
+  border-top-color: var(--c-brass);
+  animation: qp-spin 0.9s linear infinite;
+  box-shadow: var(--glow-brass);
+}
+.route-loading-text {
+  font-family: var(--font-display);
+  letter-spacing: var(--ls-wide);
+  font-size: var(--fs-md);
+}
+@media (prefers-reduced-motion: reduce) {
+  .noir-spinner {
+    animation-duration: 2.4s;
+  }
+}
+
+/* Inline panel loader (data fetch within a screen). */
+.inline-loader {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 10px;
+  min-height: 100px;
+}
+.noir-spinner-sm {
+  width: 22px;
+  height: 22px;
+  border-width: 2px;
+}
+
+/* The main content landmark fills the shell so the route fallback can center. */
+#main {
+  display: block;
 }
 
 .grid-2 {
@@ -886,9 +977,27 @@ label {
   color: var(--c-brass);
   cursor: pointer;
   font-weight: 600;
+  /* Now a real <button> so chat author names are keyboard-reachable (whisper
+     arming). Strip native chrome; keep the brass author styling + focus ring. */
+  appearance: none;
+  -webkit-appearance: none;
+  background: none;
+  border: none;
+  padding: 0;
+  font: inherit;
+  font-weight: 600;
+  border-radius: var(--radius);
 }
-.chat-from:hover {
+.chat-from:hover:not(:disabled) {
   text-decoration: underline;
+}
+.chat-from:disabled {
+  cursor: default;
+  text-decoration: none;
+}
+.chat-from:focus-visible {
+  outline: 2px solid var(--c-amber);
+  outline-offset: 1px;
 }
 .chat-meta {
   color: var(--c-text-faint);
@@ -968,6 +1077,34 @@ label {
 .seat-name {
   font-weight: 600;
   cursor: pointer;
+  /* Now a real <button> for keyboard reachability (whisper-arm / select). Strip
+     the native chrome so it reads as the seat name, but keep it focusable with a
+     deco focus ring. */
+  appearance: none;
+  -webkit-appearance: none;
+  background: none;
+  border: none;
+  padding: 1px 3px;
+  margin: 0 -3px;
+  color: inherit;
+  font: inherit;
+  font-weight: 600;
+  text-align: left;
+  border-radius: var(--radius);
+  max-width: 100%;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.seat-name:hover:not(:disabled) {
+  color: var(--c-amber);
+}
+.seat-name:disabled {
+  cursor: default;
+}
+.seat-name:focus-visible {
+  outline: 2px solid var(--c-amber);
+  outline-offset: 1px;
 }
 .seat-tally {
   font-family: var(--font-display);
@@ -1271,10 +1408,22 @@ label {
 }
 
 /* Reveal table */
+/* Horizontal-scroll wrapper for wide tables on narrow viewports (replay roster,
+   any data table). The table keeps its natural width and the wrapper scrolls. */
+.table-scroll {
+  overflow-x: auto;
+  -webkit-overflow-scrolling: touch;
+}
 .reveal-table {
   width: 100%;
   border-collapse: collapse;
   font-size: calc(13px * var(--scale));
+}
+@media (max-width: 560px) {
+  /* Don't let the roster table crush below a legible width — let it scroll. */
+  .table-scroll .reveal-table {
+    min-width: 460px;
+  }
 }
 .reveal-table th,
 .reveal-table td {
@@ -1435,8 +1584,50 @@ label {
 }
 
 .error-text {
-  color: var(--c-blood);
+  /* Raised from --c-blood (#a3343a, ~2.5:1 — fails AA) to a lighter rose that
+     clears AA (~5.1:1 on the panel) while staying in the noir blood family. */
+  color: var(--c-error);
   font-size: calc(13px * var(--scale));
+}
+
+/* --- Form fields + validation feedback (a11y) --------------------------- */
+.field {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+.field > label {
+  font-size: var(--fs-sm);
+  color: var(--c-text-dim);
+  letter-spacing: 0.02em;
+}
+/* Visible error state: amber/rose border + a matching message. Driven by the
+   aria-invalid attribute so the visual and the a11y signal stay in lockstep. */
+input[aria-invalid='true'],
+textarea[aria-invalid='true'],
+select[aria-invalid='true'] {
+  border-color: var(--c-error);
+  box-shadow: 0 0 0 1px color-mix(in srgb, var(--c-error) 45%, transparent);
+}
+.field-error {
+  color: var(--c-error);
+  font-size: var(--fs-sm);
+  display: flex;
+  align-items: center;
+  gap: 4px;
+}
+.field-success {
+  color: var(--c-verdigris-text);
+  font-size: var(--fs-sm);
+}
+/* Inline character counter ({len}/{max}) — muted, turns amber near the cap. */
+.char-count {
+  font-size: var(--fs-xs);
+  font-variant-numeric: tabular-nums;
+  align-self: flex-end;
+}
+.char-count-near {
+  color: var(--c-amber);
 }
 .pill {
   display: inline-flex;
@@ -2162,6 +2353,23 @@ label {
 .builder-saved-row {
   grid-template-columns: 1.4fr 0.8fr 2fr auto;
 }
+/* Small-screen setup builder: stack the name/desc + range fields, keep slot rows
+   and the saved-setup rows fully reachable (single-column, controls below). */
+@media (max-width: 560px) {
+  .builder-slot {
+    grid-template-columns: 1fr;
+    gap: var(--sp-1);
+  }
+  .builder-slot-preview {
+    justify-content: flex-start;
+  }
+  .builder-saved-row {
+    grid-template-columns: 1fr;
+  }
+  .builder-faction-summary {
+    gap: var(--sp-2);
+  }
+}
 
 /* ===========================================================================
  * ADMIN "HOUSE" PANEL (goal 8) — discreet, blood-accented, distinct from test.
@@ -2623,20 +2831,20 @@ table {
     padding: 11px 16px;
   }
   .btn-sm {
-    min-height: 40px;
-    padding: 8px 12px;
+    min-height: 44px;
+    padding: 10px 12px;
   }
   .target-opt {
     min-height: 44px;
   }
   .chat-tab {
-    min-height: 38px;
+    min-height: 44px;
     display: inline-flex;
     align-items: center;
-    padding: 8px 14px;
+    padding: 10px 14px;
   }
   .seat .btn-sm {
-    min-height: 40px;
+    min-height: 44px;
   }
   /* Roster name + mute/report controls get more room on a phone. */
   .seat-name {

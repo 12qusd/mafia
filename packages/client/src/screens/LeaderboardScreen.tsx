@@ -9,7 +9,7 @@
 import { useEffect, useState } from 'react';
 import { Link } from 'react-router-dom';
 import { useStore } from '../store/store.js';
-import { DecoHead, TierBadge, RankBadge } from '../components/common.js';
+import { DecoHead, TierBadge, RankBadge, InlineLoader } from '../components/common.js';
 import { LEADERBOARD } from '../lib/strings-extra.js';
 import { sanitizeInline } from '../lib/sanitize.js';
 import * as api from '../lib/api.js';
@@ -53,18 +53,35 @@ export function LeaderboardScreen() {
         <p>{LEADERBOARD.sub}</p>
       </div>
 
-      <div className="lb-tabs" role="tablist">
+      <div
+        className="lb-tabs"
+        role="tablist"
+        aria-label={LEADERBOARD.heading}
+        onKeyDown={(e) => {
+          if (e.key !== 'ArrowRight' && e.key !== 'ArrowLeft') return;
+          e.preventDefault();
+          const next = tab === 'casual' ? 'ranked' : 'casual';
+          setTab(next);
+          document.getElementById(`lb-tab-${next}`)?.focus();
+        }}
+      >
         <button
+          id="lb-tab-casual"
           role="tab"
           aria-selected={tab === 'casual'}
+          aria-controls="lb-tabpanel"
+          tabIndex={tab === 'casual' ? 0 : -1}
           className={`btn btn-sm ${tab === 'casual' ? 'btn-primary' : ''}`}
           onClick={() => setTab('casual')}
         >
           {LEADERBOARD.tabCasual}
         </button>
         <button
+          id="lb-tab-ranked"
           role="tab"
           aria-selected={tab === 'ranked'}
+          aria-controls="lb-tabpanel"
+          tabIndex={tab === 'ranked' ? 0 : -1}
           className={`btn btn-sm ${tab === 'ranked' ? 'btn-primary' : ''}`}
           onClick={() => setTab('ranked')}
         >
@@ -72,11 +89,13 @@ export function LeaderboardScreen() {
         </button>
       </div>
 
-      {tab === 'casual' ? (
-        <CasualBoard entries={casual} me={me} />
-      ) : (
-        <RankedBoard entries={ranked} me={me} />
-      )}
+      <div id="lb-tabpanel" role="tabpanel" aria-labelledby={`lb-tab-${tab}`}>
+        {tab === 'casual' ? (
+          <CasualBoard entries={casual} me={me} />
+        ) : (
+          <RankedBoard entries={ranked} me={me} />
+        )}
+      </div>
     </div>
   );
 }
@@ -91,7 +110,7 @@ function CasualBoard({
   if (entries === null) {
     return (
       <div className="panel panel-pad center" style={{ minHeight: 120 }}>
-        <span className="muted">{LEADERBOARD.loading}</span>
+        <InlineLoader label={LEADERBOARD.loading} />
       </div>
     );
   }
@@ -190,7 +209,7 @@ function RankedBoard({
   if (entries === null) {
     return (
       <div className="panel panel-pad center" style={{ minHeight: 120 }}>
-        <span className="muted">{LEADERBOARD.loading}</span>
+        <InlineLoader label={LEADERBOARD.loading} />
       </div>
     );
   }

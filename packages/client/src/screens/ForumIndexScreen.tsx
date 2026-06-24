@@ -10,6 +10,7 @@
 
 import { useEffect, useState } from 'react';
 import { Link } from 'react-router-dom';
+import { InlineLoader } from '../components/common.js';
 import { FORUM } from '../lib/strings-extra.js';
 import { sanitizeInline } from '../lib/sanitize.js';
 import { timeAgo } from '../lib/social.js';
@@ -39,7 +40,7 @@ export function ForumIndexScreen() {
 
       {index === null ? (
         <div className="panel panel-pad center">
-          <span className="faint">{FORUM.loading}</span>
+          <InlineLoader label={FORUM.loading} />
         </div>
       ) : (
         index.map((cat) => (

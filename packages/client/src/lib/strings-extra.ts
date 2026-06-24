@@ -19,6 +19,13 @@ import {
   type DeathCause,
 } from '@nocturne/shared';
 
+/** Cross-cutting accessibility / chrome copy (skip link, nav labels, loaders). */
+export const UI_A11Y = {
+  skipToContent: 'Skip to main content',
+  primaryNav: 'Primary',
+  loading: 'Loading…',
+} as const;
+
 /** Home / auth / lobby-browser copy. */
 export const HOME = {
   heroSub: 'Find your table. Read the room. Survive the night.',
@@ -97,6 +104,17 @@ export const LOBBY = {
 export const GAME = {
   dayNumber: (n: number) => (n === 0 ? 'First light' : `Day ${n}`),
   nightNumber: (n: number) => `Night ${n}`,
+  // Concise screen-reader announcements for the assertive live region.
+  announceNight: (n: number) => `Night ${n}. Night falls.`,
+  announceDawn: (n: number) => `Dawn of day ${n}. A reckoning.`,
+  announceDay: (n: number) => (n === 0 ? 'First light. The town wakes.' : `Day ${n}. The town talks.`),
+  announceVoting: 'Voting. Name a name.',
+  announceTrialDefense: 'A trial begins. The accused has the floor.',
+  announceTrialJudgment: 'The town renders its verdict.',
+  announceExecution: 'Execution at the gallows.',
+  announceDeath: (name: string) => `${name} is dead.`,
+  announceLynched: (name: string) => `${name} was found guilty and lynched.`,
+  announceAcquitted: (name: string) => `${name} was found innocent and walks free.`,
   channelDay: 'Town',
   channelMafia: 'Mafia',
   channelTriad: 'Triad',
@@ -113,7 +131,13 @@ export const GAME = {
   // Blackmailed: a hand over your mouth keeps the day's words behind your teeth.
   chatSilenced: "You've been blackmailed — a hand over your mouth keeps you silent today.",
   whisperHint: 'Tip: /w <seat> message — or click a name to whisper.',
+  /** Accessible label for the live chat log region (per active channel). */
+  chatLogLabel: (channel: string) => `${channel} chat log`,
+  /** Accessible label for the chat channel tablist. */
+  channelTabsLabel: 'Chat channels',
   whisperingTo: (label: string) => `Whispering to ${label}`,
+  /** Accessible label / tooltip for a roster or chat name (keyboard whisper). */
+  whisperTo: (label: string) => `Whisper to ${label}`,
   cancelWhisper: 'Cancel whisper',
   whisperMeta: (from: string, to: string) => `${from} whispers to ${to}`,
   seatHeading: 'The table',

@@ -36,7 +36,7 @@ import {
   type GameSetup,
 } from '@nocturne/shared';
 import { useStore } from '../store/store.js';
-import { DecoHead, FactionTag, RoleChip } from './common.js';
+import { DecoHead, FactionTag, RoleChip, CharCount } from './common.js';
 import { FactionIcon } from './Icons.js';
 import { BUILDER, FACTION_LABEL } from '../lib/strings-extra.js';
 import { sanitizeInline } from '../lib/sanitize.js';
@@ -229,23 +229,29 @@ export function CustomSetupBuilder() {
         <p className="muted" style={{ marginTop: -4 }}>{BUILDER.sub}</p>
 
         <div className="grid-2">
-          <div>
-            <label>{BUILDER.nameLabel}</label>
+          <div className="field">
+            <label htmlFor="setup-name">{BUILDER.nameLabel}</label>
             <input
+              id="setup-name"
               value={name}
               maxLength={DISPLAY_NAME_MAX}
               placeholder={BUILDER.namePlaceholder}
+              aria-describedby="setup-name-count"
               onChange={(e) => setName(e.target.value)}
             />
+            <CharCount id="setup-name-count" len={name.length} max={DISPLAY_NAME_MAX} />
           </div>
-          <div>
-            <label>{BUILDER.descLabel}</label>
+          <div className="field">
+            <label htmlFor="setup-desc">{BUILDER.descLabel}</label>
             <input
+              id="setup-desc"
               value={description}
               maxLength={200}
               placeholder={BUILDER.descPlaceholder}
+              aria-describedby="setup-desc-count"
               onChange={(e) => setDescription(e.target.value)}
             />
+            <CharCount id="setup-desc-count" len={description.length} max={200} />
           </div>
         </div>
 

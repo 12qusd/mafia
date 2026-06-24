@@ -21,7 +21,10 @@
   --c-line-soft: #2a2940;
   --c-text: #e8e4d8;
   --c-text-dim: #a9a395;
-  --c-text-faint: #6f6b60;
+  /* Muted/faint body copy. Raised from #6f6b60 (≈3.2:1 on --c-panel, fails AA)
+     to #948f80 — a warm grey that clears WCAG AA 4.5:1 on every panel/ink
+     background (worst case ≈4.8:1 on --c-panel-2) while staying on-palette. */
+  --c-text-faint: #948f80;
 
   --c-brass: #c9a45a; /* primary art-deco accent */
   --c-brass-dim: #8a763e;
@@ -29,6 +32,12 @@
   --c-blood: #a3343a; /* danger / death / mafia */
   --c-blood-dim: #732127;
   --c-verdigris: #3f7d6e; /* secondary cool accent */
+  /* AA-legible text variants of the danger/success accents. The solid --c-blood
+     (~2.5:1) and --c-verdigris (~3.6:1) read fine as fills/borders but fail AA
+     4.5:1 as body text; these lighter tints clear it (~5.1:1 / ~7:1 on panels)
+     and are used for form validation copy. */
+  --c-error: #d96b70;
+  --c-verdigris-text: #6fb3a0;
 
   /* Gold-leaf accent treatment — a brushed-metal gradient + a soft underglow used
      on the wordmark, primary buttons, and deco rules. Always paired with a solid

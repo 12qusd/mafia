@@ -13,7 +13,7 @@
 import { useCallback, useEffect, useState } from 'react';
 import { Link, useParams } from 'react-router-dom';
 import { useStore } from '../store/store.js';
-import { DecoHead } from '../components/common.js';
+import { DecoHead, CharCount } from '../components/common.js';
 import { FORUM } from '../lib/strings-extra.js';
 import { sanitizeInline, sanitizeText } from '../lib/sanitize.js';
 import { clockTime, memberSinceLabel } from '../lib/social.js';
@@ -289,7 +289,9 @@ function ReplyComposer({ onReply }: { onReply: (body: string) => Promise<boolean
           maxLength={BODY_MAX}
           rows={5}
           aria-label={FORUM.replyHeading}
+          aria-describedby="forum-reply-count"
         />
+        <CharCount id="forum-reply-count" len={draft.length} max={BODY_MAX} />
         <div className="row">
           <button
             type="submit"

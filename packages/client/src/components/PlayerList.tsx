@@ -117,13 +117,18 @@ export function PlayerList({
               <span className="seat-num">{s.seat + 1}</span>
               <div style={{ minWidth: 0 }}>
                 <div className="row" style={{ gap: 6 }}>
-                  <span
+                  <button
+                    type="button"
                     className="seat-name"
+                    disabled={isSelf || !s.alive}
                     onClick={() => !isSelf && s.alive && onWhisper(s.seat)}
-                    title={isSelf ? GAME.spectating : 'Whisper'}
+                    title={isSelf ? GAME.spectating : GAME.whisperTo(sanitizeInline(s.name))}
+                    aria-label={
+                      isSelf || !s.alive ? undefined : GAME.whisperTo(sanitizeInline(s.name))
+                    }
                   >
                     {sanitizeInline(s.name)}
-                  </span>
+                  </button>
                   {!s.alive && <IconSkull size={13} />}
                 </div>
                 <div className="seat-badges">

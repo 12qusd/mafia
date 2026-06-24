@@ -172,12 +172,28 @@ export function ChatPane(props: ChatPaneProps) {
   return (
     <div className="chat-pane">
       {channels.length > 1 && (
-        <div className="chat-tabs">
-          {channels.map((ch) => (
+        <div className="chat-tabs" role="tablist" aria-label={GAME.channelTabsLabel}>
+          {channels.map((ch, i) => (
             <button
               key={ch}
+              id={`chat-tab-${ch}`}
+              role="tab"
+              type="button"
+              aria-selected={ch === active}
+              aria-controls="chat-tabpanel"
+              tabIndex={ch === active ? 0 : -1}
               className={`chat-tab ${ch === active ? 'active' : ''}`}
               onClick={() => setActive(ch)}
+              onKeyDown={(e) => {
+                if (e.key === 'ArrowRight' || e.key === 'ArrowLeft') {
+                  e.preventDefault();
+                  const dir = e.key === 'ArrowRight' ? 1 : -1;
+                  const next = channels[(i + dir + channels.length) % channels.length]!;
+                  setActive(next);
+                  // Move focus to the newly selected tab.
+                  document.getElementById(`chat-tab-${next}`)?.focus();
+                }
+              }}
             >
               {CHANNEL_LABEL[ch]}
             </button>
@@ -185,7 +201,15 @@ export function ChatPane(props: ChatPaneProps) {
         </div>
       )}
 
-      <div className="chat-log" ref={logRef}>
+      <div
+        className="chat-log"
+        ref={logRef}
+        id="chat-tabpanel"
+        role="log"
+        aria-live="polite"
+        aria-relevant="additions"
+        aria-label={GAME.chatLogLabel(CHANNEL_LABEL[active])}
+      >
         {lines.length === 0 && <div className="faint">…</div>}
         {lines.map((l) => {
           const fromLabel =
@@ -193,15 +217,19 @@ export function ChatPane(props: ChatPaneProps) {
               ? JAILOR_CHAT_ALIAS
               : sanitizeInline(seatNameFor(l.from));
           const isWhisper = l.channel === 'whisper';
+          const canWhisperFrom = typeof l.from === 'number' && !!onWhisper;
           return (
             <div className={`chat-line ${isWhisper ? 'chat-whisper' : ''}`} key={l.id}>
-              <span
+              <button
+                type="button"
                 className="chat-from"
+                disabled={!canWhisperFrom}
+                aria-label={canWhisperFrom ? GAME.whisperTo(fromLabel) : undefined}
                 onClick={() => typeof l.from === 'number' && armWhisper(l.from)}
               >
                 {fromLabel}
                 {isWhisper ? ' (whisper)' : ''}:
-              </span>{' '}
+              </button>{' '}
               {display(l.text)}
             </div>
           );
