@@ -1844,6 +1844,49 @@ export async function moderateThread(
   }
 }
 
+/** One forum search hit (a title or post-body match) — QoL forum search. */
+export interface ForumSearchHit {
+  threadId: string;
+  threadTitle: string;
+  boardSlug: string;
+  boardName: string;
+  snippet: string;
+  matchedIn: 'title' | 'post';
+  createdAt: number;
+}
+
+function narrowSearchHit(v: unknown): ForumSearchHit | null {
+  if (!isObj(v)) return null;
+  const threadId = str(v['threadId']);
+  if (threadId === undefined) return null;
+  const matchedIn = v['matchedIn'] === 'title' ? 'title' : 'post';
+  return {
+    threadId,
+    threadTitle: str(v['threadTitle']) ?? '',
+    boardSlug: str(v['boardSlug']) ?? '',
+    boardName: str(v['boardName']) ?? '',
+    snippet: str(v['snippet']) ?? '',
+    matchedIn,
+    createdAt: num(v['createdAt']),
+  };
+}
+
+/** `GET /api/forum/search?q=&limit=` — title + body search (min 2 chars). [] on failure/short. */
+export async function searchForum(q: string, limit = 20): Promise<ForumSearchHit[]> {
+  const trimmed = q.trim();
+  if (trimmed.length < 2) return [];
+  try {
+    const d = await getJson(
+      `/api/forum/search?q=${encodeURIComponent(trimmed)}&limit=${encodeURIComponent(String(limit))}`,
+    );
+    const list = isObj(d) ? d['results'] : undefined;
+    if (!Array.isArray(list)) return [];
+    return list.map(narrowSearchHit).filter((h): h is ForumSearchHit => h !== null);
+  } catch {
+    return [];
+  }
+}
+
 // ---------------------------------------------------------------------------
 // Retention front-end: social proof (online count + recent games) + shareable
 // public match summary (no auth; FINISHED matches only — the server guarantees

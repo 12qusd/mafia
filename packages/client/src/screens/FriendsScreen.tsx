@@ -13,6 +13,8 @@ import { useCallback, useEffect, useRef, useState } from 'react';
 import { Link, useSearchParams } from 'react-router-dom';
 import { useStore } from '../store/store.js';
 import { DecoHead } from '../components/common.js';
+import { Avatar } from '../components/Avatar.js';
+import { RichText } from '../components/RichText.js';
 import { FRIENDS } from '../lib/strings-extra.js';
 import { sanitizeInline, sanitizeText } from '../lib/sanitize.js';
 import { clockTime, isOnline } from '../lib/social.js';
@@ -253,6 +255,7 @@ function FriendRow({
     <li className="friend-row">
       <div className="row" style={{ gap: 8 }}>
         <span className={`online-dot ${online ? 'online-on' : 'online-off'}`} aria-hidden="true" />
+        <Avatar id={friend.userId} name={friend.username} size="sm" />
         <Link className="friend-name" to={`/u/${encodeURIComponent(friend.username)}`}>
           {sanitizeInline(friend.username)}
         </Link>
@@ -290,6 +293,7 @@ function ThreadRow({
         onClick={onOpen}
       >
         <span className="thread-name">
+          <Avatar id={thread.otherUserId} name={thread.otherUsername} size="sm" />
           {sanitizeInline(thread.otherUsername)}
           {unread && (
             <span className="dm-badge" aria-label={`${thread.unread} ${FRIENDS.unread}`}>
@@ -347,9 +351,12 @@ function UserSearch({ onAdd }: { onAdd: (name: string) => void | Promise<void> }
           ) : (
             results.map((u) => (
               <li key={u.id} className="friend-row">
-                <Link className="friend-name" to={`/u/${encodeURIComponent(u.username)}`}>
-                  {sanitizeInline(u.username)}
-                </Link>
+                <div className="row" style={{ gap: 8 }}>
+                  <Avatar id={u.id} name={u.username} size="sm" />
+                  <Link className="friend-name" to={`/u/${encodeURIComponent(u.username)}`}>
+                    {sanitizeInline(u.username)}
+                  </Link>
+                </div>
                 <button
                   type="button"
                   className="btn btn-sm btn-primary"
@@ -422,6 +429,17 @@ function Conversation({
     }
   }
 
+  /** Lighter "reply" affordance: prefill the (single-line) input with a `> `
+   *  quote of the chosen message, collapsed inline so it fits the input. The
+   *  recipient still sees a styled blockquote (RichText renders leading `>`). */
+  function quote(m: DmMessage): void {
+    if (m.deleted) return;
+    const inline = sanitizeInline(m.body);
+    if (!inline) return;
+    setDraft((cur) => `> ${inline}\n${cur}`.slice(0, 1000));
+    document.getElementById('dm-input')?.focus();
+  }
+
   async function submit(e: React.FormEvent): Promise<void> {
     e.preventDefault();
     const body = draft.trim();
@@ -449,6 +467,7 @@ function Conversation({
     <div className="panel panel-pad stack dm-pane">
       <DecoHead>
         <Link className="friend-name" to={`/u/${encodeURIComponent(otherName)}`}>
+          <Avatar id={otherUserId} name={otherName} size="md" />
           {sanitizeInline(otherName)}
         </Link>
       </DecoHead>
@@ -461,11 +480,22 @@ function Conversation({
             return (
               <div key={m.id} className={`dm-row ${mine ? 'dm-mine' : 'dm-theirs'}`}>
                 <span className={`dm-bubble ${m.deleted ? 'msg-removed' : ''}`}>
-                  {m.deleted ? FRIENDS.removed : sanitizeText(m.body)}
+                  {m.deleted ? FRIENDS.removed : <RichText text={sanitizeText(m.body)} />}
                 </span>
                 <span className="dm-time" aria-hidden="true">
                   {clockTime(m.createdAt)}
                 </span>
+                {!m.deleted && (
+                  <button
+                    type="button"
+                    className="btn btn-sm btn-ghost msg-del"
+                    title={FRIENDS.replyTo}
+                    aria-label={FRIENDS.replyTo}
+                    onClick={() => quote(m)}
+                  >
+                    ↩
+                  </button>
+                )}
                 {mine && !m.deleted && (
                   <button
                     type="button"
@@ -485,6 +515,7 @@ function Conversation({
       </div>
       <form className="board-post" onSubmit={submit}>
         <input
+          id="dm-input"
           className="board-input"
           value={draft}
           onChange={(e) => setDraft(e.target.value.slice(0, 1000))}

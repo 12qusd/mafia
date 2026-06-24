@@ -13,7 +13,7 @@
  * which have no user row.
  */
 
-import type { NotificationType } from '@nocturne/shared';
+import { extractMentions, type NotificationType } from '@nocturne/shared';
 import type { Store } from '../db/types.js';
 import { log } from '../log.js';
 
@@ -41,4 +41,68 @@ export async function notify(
     // Best-effort: a notification failure must never bubble into the caller.
     log.error('failed to create notification', { userId, type, err: String(err) });
   }
+}
+
+/** Where a mention happened — shapes the bell text + link. */
+export type MentionContext =
+  | { context: 'forum'; threadId: string; postId?: string }
+  | { context: 'room'; roomSlug: string; messageId?: string };
+
+/** Max distinct @mentions resolved+notified per post/message (DoS + spam guard). */
+const MAX_MENTIONS = 5;
+/** A short, render-safe excerpt of the triggering text for the bell. */
+const EXCERPT_MAX = 140;
+
+/**
+ * Best-effort @mention notifications for a freshly-created forum post or room
+ * message. PARSES `body` (already length-capped + trimmed by zod) for up to
+ * {@link MAX_MENTIONS} distinct `@username` tokens, resolves each against a REAL
+ * account, and notifies them — UNLESS the target is the author themselves or has
+ * blocked the author (mute relationship). Wrapped so a failure NEVER bubbles
+ * into the triggering action; entirely inert on a non-persistent/guest store.
+ *
+ * INVARIANT: HTTP + the notifications table only. Never touches the engine, the
+ * game WS protocol, or the §5 leak path.
+ */
+export async function notifyMentions(
+  store: Store,
+  author: { id: string; name: string },
+  body: string,
+  where: MentionContext,
+): Promise<void> {
+  // Account-only + parse-only: nothing to do under NO_DB / for guest authors.
+  if (!store.persistent) return;
+  if (!isRealUser(author.id)) return;
+  try {
+    const names = extractMentions(body, MAX_MENTIONS);
+    if (names.length === 0) return;
+    const excerpt = makeExcerpt(body);
+    for (const name of names) {
+      const target = await store.getUserByUsername(name);
+      if (!target) continue; // unknown handle
+      if (target.id === author.id) continue; // don't notify yourself
+      // Block-aware: if the target has muted/blocked the author, stay silent.
+      const targetBlocks = await store.getMutes(target.id);
+      if (targetBlocks.includes(author.id)) continue;
+      await notify(store, target.id, 'mention', {
+        fromId: author.id,
+        fromUsername: author.name,
+        // The bell renders by `byUsername` for mention/friend links; provide both
+        // keys so existing rendering and any future code resolves a clean name.
+        byId: author.id,
+        byUsername: author.name,
+        excerpt,
+        ...where,
+      });
+    }
+  } catch (err) {
+    // Best-effort: mention resolution/notification must never break the post.
+    log.error('failed to process mentions', { authorId: author.id, err: String(err) });
+  }
+}
+
+/** Collapse whitespace and clip to a short, render-safe snippet for the bell. */
+function makeExcerpt(body: string): string {
+  const flat = body.replace(/\s+/g, ' ').trim();
+  return flat.length > EXCERPT_MAX ? `${flat.slice(0, EXCERPT_MAX - 1)}…` : flat;
 }

@@ -23,7 +23,7 @@ import type { GatewayContext } from '../ws/context.js';
 import { buildUserStatsSummary } from '../points/stats.js';
 import { buildRankedSummary } from '../ranked/award.js';
 import { readToken } from './auth-routes.js';
-import { notify } from '../notifications/notify.js';
+import { notify, notifyMentions } from '../notifications/notify.js';
 
 // --- Length caps (zod) -------------------------------------------------------
 const TAGLINE_MAX = 80;
@@ -152,7 +152,7 @@ export function registerSocialRoutes(app: FastifyInstance, ctx: GatewayContext):
   async function requirePoster(
     token: string | undefined,
     reply: FastifyReply,
-  ): Promise<{ id: string } | null> {
+  ): Promise<{ id: string; name: string } | null> {
     const identity = await ctx.identity.resolveToken(token);
     if (!identity) {
       reply.code(401).send({ error: 'not_authenticated' });
@@ -171,7 +171,7 @@ export function registerSocialRoutes(app: FastifyInstance, ctx: GatewayContext):
       reply.code(403).send({ error: 'silenced' });
       return null;
     }
-    return { id: identity.id };
+    return { id: identity.id, name: identity.name };
   }
 
   /**
@@ -439,6 +439,12 @@ export function registerSocialRoutes(app: FastifyInstance, ctx: GatewayContext):
       return reply.code(429).send({ error: 'slow_down' });
     const message = await ctx.store.postRoomMessage(room.id, poster.id, parsed.data.body);
     void recordPresence(poster.id);
+    // @mention notifications (QoL; best-effort — never blocks the message).
+    await notifyMentions(ctx.store, poster, parsed.data.body, {
+      context: 'room',
+      roomSlug: room.slug,
+      messageId: message.id,
+    });
     return reply.send({ message });
   });
 

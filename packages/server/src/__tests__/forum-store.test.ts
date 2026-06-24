@@ -156,6 +156,79 @@ describe('listThreads ordering + pagination', () => {
   });
 });
 
+describe('searchForum (QoL search)', () => {
+  it('matches thread titles and post bodies, newest-first', async () => {
+    const store = new MemoryStore();
+    store.setUsernameForTest(A, 'Capone');
+    const board = (await store.getBoardBySlug('strategy'))!;
+    // A thread whose TITLE matches "jailor".
+    const { threadId: t1 } = await store.createThread(
+      board.id,
+      A,
+      'On the Jailor',
+      'Open thoughts.',
+    );
+    // A different thread whose BODY (a reply) matches "jailor".
+    const { threadId: t2 } = await store.createThread(board.id, A, 'Random topic', 'nothing here');
+    await store.createPost(t2, A, 'I think the jailor should hold.');
+
+    const hits = await store.searchForum('jailor', 30);
+    // Two matches: the title hit (t1) and the body hit (t2).
+    expect(hits).toHaveLength(2);
+    const titleHit = hits.find((h) => h.matchedIn === 'title');
+    const postHit = hits.find((h) => h.matchedIn === 'post');
+    expect(titleHit?.threadId).toBe(t1);
+    expect(titleHit?.snippet).toBe('On the Jailor');
+    expect(titleHit?.boardSlug).toBe('strategy');
+    expect(titleHit?.boardName).toBe('Strategy & Roles');
+    expect(postHit?.threadId).toBe(t2);
+    expect(postHit?.snippet).toContain('jailor');
+    // Newest-first across both (the reply was created after t1's title).
+    expect(hits[0]!.matchedIn).toBe('post');
+  });
+
+  it('is case-insensitive', async () => {
+    const store = new MemoryStore();
+    const board = (await store.getBoardBySlug('strategy'))!;
+    await store.createThread(board.id, A, 'The DOCTOR Heals', 'x');
+    const hits = await store.searchForum('doctor', 30);
+    expect(hits).toHaveLength(1);
+    expect(hits[0]!.matchedIn).toBe('title');
+  });
+
+  it('excludes soft-deleted posts from body matches', async () => {
+    const store = new MemoryStore();
+    const board = (await store.getBoardBySlug('offtopic'))!;
+    const { threadId } = await store.createThread(board.id, A, 'Topic', 'opening line');
+    const reply = await store.createPost(threadId, A, 'secretword appears here');
+    // Before deletion: the reply matches.
+    expect((await store.searchForum('secretword', 30)).length).toBe(1);
+    // After soft-delete: the reply no longer matches.
+    await store.deleteForumPost(reply!.postId, A, false);
+    expect(await store.searchForum('secretword', 30)).toEqual([]);
+  });
+
+  it('respects the limit (≤30) and a 2-char minimum', async () => {
+    const store = new MemoryStore();
+    const board = (await store.getBoardBySlug('results'))!;
+    for (let i = 0; i < 5; i += 1) {
+      await store.createThread(board.id, A, `match topic ${i}`, 'body');
+    }
+    const limited = await store.searchForum('match', 2);
+    expect(limited).toHaveLength(2);
+    // Below the minimum returns nothing.
+    expect(await store.searchForum('a', 30)).toEqual([]);
+    expect(await store.searchForum('  ', 30)).toEqual([]);
+  });
+
+  it('returns [] when nothing matches', async () => {
+    const store = new MemoryStore();
+    const board = (await store.getBoardBySlug('strategy'))!;
+    await store.createThread(board.id, A, 'Hello world', 'just a body');
+    expect(await store.searchForum('zzzznomatch', 30)).toEqual([]);
+  });
+});
+
 describe('locked threads + views + edit', () => {
   it('createPost returns null when the thread is locked', async () => {
     const store = new MemoryStore();

@@ -4176,3 +4176,119 @@ a.notif-link:hover {
   padding: 12px 0 4px;
   border-top: 1px solid var(--c-line-soft);
 }
+
+/* ---------------------------------------------------------------------------
+ * QoL social-rendering wave: deterministic avatars, @mentions, blockquotes,
+ * and forum search. All purely presentational; no behavior here.
+ * ------------------------------------------------------------------------- */
+
+/* Avatar: a small deco identicon. The <svg> carries its own size; this wrapper
+ * just keeps it aligned and from shrinking in flex rows. */
+.avatar {
+  align-items: center;
+  justify-content: center;
+  vertical-align: middle;
+  line-height: 0;
+}
+.avatar-svg {
+  display: block;
+  border-radius: 6px;
+}
+
+/* Align username links that now lead with an inline avatar. */
+.board-author,
+.around-name,
+.friend-name,
+.lb-link,
+.podium-name {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+}
+/* The shoutbox author keeps its trailing colon, but after the name text only. */
+.board-author {
+  vertical-align: middle;
+}
+.lb-player {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+}
+.thread-name {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+}
+/* The forum post author panel: center the large avatar above the name. */
+.forum-post-author {
+  align-items: center;
+  text-align: center;
+}
+
+/* @mention links rendered inside RichText. */
+.mention {
+  color: var(--c-amber);
+  font-weight: 600;
+  text-decoration: none;
+  white-space: nowrap;
+}
+.mention:hover {
+  text-decoration: underline;
+}
+
+/* Blockquote convention (leading `>` lines) inside posts/messages. */
+.richtext {
+  white-space: pre-wrap;
+  word-break: break-word;
+}
+.blockquote {
+  margin: 4px 0;
+  padding: 4px 10px;
+  border-left: 3px solid var(--c-brass-dim);
+  background: rgba(201, 164, 90, 0.07);
+  color: var(--c-text-dim);
+  font-style: italic;
+  white-space: pre-wrap;
+  word-break: break-word;
+}
+
+/* Forum search box + results on the index masthead. */
+.forum-search input[type='search'] {
+  flex: 1 1 auto;
+}
+.forum-search-results {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  text-align: left;
+}
+.forum-search-hit {
+  border-top: 1px solid var(--c-line-soft);
+}
+.forum-search-link {
+  display: flex;
+  flex-direction: column;
+  gap: 1px;
+  padding: 6px 4px;
+  text-decoration: none;
+}
+.forum-search-link:hover {
+  background: rgba(201, 164, 90, 0.06);
+}
+.forum-search-title {
+  color: var(--c-brass);
+  font-weight: 600;
+}
+.forum-search-meta {
+  font-size: var(--fs-xs);
+}
+.forum-search-snippet {
+  color: var(--c-text-dim);
+  font-size: var(--fs-sm);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}

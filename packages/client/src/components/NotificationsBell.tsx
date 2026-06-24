@@ -19,6 +19,7 @@ import { fetchNotifications, markNotificationsRead, type NotificationItem } from
 import { NOTIFICATIONS } from '../lib/strings-extra.js';
 import { sanitizeInline } from '../lib/sanitize.js';
 import { timeAgo } from '../lib/social.js';
+import { Avatar } from './Avatar.js';
 
 /** Poll cadence for the bell — matches the DM-badge poll so it stays warm. */
 const POLL_MS = 30_000;
@@ -53,8 +54,12 @@ function textFor(n: NotificationItem): string {
       return NOTIFICATIONS.friendRequest(sanitizeInline(str(p['fromUsername'])) || 'Someone');
     case 'friend_accepted':
       return NOTIFICATIONS.friendAccepted(sanitizeInline(str(p['byUsername'])) || 'Someone');
-    case 'mention':
-      return NOTIFICATIONS.mention(sanitizeInline(str(p['byUsername'])) || 'Someone');
+    case 'mention': {
+      const who = sanitizeInline(str(p['fromUsername']) || str(p['byUsername'])) || 'Someone';
+      if (p['context'] === 'forum') return NOTIFICATIONS.mentionInForum(who);
+      if (p['context'] === 'room') return NOTIFICATIONS.mentionInRoom(who);
+      return NOTIFICATIONS.mention(who);
+    }
     case 'rank_up':
       return NOTIFICATIONS.rankUp(sanitizeInline(str(p['rankName'])) || 'a new rank');
     case 'achievement':
@@ -68,12 +73,21 @@ function textFor(n: NotificationItem): string {
 function linkFor(n: NotificationItem): string | null {
   const p = n.payload;
   switch (n.type) {
-    case 'friend_request':
-    case 'friend_accepted':
     case 'mention': {
+      // Link to where the mention happened: the forum thread or the community
+      // chatter. Fall back to the mentioner's profile, then /friends.
+      const threadId = str(p['threadId']);
+      if (p['context'] === 'forum' && threadId) {
+        return `/forum/thread/${encodeURIComponent(threadId)}`;
+      }
+      if (p['context'] === 'room') return '/community';
+      const name = str(p['fromUsername']) || str(p['byUsername']);
+      return name ? `/u/${encodeURIComponent(name)}` : '/friends';
+    }
+    case 'friend_request':
+    case 'friend_accepted': {
       // Prefer a username for a clean /u/:username link; fall back to /friends.
-      const name =
-        str(p['fromUsername']) || str(p['byUsername']);
+      const name = str(p['fromUsername']) || str(p['byUsername']);
       return name ? `/u/${encodeURIComponent(name)}` : '/friends';
     }
     case 'rank_up':
@@ -172,11 +186,17 @@ export function NotificationsBell() {
             <ul className="notif-list">
               {items.map((n) => {
                 const to = linkFor(n);
+                const actorId = str(n.payload['fromId']) || str(n.payload['byId']);
+                const actorName = str(n.payload['fromUsername']) || str(n.payload['byUsername']);
                 const body = (
                   <>
-                    <span className="notif-icon" aria-hidden="true">
-                      {iconFor(n.type)}
-                    </span>
+                    {actorId && actorName ? (
+                      <Avatar id={actorId} name={actorName} size="sm" />
+                    ) : (
+                      <span className="notif-icon" aria-hidden="true">
+                        {iconFor(n.type)}
+                      </span>
+                    )}
                     <span className="notif-body">
                       <span className="notif-text">{textFor(n)}</span>
                       <span className="notif-when faint">{timeAgo(n.createdAt)}</span>

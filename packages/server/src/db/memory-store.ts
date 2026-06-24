@@ -42,6 +42,7 @@ import type {
   ForumThreadListRow,
   ForumThreadView,
   ForumPostRow,
+  ForumSearchHit,
   UserSearchHit,
   DmThreadSummary,
   NotificationRow,
@@ -1256,6 +1257,49 @@ export class MemoryStore implements Store {
     if (flags.locked !== undefined) t.locked = flags.locked;
     if (flags.pinned !== undefined) t.pinned = flags.pinned;
     return true;
+  }
+
+  async searchForum(q: string, limit: number): Promise<ForumSearchHit[]> {
+    const trimmed = q.trim();
+    if (trimmed.length < 2) return [];
+    const cap = Math.max(1, Math.min(limit, 30));
+    const needle = trimmed.toLowerCase();
+    const boardOf = (boardId: string) => this.forumBoards.find((b) => b.id === boardId) ?? null;
+    const hits: ForumSearchHit[] = [];
+    // Title matches (one per thread; snippet = the title).
+    for (const t of this.forumThreads) {
+      if (!t.title.toLowerCase().includes(needle)) continue;
+      const board = boardOf(t.boardId);
+      hits.push({
+        threadId: t.id,
+        threadTitle: t.title,
+        boardSlug: board?.slug ?? '',
+        boardName: board?.name ?? '',
+        snippet: t.title,
+        matchedIn: 'title',
+        createdAt: t.createdAt,
+      });
+    }
+    // Post-body matches (skip soft-deleted; snippet = the post head).
+    for (const p of this.forumPosts) {
+      if (p.deleted) continue;
+      if (!p.body.toLowerCase().includes(needle)) continue;
+      const t = this.forumThreads.find((x) => x.id === p.threadId);
+      if (!t) continue;
+      const board = boardOf(t.boardId);
+      hits.push({
+        threadId: t.id,
+        threadTitle: t.title,
+        boardSlug: board?.slug ?? '',
+        boardName: board?.name ?? '',
+        snippet: p.body.slice(0, 160),
+        matchedIn: 'post',
+        createdAt: p.createdAt,
+      });
+    }
+    // Newest-first across both, then cap.
+    hits.sort((a, b) => b.createdAt - a.createdAt);
+    return hits.slice(0, cap);
   }
 
   // --- Notifications center (QoL wave) -------------------------------------

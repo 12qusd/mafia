@@ -10,15 +10,29 @@
  * All user text is sanitized on render.
  */
 
-import { useCallback, useEffect, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import { Link, useParams } from 'react-router-dom';
 import { useStore } from '../store/store.js';
 import { DecoHead, CharCount } from '../components/common.js';
+import { Avatar } from '../components/Avatar.js';
+import { RichText } from '../components/RichText.js';
 import { FORUM } from '../lib/strings-extra.js';
 import { sanitizeInline, sanitizeText } from '../lib/sanitize.js';
 import { clockTime, memberSinceLabel } from '../lib/social.js';
 import * as api from '../lib/api.js';
 import type { ThreadPage, ForumPost } from '../lib/api.js';
+
+/** Build an attributed blockquote prefill for the reply composer. */
+function quoteDraft(post: ForumPost): string {
+  // Quote the sanitized body, prefixing every line with `> ` (RichText renders
+  // leading `>` lines as a blockquote). Drop existing tombstones.
+  const body = post.deleted ? FORUM.removed : sanitizeText(post.body);
+  const quoted = body
+    .split('\n')
+    .map((l) => `> ${l}`)
+    .join('\n');
+  return `> ${FORUM.quoteAttribution(sanitizeInline(post.authorName))}\n${quoted}\n\n`;
+}
 
 const BODY_MAX = 8000;
 
@@ -32,6 +46,8 @@ export function ThreadScreen() {
   const [page, setPage] = useState(1);
   const [data, setData] = useState<ThreadPage | null>(null);
   const [loaded, setLoaded] = useState(false);
+  // A quote prefill bumped into the composer when "Quote" is pressed.
+  const [prefill, setPrefill] = useState<{ text: string; n: number }>({ text: '', n: 0 });
 
   const load = useCallback(async () => {
     if (!id) return;
@@ -78,6 +94,12 @@ export function ThreadScreen() {
     const ok = await api.moderateThread(id, flags);
     if (ok) await load();
     else pushInfo(FORUM.postFailed);
+  }
+
+  function onQuote(post: ForumPost): void {
+    setPrefill((p) => ({ text: quoteDraft(post), n: p.n + 1 }));
+    // Bring the composer into view so the quote is visible immediately.
+    document.getElementById('forum-reply-count')?.scrollIntoView({ block: 'center' });
   }
 
   async function reply(body: string): Promise<boolean> {
@@ -148,6 +170,8 @@ export function ThreadScreen() {
             post={p}
             canEdit={(canPost && me?.id === p.authorId) || isAdmin}
             canDelete={(canPost && me?.id === p.authorId) || isAdmin}
+            canQuote={canPost && !thread?.locked}
+            onQuote={onQuote}
             onEdited={load}
           />
         ))}
@@ -160,7 +184,7 @@ export function ThreadScreen() {
           <span className="faint">{FORUM.threadLocked}</span>
         </div>
       ) : canPost ? (
-        <ReplyComposer onReply={reply} />
+        <ReplyComposer onReply={reply} prefill={prefill} />
       ) : (
         <div className="panel panel-pad community-signin" role="note">
           <span className="muted">{FORUM.signInToPost}</span>
@@ -174,11 +198,15 @@ function PostCard({
   post,
   canEdit,
   canDelete,
+  canQuote,
+  onQuote,
   onEdited,
 }: {
   post: ForumPost;
   canEdit: boolean;
   canDelete: boolean;
+  canQuote: boolean;
+  onQuote: (post: ForumPost) => void;
   onEdited: () => Promise<void> | void;
 }) {
   const pushInfo = useStore((s) => s.pushInfo);
@@ -216,6 +244,7 @@ function PostCard({
   return (
     <div className="panel forum-post">
       <aside className="forum-post-author">
+        <Avatar id={post.authorId} name={post.authorName} size="lg" />
         <Link
           className="forum-author-name"
           to={`/u/${encodeURIComponent(post.authorName)}`}
@@ -233,6 +262,16 @@ function PostCard({
           </span>
           {post.editedAt && !post.deleted && (
             <span className="forum-post-edited">({FORUM.edited})</span>
+          )}
+          {canQuote && !editing && !post.deleted && (
+            <button
+              type="button"
+              className="btn btn-sm btn-ghost forum-edit-btn"
+              title={FORUM.quoteTitle}
+              onClick={() => onQuote(post)}
+            >
+              {FORUM.quote}
+            </button>
           )}
           {canEdit && !editing && !post.deleted && (
             <button
@@ -282,7 +321,7 @@ function PostCard({
           </form>
         ) : (
           <div className={`forum-post-body ${post.deleted ? 'msg-removed' : ''}`}>
-            {post.deleted ? FORUM.removed : sanitizeText(post.body)}
+            {post.deleted ? FORUM.removed : <RichText text={sanitizeText(post.body)} />}
           </div>
         )}
       </div>
@@ -290,9 +329,25 @@ function PostCard({
   );
 }
 
-function ReplyComposer({ onReply }: { onReply: (body: string) => Promise<boolean> }) {
+function ReplyComposer({
+  onReply,
+  prefill,
+}: {
+  onReply: (body: string) => Promise<boolean>;
+  prefill: { text: string; n: number };
+}) {
   const [draft, setDraft] = useState('');
   const [sending, setSending] = useState(false);
+  const lastPrefill = useRef(0);
+
+  // When a new quote is requested (n bumps), prepend it to the current draft and
+  // focus the textarea so the writer can continue under the quote.
+  useEffect(() => {
+    if (prefill.n === 0 || prefill.n === lastPrefill.current) return;
+    lastPrefill.current = prefill.n;
+    setDraft((cur) => (prefill.text + cur).slice(0, BODY_MAX));
+    document.getElementById('forum-reply-textarea')?.focus();
+  }, [prefill]);
 
   async function submit(e: React.FormEvent): Promise<void> {
     e.preventDefault();
@@ -309,6 +364,7 @@ function ReplyComposer({ onReply }: { onReply: (body: string) => Promise<boolean
       <DecoHead>{FORUM.replyHeading}</DecoHead>
       <form className="stack" onSubmit={submit} style={{ gap: 10 }}>
         <textarea
+          id="forum-reply-textarea"
           className="forum-textarea"
           value={draft}
           onChange={(e) => setDraft(e.target.value.slice(0, BODY_MAX))}

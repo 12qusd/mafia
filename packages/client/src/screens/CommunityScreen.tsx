@@ -13,6 +13,8 @@ import { useEffect, useMemo, useRef, useState } from 'react';
 import { Link } from 'react-router-dom';
 import { useStore } from '../store/store.js';
 import { DecoHead } from '../components/common.js';
+import { Avatar } from '../components/Avatar.js';
+import { RichText } from '../components/RichText.js';
 import { COMMUNITY } from '../lib/strings-extra.js';
 import { sanitizeInline, sanitizeText } from '../lib/sanitize.js';
 import { clockTime, isOnline } from '../lib/social.js';
@@ -243,10 +245,11 @@ function MessageBoard({
                   {clockTime(m.createdAt)}
                 </span>
                 <Link className="board-author" to={`/u/${encodeURIComponent(m.username)}`}>
+                  <Avatar id={m.userId} name={m.username} size="sm" />
                   {sanitizeInline(m.username)}
                 </Link>
                 <span className={`board-body ${m.deleted ? 'msg-removed' : ''}`}>
-                  {m.deleted ? COMMUNITY.removed : sanitizeText(m.body)}
+                  {m.deleted ? COMMUNITY.removed : <RichText text={sanitizeText(m.body)} />}
                 </span>
                 {canDelete && (
                   <button
@@ -339,6 +342,7 @@ function WhosAround({ friends }: { friends: FriendItem[] }) {
           {around.map((f) => (
             <li key={f.userId} className="around-row">
               <span className="online-dot online-on" aria-hidden="true" />
+              <Avatar id={f.userId} name={f.username} size="sm" />
               <Link className="around-name" to={`/u/${encodeURIComponent(f.username)}`}>
                 {sanitizeInline(f.username)}
               </Link>
@@ -395,6 +399,7 @@ function PeopleSearch() {
           ) : (
             results.map((u) => (
               <li key={u.id} className="around-row">
+                <Avatar id={u.id} name={u.username} size="sm" />
                 <Link className="around-name" to={`/u/${encodeURIComponent(u.username)}`}>
                   {sanitizeInline(u.username)}
                 </Link>

@@ -405,6 +405,21 @@ export interface ForumThreadView {
   createdAt: number;
 }
 
+/**
+ * One forum search hit (QoL search): a thread title match OR a post-body match,
+ * with a short sanitized-on-render snippet and board context for a clean link.
+ */
+export interface ForumSearchHit {
+  threadId: string;
+  threadTitle: string;
+  boardSlug: string;
+  boardName: string;
+  /** Short excerpt: the post head (body match) or the title (title match). */
+  snippet: string;
+  matchedIn: 'title' | 'post';
+  createdAt: number;
+}
+
 /** A single post within a thread (author + their join date joined). */
 export interface ForumPostRow {
   id: string;
@@ -788,6 +803,14 @@ export interface Store {
   ): Promise<'ok' | 'forbidden' | 'not_found'>;
   /** Admin moderation: set a thread's locked/pinned flags. */
   setThreadFlags(threadId: string, flags: { locked?: boolean; pinned?: boolean }): Promise<boolean>;
+  /**
+   * Full-text-ish forum search (QoL): case-insensitive substring match over
+   * thread TITLES and post BODIES, newest-first, excluding soft-deleted posts.
+   * `q` is matched as a literal (LIKE wildcards escaped, passed as a parameter —
+   * no injection). `limit` is clamped (≤30). Empty under a too-short query.
+   * Returns at most `limit` hits across both title and post matches.
+   */
+  searchForum(q: string, limit: number): Promise<ForumSearchHit[]>;
 
   // --- Notifications center (QoL wave) -------------------------------------
   /**

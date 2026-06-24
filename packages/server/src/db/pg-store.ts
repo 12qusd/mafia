@@ -40,6 +40,7 @@ import type {
   ForumThreadListRow,
   ForumThreadView,
   ForumPostRow,
+  ForumSearchHit,
   UserSearchHit,
   DmThreadSummary,
   NotificationRow,
@@ -2084,6 +2085,59 @@ export class PgStore implements Store {
       params,
     );
     return (res.rowCount ?? 0) > 0;
+  }
+
+  async searchForum(q: string, limit: number): Promise<ForumSearchHit[]> {
+    const trimmed = q.trim();
+    if (trimmed.length < 2) return [];
+    const cap = Math.max(1, Math.min(limit, 30));
+    // Match `q` LITERALLY: escape LIKE wildcards and pass the pattern as a bound
+    // parameter (no injection). `title`/`body` are plain `text`, so we use ILIKE
+    // for case-insensitivity. Soft-deleted posts are excluded from the body
+    // search. We UNION title-matches (snippet = title) with post-matches
+    // (snippet = the post head) and take the newest `cap` across both.
+    const like = `%${PgStore.likeEscape(trimmed)}%`;
+    const { rows } = await this.pool.query<{
+      thread_id: string;
+      thread_title: string;
+      board_slug: string;
+      board_name: string;
+      snippet: string;
+      matched_in: 'title' | 'post';
+      created_at: Date;
+    }>(
+      `(
+         SELECT t.id AS thread_id, t.title AS thread_title,
+                b.slug AS board_slug, b.name AS board_name,
+                t.title AS snippet, 'title'::text AS matched_in, t.created_at
+         FROM forum_threads t
+         JOIN forum_boards b ON b.id = t.board_id
+         WHERE t.title ILIKE $1 ESCAPE '\\'
+       )
+       UNION ALL
+       (
+         SELECT t.id AS thread_id, t.title AS thread_title,
+                b.slug AS board_slug, b.name AS board_name,
+                left(p.body, 160) AS snippet, 'post'::text AS matched_in, p.created_at
+         FROM forum_posts p
+         JOIN forum_threads t ON t.id = p.thread_id
+         JOIN forum_boards b ON b.id = t.board_id
+         WHERE p.deleted = false
+           AND p.body ILIKE $1 ESCAPE '\\'
+       )
+       ORDER BY created_at DESC
+       LIMIT $2`,
+      [like, cap],
+    );
+    return rows.map((r) => ({
+      threadId: r.thread_id,
+      threadTitle: r.thread_title,
+      boardSlug: r.board_slug,
+      boardName: r.board_name,
+      snippet: r.snippet,
+      matchedIn: r.matched_in,
+      createdAt: r.created_at.getTime(),
+    }));
   }
 
   // --- Notifications center (QoL wave) -------------------------------------

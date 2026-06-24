@@ -15,7 +15,7 @@ import { FORUM } from '../lib/strings-extra.js';
 import { sanitizeInline } from '../lib/sanitize.js';
 import { timeAgo } from '../lib/social.js';
 import * as api from '../lib/api.js';
-import type { ForumIndexCategory, ForumIndexBoard } from '../lib/api.js';
+import type { ForumIndexCategory, ForumIndexBoard, ForumSearchHit } from '../lib/api.js';
 
 export function ForumIndexScreen() {
   const [index, setIndex] = useState<ForumIndexCategory[] | null>(null);
@@ -36,6 +36,7 @@ export function ForumIndexScreen() {
         <div className="community-est">{FORUM.est}</div>
         <h1 className="community-title">{FORUM.heading}</h1>
         <p className="muted community-tagline">{FORUM.sub}</p>
+        <ForumSearch />
       </div>
 
       {index === null ? (
@@ -65,6 +66,81 @@ export function ForumIndexScreen() {
             </div>
           </div>
         ))
+      )}
+    </div>
+  );
+}
+
+/** Debounced forum search (QoL): title + post-body matches → thread links. */
+function ForumSearch() {
+  const [q, setQ] = useState('');
+  const [results, setResults] = useState<ForumSearchHit[]>([]);
+  const [searched, setSearched] = useState(false);
+
+  useEffect(() => {
+    const trimmed = q.trim();
+    if (trimmed.length < 2) {
+      setResults([]);
+      setSearched(false);
+      return;
+    }
+    let live = true;
+    const t = setTimeout(() => {
+      void api.searchForum(trimmed).then((hits) => {
+        if (!live) return;
+        setResults(hits);
+        setSearched(true);
+      });
+    }, 250);
+    return () => {
+      live = false;
+      clearTimeout(t);
+    };
+  }, [q]);
+
+  const show = q.trim().length >= 2;
+  return (
+    <div className="forum-search stack" style={{ gap: 6, marginTop: 10 }}>
+      <div className="row" style={{ gap: 6 }}>
+        <input
+          className="board-input"
+          type="search"
+          value={q}
+          onChange={(e) => setQ(e.target.value.slice(0, 100))}
+          placeholder={FORUM.searchPlaceholder}
+          maxLength={100}
+          aria-label={FORUM.searchLabel}
+        />
+        {q && (
+          <button type="button" className="btn btn-sm" onClick={() => setQ('')}>
+            {FORUM.searchClear}
+          </button>
+        )}
+      </div>
+      {show && (
+        <ul className="forum-search-results" aria-live="polite">
+          {results.length === 0 && searched ? (
+            <li className="faint">{FORUM.searchEmpty}</li>
+          ) : (
+            results.map((h, i) => (
+              <li key={`${h.threadId}-${h.matchedIn}-${i}`} className="forum-search-hit">
+                <Link
+                  className="forum-search-link"
+                  to={`/forum/thread/${encodeURIComponent(h.threadId)}`}
+                >
+                  <span className="forum-search-title">{sanitizeInline(h.threadTitle)}</span>
+                  <span className="forum-search-meta faint">
+                    {h.matchedIn === 'title' ? FORUM.searchInTitle : FORUM.searchInPost}
+                    {h.boardName ? ` · ${sanitizeInline(h.boardName)}` : ''}
+                  </span>
+                  {h.matchedIn === 'post' && (
+                    <span className="forum-search-snippet">{sanitizeInline(h.snippet)}</span>
+                  )}
+                </Link>
+              </li>
+            ))
+          )}
+        </ul>
       )}
     </div>
   );

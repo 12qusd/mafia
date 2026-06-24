@@ -20,6 +20,7 @@ import type { FastifyInstance, FastifyReply } from 'fastify';
 import { z } from 'zod';
 import type { GatewayContext } from '../ws/context.js';
 import { readToken } from './auth-routes.js';
+import { notifyMentions } from '../notifications/notify.js';
 
 // --- Length caps + pagination (zod) ------------------------------------------
 const TITLE_MIN = 3;
@@ -27,6 +28,9 @@ const TITLE_MAX = 120;
 const BODY_MAX = 8000;
 const THREADS_PAGE_SIZE = 30;
 const POSTS_PAGE_SIZE = 20;
+/** Forum-search result cap (the store also clamps defensively). */
+const SEARCH_LIMIT_DEFAULT = 20;
+const SEARCH_LIMIT_MAX = 30;
 
 const ThreadCreateBody = z.object({
   title: z.string().trim().min(TITLE_MIN).max(TITLE_MAX),
@@ -47,6 +51,13 @@ function parsePage(raw: unknown): number {
   const n = Number(raw);
   if (!Number.isFinite(n) || n < 1) return 1;
   return Math.max(1, Math.floor(n));
+}
+
+/** Parse a bounded search limit from the query (default 20, cap 30, floor 1). */
+function parseSearchLimit(raw: unknown): number {
+  const n = Number(raw);
+  if (!Number.isFinite(n) || n <= 0) return SEARCH_LIMIT_DEFAULT;
+  return Math.max(1, Math.min(Math.floor(n), SEARCH_LIMIT_MAX));
 }
 
 /**
@@ -76,7 +87,7 @@ export function registerForumRoutes(app: FastifyInstance, ctx: GatewayContext): 
   async function requirePoster(
     token: string | undefined,
     reply: FastifyReply,
-  ): Promise<{ id: string } | null> {
+  ): Promise<{ id: string; name: string } | null> {
     const identity = await ctx.identity.resolveToken(token);
     if (!identity) {
       reply.code(401).send({ error: 'not_authenticated' });
@@ -95,7 +106,7 @@ export function registerForumRoutes(app: FastifyInstance, ctx: GatewayContext): 
       reply.code(403).send({ error: 'silenced' });
       return null;
     }
-    return { id: identity.id };
+    return { id: identity.id, name: identity.name };
   }
 
   /** True if the caller is too fast for that (user, scope) bucket. */
@@ -114,6 +125,20 @@ export function registerForumRoutes(app: FastifyInstance, ctx: GatewayContext): 
     const index = await ctx.store.listForumIndex();
     return reply.send({ index });
   });
+
+  // --- Search (public; min 2 chars) ----------------------------------------
+
+  app.get<{ Querystring: { q?: string; limit?: string } }>(
+    '/api/forum/search',
+    async (req, reply) => {
+      const q = typeof req.query.q === 'string' ? req.query.q.trim() : '';
+      // Min length is enforced both here (clean 400) and in the store (defensive).
+      if (q.length < 2) return reply.send({ results: [] });
+      const limit = parseSearchLimit(req.query.limit);
+      const results = await ctx.store.searchForum(q, limit);
+      return reply.send({ results });
+    },
+  );
 
   // --- Board: threads list -------------------------------------------------
 
@@ -159,6 +184,12 @@ export function registerForumRoutes(app: FastifyInstance, ctx: GatewayContext): 
         parsed.data.title,
         parsed.data.body,
       );
+      // @mention notifications (QoL; best-effort — never blocks the post).
+      await notifyMentions(ctx.store, poster, parsed.data.body, {
+        context: 'forum',
+        threadId,
+        postId,
+      });
       return reply.send({ threadId, postId });
     },
   );
@@ -212,6 +243,12 @@ export function registerForumRoutes(app: FastifyInstance, ctx: GatewayContext): 
       if (!thread) return reply.code(404).send({ error: 'not_found' });
       return reply.code(403).send({ error: 'locked' });
     }
+    // @mention notifications (QoL; best-effort — never blocks the reply).
+    await notifyMentions(ctx.store, poster, parsed.data.body, {
+      context: 'forum',
+      threadId: req.params.id,
+      postId: result.postId,
+    });
     return reply.send({ postId: result.postId });
   });
 

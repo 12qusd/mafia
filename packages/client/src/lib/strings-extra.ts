@@ -520,6 +520,9 @@ export const FRIENDS = {
   // Deletion (social v1).
   deleteDm: 'Remove this message',
   removed: '[removed]',
+  // Quote/reply (QoL social rendering).
+  reply: 'Reply',
+  replyTo: 'Quote this message',
   // Blocking (social v1).
   blockedHeading: 'Blocked',
   blockedEmpty: 'You have not blocked anyone.',
@@ -592,6 +595,19 @@ export const FORUM = {
   deleted: 'Post removed.',
   removed: '[removed]',
   confirmDelete: 'Remove this post?',
+  // Quote/reply (QoL social rendering).
+  quote: 'Quote',
+  quoteTitle: 'Quote this post in a reply',
+  quoteAttribution: (name: string) => `@${name} wrote:`,
+  // Search (QoL forum search).
+  searchPlaceholder: 'Search the boards…',
+  searchLabel: 'Search the boards',
+  searchHint: 'Type at least two letters.',
+  searchEmpty: 'Nothing matches that.',
+  searchResults: 'Results',
+  searchInTitle: 'in a topic title',
+  searchInPost: 'in a post',
+  searchClear: 'Clear',
 } as const;
 
 /** Game-over points celebration copy (goal 3 + ranked play). */
@@ -1053,6 +1069,8 @@ export const NOTIFICATIONS = {
   friendRequest: (who: string) => `${who} wants in with you.`,
   friendAccepted: (who: string) => `${who} took your hand.`,
   mention: (who: string) => `${who} put your name in the room.`,
+  mentionInForum: (who: string) => `${who} put your name in a topic.`,
+  mentionInRoom: (who: string) => `${who} put your name in the chatter.`,
   rankUp: (rank: string) => `You climbed to ${rank}.`,
   achievement: (name: string) => `Commendation earned — ${name}.`,
   // Rank-up celebration (game-over / post-match toast).

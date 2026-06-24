@@ -10,6 +10,7 @@ import { useEffect, useState } from 'react';
 import { Link } from 'react-router-dom';
 import { useStore } from '../store/store.js';
 import { DecoHead, TierBadge, RankBadge, InlineLoader } from '../components/common.js';
+import { Avatar } from '../components/Avatar.js';
 import { LEADERBOARD } from '../lib/strings-extra.js';
 import { sanitizeInline } from '../lib/sanitize.js';
 import * as api from '../lib/api.js';
@@ -134,6 +135,7 @@ function CasualBoard({
                 {MEDALS[i]}
               </div>
               <div className="podium-place">{i + 1}</div>
+              <Avatar id={e.userId} name={e.username} size="md" />
               <Link className="podium-name lb-link" to={`/u/${encodeURIComponent(e.username)}`}>
                 {sanitizeInline(e.username)}
               </Link>
@@ -170,9 +172,12 @@ function CasualBoard({
                 <tr key={e.userId || rank} className={isMe ? 'lb-you' : ''}>
                   <td className="lb-rank">{rank}</td>
                   <td>
-                    <Link className="lb-link" to={`/u/${encodeURIComponent(e.username)}`}>
-                      {sanitizeInline(e.username)}
-                    </Link>{' '}
+                    <span className="lb-player">
+                      <Avatar id={e.userId} name={e.username} size="sm" />
+                      <Link className="lb-link" to={`/u/${encodeURIComponent(e.username)}`}>
+                        {sanitizeInline(e.username)}
+                      </Link>
+                    </span>{' '}
                     {isMe && <span className="badge badge-you">{LEADERBOARD.you}</span>}
                   </td>
                   <td>
@@ -332,9 +337,12 @@ function RankedBoard({ me }: { me: { id: string } | null }) {
                   <tr key={e.userId || e.position} className={isMe ? 'lb-you' : ''}>
                     <td className="lb-rank">{e.position}</td>
                     <td>
-                      <Link className="lb-link" to={`/u/${encodeURIComponent(e.username)}`}>
-                        {sanitizeInline(e.username)}
-                      </Link>{' '}
+                      <span className="lb-player">
+                        <Avatar id={e.userId} name={e.username} size="sm" />
+                        <Link className="lb-link" to={`/u/${encodeURIComponent(e.username)}`}>
+                          {sanitizeInline(e.username)}
+                        </Link>
+                      </span>{' '}
                       {isMe && <span className="badge badge-you">{LEADERBOARD.you}</span>}
                     </td>
                     <td>{rankedRow(e)}</td>

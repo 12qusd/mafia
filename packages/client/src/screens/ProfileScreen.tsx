@@ -15,6 +15,7 @@ import { Link, useNavigate, useParams } from 'react-router-dom';
 import { ACHIEVEMENTS_BY_KEY, REPORT_CATEGORIES } from '@nocturne/shared';
 import { useStore } from '../store/store.js';
 import { DecoHead, TierBadge, RankBadge, CharCount, InlineLoader } from '../components/common.js';
+import { Avatar } from '../components/Avatar.js';
 import { PUBLIC_PROFILE, REPORT } from '../lib/strings-extra.js';
 import { sanitizeInline, sanitizeText } from '../lib/sanitize.js';
 import { ACCENT_OPTIONS, memberSinceLabel, normalizeAccent, isOnline } from '../lib/social.js';
@@ -105,6 +106,7 @@ export function ProfileScreen() {
     <div className="page stack">
       <div className={`panel panel-pad stack profile-card profile-public ${accent ? `accent-${accent}` : ''}`}>
         <div className="profile-head">
+          <Avatar id={profile.id} name={profile.username} size="lg" />
           <div className="stack" style={{ gap: 4 }}>
             <div className="profile-name-row">
               {online && <span className="online-dot online-on" title={PUBLIC_PROFILE.respond} aria-hidden="true" />}

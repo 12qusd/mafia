@@ -41,6 +41,63 @@ describe('GET /api/forum (public index)', () => {
   });
 });
 
+describe('GET /api/forum/search (public; min 2 chars)', () => {
+  it('a too-short query returns 200 with an empty result set', async () => {
+    const { app } = await buildForumApp();
+    const res = await app.inject({ method: 'GET', url: '/api/forum/search?q=a' });
+    expect(res.statusCode).toBe(200);
+    expect((res.json() as { results: unknown[] }).results).toEqual([]);
+    await app.close();
+  });
+
+  it('a missing query returns 200 with an empty result set', async () => {
+    const { app } = await buildForumApp();
+    const res = await app.inject({ method: 'GET', url: '/api/forum/search' });
+    expect(res.statusCode).toBe(200);
+    expect((res.json() as { results: unknown[] }).results).toEqual([]);
+    await app.close();
+  });
+
+  it('returns matching hits with the documented shape (seeded via the store)', async () => {
+    const { app, ctx } = await buildForumApp();
+    const board = (await ctx.store.getBoardBySlug('strategy'))!;
+    await ctx.store.createThread(board.id, 'user-aaaaaaaa', 'On the Jailor', 'Open day 1.');
+    const res = await app.inject({ method: 'GET', url: '/api/forum/search?q=jailor' });
+    expect(res.statusCode).toBe(200);
+    const { results } = res.json() as {
+      results: Array<{
+        threadId: string;
+        threadTitle: string;
+        boardSlug: string;
+        boardName: string;
+        snippet: string;
+        matchedIn: 'title' | 'post';
+        createdAt: number;
+      }>;
+    };
+    expect(results).toHaveLength(1);
+    expect(results[0]).toMatchObject({
+      threadTitle: 'On the Jailor',
+      boardSlug: 'strategy',
+      matchedIn: 'title',
+    });
+    expect(typeof results[0]!.createdAt).toBe('number');
+    await app.close();
+  });
+
+  it('clamps the limit to ≤30', async () => {
+    const { app, ctx } = await buildForumApp();
+    const board = (await ctx.store.getBoardBySlug('results'))!;
+    for (let i = 0; i < 40; i += 1) {
+      await ctx.store.createThread(board.id, 'user-aaaaaaaa', `match topic ${i}`, 'body');
+    }
+    const res = await app.inject({ method: 'GET', url: '/api/forum/search?q=match&limit=999' });
+    expect(res.statusCode).toBe(200);
+    expect((res.json() as { results: unknown[] }).results).toHaveLength(30);
+    await app.close();
+  });
+});
+
 describe('GET /api/forum/boards/:slug (public read)', () => {
   it('200 on a known slug, 404 on an unknown slug', async () => {
     const { app } = await buildForumApp();

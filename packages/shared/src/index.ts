@@ -10,4 +10,5 @@ export * from './roles/index.js';
 export * from './setups/index.js';
 export * from './protocol/index.js';
 export * from './platform.js';
+export * from './text/mentions.js';
 export * as strings from './strings.js';
