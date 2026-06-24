@@ -16,6 +16,8 @@ import type {
   ActiveSanctions,
   MatchRecord,
   MatchReplay,
+  RecentMatchSummary,
+  PublicMatchSummary,
   MatchPlayerRecord,
   UserStatsRow,
   LeaderboardEntry,
@@ -495,6 +497,98 @@ export class PgStore implements Store {
       [matchId],
     );
     return rows.map((r) => r.user_or_guest_id);
+  }
+
+  // --- Public retention surfaces (FINISHED-only, no auth) -------------------
+  // Leak-safety: both queries filter `ended_at IS NOT NULL`, so an in-progress
+  // match (roles still secret) can never appear in the social proof or share
+  // card. A finished match has already revealed roles at game-over.
+
+  async getRecentMatches(limit: number): Promise<RecentMatchSummary[]> {
+    const cap = Math.max(1, Math.min(Math.floor(limit) || 0, 30));
+    const { rows } = await this.pool.query<{
+      id: string;
+      setup_id: string;
+      outcome: string | null;
+      ended_at: Date;
+      mode: string | null;
+      players: string;
+    }>(
+      `SELECT m.id, m.setup_id, m.outcome, m.ended_at, m.mode,
+              COUNT(mp.match_id)::text AS players
+         FROM matches m
+         LEFT JOIN match_players mp ON mp.match_id = m.id
+        WHERE m.ended_at IS NOT NULL
+        GROUP BY m.id
+        ORDER BY m.ended_at DESC
+        LIMIT $1`,
+      [cap],
+    );
+    return rows.map((r) => ({
+      id: r.id,
+      setupId: r.setup_id,
+      outcome: r.outcome,
+      endedAt: r.ended_at.getTime(),
+      mode: r.mode,
+      players: Number(r.players) || 0,
+    }));
+  }
+
+  async getPublicMatchSummary(matchId: string): Promise<PublicMatchSummary | null> {
+    const m = await this.pool.query<{
+      id: string;
+      setup_id: string;
+      outcome: string | null;
+      started_at: Date;
+      ended_at: Date | null;
+      mode: string | null;
+    }>(
+      // FINISHED-only at the SQL level: a NULL ended_at row never matches.
+      `SELECT id, setup_id, outcome, started_at, ended_at, mode
+         FROM matches WHERE id = $1 AND ended_at IS NOT NULL`,
+      [matchId],
+    );
+    const row = m.rows[0];
+    if (!row || row.ended_at === null) return null;
+    // Join match_players to users so account seats carry a username; guests
+    // (whose user_or_guest_id is not a users.id) resolve to null.
+    const seats = await this.pool.query<{
+      seat: number;
+      role: string;
+      faction: string;
+      outcome: string;
+      survived: boolean;
+      death_day: number | null;
+      name: string | null;
+    }>(
+      // user_or_guest_id is TEXT (holds account uuids AND guest ids); cast the
+      // uuid users.id to text to compare (else Postgres: "operator does not
+      // exist: uuid = text"). Guest ids never match a users row → name null.
+      `SELECT mp.seat, mp.role, mp.faction, mp.outcome, mp.survived, mp.death_day,
+              u.username AS name
+         FROM match_players mp
+         LEFT JOIN users u ON u.id::text = mp.user_or_guest_id
+        WHERE mp.match_id = $1
+        ORDER BY mp.seat`,
+      [matchId],
+    );
+    return {
+      id: row.id,
+      setupId: row.setup_id,
+      outcome: row.outcome,
+      startedAt: row.started_at.getTime(),
+      endedAt: row.ended_at.getTime(),
+      mode: row.mode,
+      seats: seats.rows.map((s) => ({
+        seat: s.seat,
+        role: s.role,
+        faction: s.faction,
+        outcome: s.outcome,
+        survived: s.survived,
+        deathDay: s.death_day,
+        name: s.name,
+      })),
+    };
   }
 
   async addToUserStats(userId: string, delta: StatsDelta, at: number): Promise<void> {

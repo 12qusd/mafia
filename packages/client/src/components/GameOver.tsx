@@ -9,8 +9,9 @@ import { Link, useNavigate } from 'react-router-dom';
 import { useStore } from '../store/store.js';
 import { DecoHead, FactionTag, RankBadge } from './common.js';
 import { PointsCelebration } from './PointsCelebration.js';
-import { GAME, WINNER_LABEL, OUTCOME_LABEL, POINTS } from '../lib/strings-extra.js';
+import { GAME, WINNER_LABEL, OUTCOME_LABEL, POINTS, SHARE } from '../lib/strings-extra.js';
 import { sanitizeInline } from '../lib/sanitize.js';
+import { copyReplayLink } from '../lib/social.js';
 import { leaveLobby, playAgain, quickPlay } from '../ws/actions.js';
 
 // Stable empty reference (avoids the Zustand v5 fresh-array selector loop, #185).
@@ -25,6 +26,7 @@ export function GameOver() {
   const seats = useStore((s) => s.game?.seats ?? NO_SEATS);
   const ownSeat = useStore((s) => s.own?.seat ?? null);
   const pointsAward = useStore((s) => s.pointsAward);
+  const pushInfo = useStore((s) => s.pushInfo);
   // "Play again" pending state: once clicked we wait for the rematch lobby_state
   // (the screen routes away via useLobbyNav). If the server says 'no_game' or no
   // lobby appears within the grace window, we fall back to Quick Play (§7.7).
@@ -140,9 +142,23 @@ export function GameOver() {
             {GAME.seedLabel}: <code>{sanitizeInline(over.seed)}</code>
           </span>
           {over.matchId && (
-            <Link className="linkbtn" to={`/replay/${encodeURIComponent(over.matchId)}`}>
-              {POINTS.viewReplay}
-            </Link>
+            <span className="row" style={{ gap: 12 }}>
+              <button
+                type="button"
+                className="linkbtn"
+                title={SHARE.title}
+                onClick={() => {
+                  void copyReplayLink(over.matchId!).then((ok) =>
+                    pushInfo(ok ? SHARE.copied : SHARE.failed),
+                  );
+                }}
+              >
+                {SHARE.button}
+              </button>
+              <Link className="linkbtn" to={`/replay/${encodeURIComponent(over.matchId)}`}>
+                {POINTS.viewReplay}
+              </Link>
+            </span>
           )}
         </div>
 

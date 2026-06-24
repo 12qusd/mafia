@@ -10,6 +10,13 @@ import { buildRankedSummary, RANKED_MODE } from '../ranked/award.js';
 import { verifyFingerprint } from '../audit/fingerprint.js';
 import { readToken } from './auth-routes.js';
 
+/**
+ * Match ids are uuids. A crawler hitting `/api/games/garbage/summary` is
+ * definitionally "not found" — guarding here keeps Postgres from ever seeing an
+ * invalid-uuid cast (clean 404 instead of a 500). Mirrors forum-routes.
+ */
+const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+
 export function registerPublicRoutes(app: FastifyInstance, ctx: GatewayContext): void {
   // Health endpoint (§4.2).
   app.get('/healthz', async () => ({
@@ -18,6 +25,32 @@ export function registerPublicRoutes(app: FastifyInstance, ctx: GatewayContext):
     draining: ctx.manager.isDraining,
     persistent: ctx.store.persistent,
   }));
+
+  // --- Retention front-end: public social proof + shareable summaries ------
+  // All three are no-auth and leak-safe: the recent list and the summary expose
+  // ONLY finished matches (the store filters ended_at NOT NULL), and online is a
+  // bare connection count. They degrade to empty/zero under NO_DB.
+
+  // Live "souls around" count for the home-page social-proof strip. Cheap.
+  app.get('/api/stats/online', async () => ({ online: ctx.onlineCount?.() ?? 0 }));
+
+  // "Fresh off the table" — recent FINISHED matches (newest first). Default 8,
+  // capped at 30. Empty list under NO_DB (no persisted matches) or on no data.
+  app.get<{ Querystring: { limit?: string } }>('/api/games/recent', async (req, reply) => {
+    const limit = Math.max(1, Math.min(Number(req.query.limit) || 8, 30));
+    const games = await ctx.store.getRecentMatches(limit);
+    return reply.send({ games });
+  });
+
+  // Public, no-auth match summary (the shareable replay card). 404 for a
+  // non-uuid, an unknown id, OR an in-progress match (the store returns null
+  // unless ended_at is set — an in-progress game's roles must never leak).
+  app.get<{ Params: { matchId: string } }>('/api/games/:matchId/summary', async (req, reply) => {
+    if (!UUID_RE.test(req.params.matchId)) return reply.code(404).send({ error: 'not_found' });
+    const summary = await ctx.store.getPublicMatchSummary(req.params.matchId);
+    if (!summary) return reply.code(404).send({ error: 'not_found' });
+    return reply.send(summary);
+  });
 
   // Public lobby browser data (§7.3).
   app.get('/api/lobbies', async () => ({ lobbies: ctx.manager.publicLobbyList() }));

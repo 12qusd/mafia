@@ -1482,6 +1482,121 @@ export async function moderateThread(
   }
 }
 
+// ---------------------------------------------------------------------------
+// Retention front-end: social proof (online count + recent games) + shareable
+// public match summary (no auth; FINISHED matches only — the server guarantees
+// it never exposes an in-progress game's roles/seats).
+// ---------------------------------------------------------------------------
+
+/** `GET /api/stats/online` — live socket count. 0 on any failure. */
+export async function fetchOnline(): Promise<number> {
+  try {
+    const d = await getJson('/api/stats/online');
+    return isObj(d) ? num(d['online']) : 0;
+  } catch {
+    return 0;
+  }
+}
+
+/** One row of the public "recent games" strip. */
+export interface RecentGame {
+  id: string;
+  setupId: string;
+  outcome: string | null;
+  endedAt: number;
+  mode: string | null;
+  players: number;
+}
+
+function narrowRecentGame(v: unknown): RecentGame | null {
+  if (!isObj(v)) return null;
+  const id = str(v['id']);
+  if (id === undefined) return null;
+  return {
+    id,
+    setupId: str(v['setupId']) ?? '',
+    outcome: str(v['outcome']) ?? null,
+    endedAt: num(v['endedAt']),
+    mode: str(v['mode']) ?? null,
+    players: num(v['players']),
+  };
+}
+
+/** `GET /api/games/recent?limit=` — recent finished games. [] on failure/empty. */
+export async function fetchRecentGames(limit = 8): Promise<RecentGame[]> {
+  try {
+    const d = await getJson(`/api/games/recent?limit=${encodeURIComponent(String(limit))}`);
+    const list = isObj(d) ? d['games'] : undefined;
+    if (!Array.isArray(list)) return [];
+    return list.map(narrowRecentGame).filter((g): g is RecentGame => g !== null);
+  } catch {
+    return [];
+  }
+}
+
+/** A seat in the public (no-auth) match summary. */
+export interface PublicReplaySeat {
+  seat: number;
+  role: string;
+  faction: string;
+  outcome: string;
+  survived: boolean;
+  deathDay: number | null;
+  name: string | null;
+}
+
+/** The public, no-auth, FINISHED-only match summary (the shareable replay card). */
+export interface PublicReplay {
+  id: string;
+  setupId: string;
+  outcome: string | null;
+  startedAt: number;
+  endedAt: number;
+  mode: string | null;
+  seats: PublicReplaySeat[];
+}
+
+function narrowPublicSeat(v: unknown): PublicReplaySeat | null {
+  if (!isObj(v)) return null;
+  return {
+    seat: num(v['seat']),
+    role: str(v['role']) ?? 'CITIZEN',
+    faction: str(v['faction']) ?? 'TOWN',
+    outcome: str(v['outcome']) ?? 'draw',
+    survived: bool(v['survived']),
+    deathDay: numOrNull(v['deathDay']),
+    name: str(v['name']) ?? null,
+  };
+}
+
+/**
+ * `GET /api/games/:matchId/summary` — the public, no-auth match summary. Returns
+ * null on any failure (unknown id, an in-progress game, network error). Only
+ * finished matches are ever returned by the server.
+ */
+export async function fetchPublicReplay(matchId: string): Promise<PublicReplay | null> {
+  try {
+    const d = await getJson(`/api/games/${encodeURIComponent(matchId)}/summary`);
+    if (!isObj(d)) return null;
+    const id = str(d['id']);
+    if (id === undefined) return null;
+    const seats = Array.isArray(d['seats'])
+      ? d['seats'].map(narrowPublicSeat).filter((s): s is PublicReplaySeat => s !== null)
+      : [];
+    return {
+      id,
+      setupId: str(d['setupId']) ?? '',
+      outcome: str(d['outcome']) ?? null,
+      startedAt: num(d['startedAt']),
+      endedAt: num(d['endedAt']),
+      mode: str(d['mode']) ?? null,
+      seats,
+    };
+  } catch {
+    return null;
+  }
+}
+
 /** Fetch the public lobby list; returns [] on any failure (resilient browser). */
 export async function fetchLobbies(): Promise<LobbyListItem[]> {
   try {

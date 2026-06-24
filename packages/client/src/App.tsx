@@ -14,9 +14,10 @@ import { pingPresence } from './lib/api.js';
 import { Toasts } from './components/Toasts.js';
 import { ForceUpdateModal } from './components/ForceUpdateModal.js';
 import { Glossary } from './components/Glossary.js';
-import { GLOSSARY } from './lib/strings-extra.js';
+import { GLOSSARY, HOWTO } from './lib/strings-extra.js';
 import { sceneForPhase } from './lib/scene.js';
 import { HomeScreen } from './screens/HomeScreen.js';
+import { HowToPlayScreen } from './screens/HowToPlayScreen.js';
 import { JoinScreen } from './screens/JoinScreen.js';
 import { LobbyScreen } from './screens/LobbyScreen.js';
 import { GameScreen } from './screens/GameScreen.js';
@@ -132,6 +133,9 @@ export function App() {
             >
               {GLOSSARY.open}
             </button>
+            <Link className="linkbtn" to="/how-to-play">
+              {HOWTO.topbarLink}
+            </Link>
             <Link className="linkbtn" to="/preferences">
               Standing Orders
             </Link>
@@ -143,6 +147,7 @@ export function App() {
         <VerifyEmailBanner />
         <Routes>
           <Route path="/" element={<HomeScreen />} />
+          <Route path="/how-to-play" element={<HowToPlayScreen />} />
           <Route path="/join/:code" element={<JoinScreen />} />
           <Route path="/lobby/:id" element={<LobbyScreen />} />
           <Route path="/game" element={<GameScreen />} />

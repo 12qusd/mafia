@@ -26,6 +26,7 @@ import { registerSetupRoutes } from './http/setups-routes.js';
 import { registerPreferencesRoutes } from './http/preferences-routes.js';
 import { registerSocialRoutes } from './http/social-routes.js';
 import { registerForumRoutes } from './http/forum-routes.js';
+import { registerShareRoutes } from './http/share-routes.js';
 import { registerAdminRoutes } from './http/admin-routes.js';
 import { registerTestRoutes } from './http/test-routes.js';
 import { makeRateLimiter } from './http/rate-limit.js';
@@ -143,6 +144,9 @@ export async function buildApp(cfg: ServerConfig): Promise<BuiltApp> {
 
   // Capture names when identities are bound (the gateway calls onIdentityBound).
   const gateway = new Gateway(ctx);
+  // Expose the live socket count to public routes (social-proof strip). Set
+  // after the gateway exists so /api/stats/online reflects real connections.
+  ctx.onlineCount = () => gateway.connectionCount();
   // Wrap nameOf registration: the IdentityService knows guest names; accounts'
   // names come from the user row. We register on resolveToken via a hook below.
   const origResolve = identity.resolveToken.bind(identity);
@@ -181,6 +185,11 @@ export async function buildApp(cfg: ServerConfig): Promise<BuiltApp> {
   registerPreferencesRoutes(app, ctx);
   registerSocialRoutes(app, ctx);
   registerForumRoutes(app, ctx);
+  // OG/preview meta injection for /replay/:id, /u/:username, /join/:code. These
+  // explicit GETs serve the SPA shell with a link-preview card injected, taking
+  // precedence over the static wildcard + SPA fallback for exactly those paths.
+  // No-op when the built client (index.html) is absent.
+  registerShareRoutes(app, ctx);
   registerAdminRoutes(app, ctx);
   registerTestRoutes(app, ctx);
 

@@ -12,13 +12,19 @@ import { useLobbyNav } from '../components/useLobbyNav.js';
 import { DecoHead, Switch, TestBadge } from '../components/common.js';
 import { ProfilePanel } from '../components/ProfilePanel.js';
 import { SetupPicker } from '../components/SetupPicker.js';
-import { HOME } from '../lib/strings-extra.js';
+import { HOME, ONBOARD, SOCIAL_PROOF } from '../lib/strings-extra.js';
 import { sanitizeInline } from '../lib/sanitize.js';
-import { loadGuestName, loadToken } from '../lib/storage.js';
+import {
+  loadGuestName,
+  loadToken,
+  loadOnboardDismissed,
+  saveOnboardDismissed,
+} from '../lib/storage.js';
+import { timeAgo } from '../lib/social.js';
 import { refreshMe } from '../lib/me.js';
 import * as api from '../lib/api.js';
 import { createLobby, joinLobby, quickPlay, rankedPlay, leaveQueue } from '../ws/actions.js';
-import type { LobbyListItem } from '../lib/api.js';
+import type { LobbyListItem, RecentGame } from '../lib/api.js';
 
 export function HomeScreen() {
   useLobbyNav();
@@ -37,6 +43,9 @@ export function HomeScreen() {
         <h1>{strings.UI.appName}</h1>
         <p>{HOME.heroSub}</p>
       </div>
+
+      <WelcomeBanner />
+      <SocialProof />
 
       <div className="quickplay">
         <div className="quickplay-row">
@@ -82,6 +91,137 @@ export function HomeScreen() {
       <QuickPlayOverlay />
     </div>
   );
+}
+
+/**
+ * First-game onboarding welcome (retention). Shown to a guest OR a signed-in
+ * account that has not played yet (stats.gamesPlayed === 0). One-line pitch and
+ * two CTAs: learn the play, or take the first seat. Dismissal persists locally
+ * (mirrors the verify-email banner) so it never nags a returning player.
+ */
+function WelcomeBanner() {
+  const navigate = useNavigate();
+  const me = useStore((s) => s.me);
+  const guestId = useStore((s) => s.guestId);
+  const connection = useStore((s) => s.connection);
+  const [dismissed, setDismissed] = useState(loadOnboardDismissed());
+
+  // A guest, or an account with zero games played, is a first-timer. (An
+  // unauthenticated visitor with no identity yet also counts as a newcomer.)
+  const isNewcomer =
+    !!guestId ||
+    (!!me && (me.isGuest || (me.stats !== null && me.stats.gamesPlayed === 0))) ||
+    (!me && !guestId);
+  if (dismissed || !isNewcomer) return null;
+
+  const ready = connection === 'open';
+
+  function dismiss() {
+    saveOnboardDismissed();
+    setDismissed(true);
+  }
+
+  return (
+    <div className="welcome-banner panel panel-pad" role="status">
+      <span className="welcome-text">{ONBOARD.pitch}</span>
+      <span className="welcome-actions row">
+        <button className="btn btn-sm" type="button" onClick={() => navigate('/how-to-play')}>
+          {ONBOARD.howTo}
+        </button>
+        <button
+          className="btn btn-sm btn-primary"
+          type="button"
+          disabled={!ready}
+          onClick={() => quickPlay()}
+        >
+          {ONBOARD.firstGame}
+        </button>
+        <button
+          className="linkbtn"
+          type="button"
+          aria-label={ONBOARD.dismiss}
+          title={ONBOARD.dismissTitle}
+          onClick={dismiss}
+        >
+          {ONBOARD.dismiss}
+        </button>
+      </span>
+    </div>
+  );
+}
+
+/**
+ * Compact live social-proof strip (retention): "<N> souls around" from
+ * `/api/stats/online` and a short "Fresh off the table" list of finished games
+ * from `/api/games/recent`, both polled ~30s. Degrades silently to nothing when
+ * there is no one around and no recent games (e.g. NO_DB / empty endpoints).
+ */
+function SocialProof() {
+  const [online, setOnline] = useState(0);
+  const [recent, setRecent] = useState<RecentGame[]>([]);
+
+  useEffect(() => {
+    let live = true;
+    const refresh = async () => {
+      const [n, games] = await Promise.all([api.fetchOnline(), api.fetchRecentGames(6)]);
+      if (!live) return;
+      setOnline(n);
+      setRecent(games);
+    };
+    void refresh();
+    const id = setInterval(() => void refresh(), 30_000);
+    return () => {
+      live = false;
+      clearInterval(id);
+    };
+  }, []);
+
+  // Nothing to say ⇒ render nothing (don't show an empty husk).
+  if (online <= 0 && recent.length === 0) return null;
+
+  return (
+    <div className="social-proof">
+      {online > 0 && (
+        <span className="souls">
+          <span className="souls-dot" aria-hidden="true" />
+          {SOCIAL_PROOF.souls(online)}
+        </span>
+      )}
+      {recent.length > 0 && (
+        <span className="fresh">
+          <span className="fresh-label faint">{SOCIAL_PROOF.freshHeading}:</span>
+          {recent.map((g) => {
+            const faction = factionLabel(g.outcome);
+            const result = faction ? SOCIAL_PROOF.result(faction) : SOCIAL_PROOF.draw;
+            return (
+              <Link
+                key={g.id}
+                className="fresh-item"
+                to={`/replay/${encodeURIComponent(g.id)}`}
+                title={`${result} · ${sanitizeInline(g.setupId)}`}
+              >
+                <span className="fresh-setup">{sanitizeInline(g.setupId)}</span>
+                <span className="faint"> · {result}</span>
+                <span className="faint"> · {SOCIAL_PROOF.players(g.players)}</span>
+                <span className="faint"> · {timeAgo(g.endedAt)}</span>
+              </Link>
+            );
+          })}
+        </span>
+      )}
+    </div>
+  );
+}
+
+/**
+ * Human faction label for a recent-game outcome token (TOWN → "Town"), or null
+ * for a draw/unknown so the strip shows "A draw" instead.
+ */
+function factionLabel(outcome: string | null): string | null {
+  if (!outcome) return null;
+  const cleaned = outcome.replace(/_/g, ' ').trim().toLowerCase();
+  if (cleaned.length === 0) return null;
+  return cleaned.replace(/\b\w/g, (c) => c.toUpperCase());
 }
 
 /**

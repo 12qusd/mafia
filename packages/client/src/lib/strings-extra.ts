@@ -889,6 +889,93 @@ export const ACCOUNT = {
   bannerDismiss: 'Dismiss',
 } as const;
 
+/** First-game onboarding banner (Home) — shown to guests + zero-game accounts. */
+export const ONBOARD = {
+  pitch: 'New in town? Learn the play in two minutes, then take your first seat.',
+  howTo: 'How to Play',
+  firstGame: 'Play your first game',
+  dismiss: 'Dismiss',
+  dismissTitle: 'Hide this welcome',
+} as const;
+
+/** Home social-proof strip ("souls around" + "fresh off the table"). */
+export const SOCIAL_PROOF = {
+  souls: (n: number) => `${n} ${n === 1 ? 'soul' : 'souls'} around`,
+  freshHeading: 'Fresh off the table',
+  // A finished-game line: "<faction> took it · <setup> · <relative>".
+  result: (faction: string) => `${faction} took it`,
+  draw: 'A draw',
+  players: (n: number) => `${n}p`,
+} as const;
+
+/** Share-link button (GameOver + replay). */
+export const SHARE = {
+  button: 'Share',
+  title: 'Copy a link to this game',
+  copied: 'Link copied',
+  failed: 'Could not copy the link.',
+} as const;
+
+/** "How to Play" guide copy (noir voice). Links out to the Glossary for roles. */
+export const HOWTO = {
+  topbarLink: 'How to Play',
+  heading: 'How to Play',
+  sub: 'A short guide to the long night. Read it once; the table will teach you the rest.',
+  premiseHeading: 'The premise',
+  premise:
+    'A town in the dry years, full of secrets. By day the citizens talk, accuse, and vote. By night the killers move. You are dealt a role and a side — most know only their own. Win your faction’s war before the others win theirs.',
+  factionsHeading: 'The sides',
+  factions: [
+    {
+      name: 'The Town',
+      blurb:
+        'The honest majority — and the blind one. You do not know who your friends are. Find the wolves by their words and votes, and hang them before they thin you out.',
+    },
+    {
+      name: 'The Mafia & the Triad',
+      blurb:
+        'Two informed killing crews. You know your own and you kill in the dark, one a night. Pose as townsfolk by day; outlast the room until you hold the floor.',
+    },
+    {
+      name: 'The Coven (Vampires)',
+      blurb:
+        'They do not just kill — they convert. Each night the bite can turn a citizen into one of them. Left alone, they spread until they own the table.',
+    },
+    {
+      name: 'The Cult',
+      blurb:
+        'Recruiters, like the Coven, but their own kind of menace. They swell their numbers by night and win by parity — when no one is left to stop them.',
+    },
+    {
+      name: 'The Neutrals',
+      blurb:
+        'Lone hands with their own ends. A Serial Killer wants to be the last one breathing; others, like the Jester, win by twisting the vote itself. Trust none of them.',
+    },
+  ],
+  loopHeading: 'The round',
+  loopSteps: [
+    'Day — the floor opens. Everyone talks: claim a role, read the room, point a finger.',
+    'Trial — name a suspect and the table votes whether to put them up.',
+    'Execution — if the vote carries, they hang, and their role is revealed.',
+    'Night — the killers strike, the protectors guard, the watchers learn. Dawn shows who fell.',
+  ],
+  votingHeading: 'Voting & trials',
+  voting:
+    'A majority puts a suspect on trial. They make their case; the table votes guilty or innocent. Guilty hangs them. Spend your votes well — every wrong rope helps the other side.',
+  winHeading: 'Winning',
+  win:
+    'Town wins when every threat is dead. A killing faction wins when it controls the room and no rival can stop it. Neutrals win on their own private terms. The night ends when only one will remains.',
+  progressHeading: 'Standing & the long game',
+  progress:
+    'Play earns you points and a tier; ranked play tracks a separate rating. Points unlock role preferences and small perks. None of it changes the rules at the table — it is the record you build across many nights.',
+  castHeading: 'The cast',
+  castBlurb:
+    'Every role is laid face-up in the glossary — no card here is a secret. Read a role before you claim it.',
+  castLink: 'Open the glossary (“The Cast”)',
+  cta: 'Take a seat',
+  back: 'Back to tables',
+} as const;
+
 /** A seat's display label, e.g. "7 · Capone". */
 export function seatLabel(seat: number, name: string): string {
   return `${seat + 1} · ${name}`;

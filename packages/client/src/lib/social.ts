@@ -56,3 +56,28 @@ const ACCENT_KEYS = new Set(ACCENT_OPTIONS.map((o) => o.key));
 export function normalizeAccent(accent: string | null): string {
   return accent && ACCENT_KEYS.has(accent) ? accent : '';
 }
+
+/**
+ * Copy a shareable replay link (`${origin}/replay/:matchId`) to the clipboard.
+ * Uses the async Clipboard API when available, falling back to a `prompt` the
+ * user can copy from manually. Resolves true when the copy is believed to have
+ * succeeded (clipboard write resolved), false otherwise. Never throws.
+ */
+export async function copyReplayLink(matchId: string): Promise<boolean> {
+  const url = `${globalThis.location?.origin ?? ''}/replay/${encodeURIComponent(matchId)}`;
+  try {
+    if (globalThis.navigator?.clipboard?.writeText) {
+      await globalThis.navigator.clipboard.writeText(url);
+      return true;
+    }
+  } catch {
+    /* fall through to the prompt fallback */
+  }
+  try {
+    // Last resort: surface the URL so the user can copy it by hand.
+    globalThis.prompt?.('Copy this link', url);
+  } catch {
+    /* ignore */
+  }
+  return false;
+}

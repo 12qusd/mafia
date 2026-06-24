@@ -2393,3 +2393,53 @@ Gate green: build clean; tests shared 210 / engine 234 / client 167 / server 134
 bots 38 (783); eslint exit 0; leak 0/200. Wave-1 security diff independently
 reviewed by a 4-lens adversarial workflow (verdict: ship-with-fixes; both must-fixes
 applied).
+
+---
+
+## Production-readiness Wave 2 — retention & growth loop
+
+Three sub-steps (2a/2b/2c), each gated + deployed. HTTP/auth/DB/client only — engine
++ §5 leak path untouched throughout (auditor 0/200).
+
+### 2a — account lifecycle (email keystone)
+Pluggable email transport (server/email/): `LogTransport` (logs the message + link
+when SMTP unset, so flows work unconfigured) vs `SmtpTransport` (nodemailer, when
+SMTP_HOST set); best-effort sends never 500 a request. Password reset
+(password_resets table; forgot is always-200 no-enumeration + per-IP rate-limited;
+reset rotates the hash, marks the token used, revokes all sessions). Email
+verification (users.email_verified + email_verifications; link on register; /api/me
+returns emailVerified+hasEmail). Welcome email. Client: /forgot, /reset,
+/verify-email screens + a dismissible verify banner. Env: SMTP_* (unset→log),
+PUBLIC_BASE_URL. Operator sets SMTP_* for real delivery.
+
+### 2b — real "Play again" rematch (was broken)
+formGame deletes the lobby at game start, so the old play-again led nowhere. Now the
+FIRST finished player to click creates a fresh private Rematch lobby (host), others
+JOIN it (id stamped on the lingering room), Quick Play fallback. New `play_again`
+client command; GameScreen mounts useLobbyNav; the lobby_state reducer clears the
+finished-game view ONLY for a `waiting` lobby (mid-game reconnect resend never wipes
+a live game). Room disposed once its last connection leaves.
+
+### 2c — onboarding, social proof, sharing, OG cards
+Public FINISHED-only surfaces: GET /api/stats/online (live socket count via
+gateway.connectionCount wired to ctx.onlineCount), /api/games/recent,
+/api/games/:id/summary (finished-only; null for in-progress — leak-safe, asserted).
+OG/preview injection (share-routes.ts): explicit GETs for /replay/:id, /u/:username,
+/join/:code serve index.html with a per-page Open-Graph + Twitter card injected
+before </head> (humans still boot the SPA); a static /og-card.png; generic fallback
+on any miss (never 500). Client: /how-to-play guide, a first-game onboarding banner
+(guests / gamesPlayed===0), a "souls around" + "fresh off the table" social-proof
+strip on home, and a Share button (copies /replay/:id link) on GameOver + replay.
+
+Two PgStore/SQL bugs caught by live smoke-testing (MemoryStore tests missed them):
+(1) getPublicMatchSummary joined users.id (uuid) = match_players.user_or_guest_id
+(text) → `operator does not exist: uuid = text`; fixed with `u.id::text`.
+(2) the SPA's baseline og card sat BEFORE the injected per-page card and crawlers use
+the first occurrence → `serve()` now strips the shell's existing <title>/og:/twitter:
+meta before injecting, so a share route carries exactly one (per-page) card while
+ordinary SPA routes keep the generic baseline.
+
+Gate green across all three: tests 818 (shared 211 / engine 234 / client 167 /
+server 167 / bots 39); eslint 0; leak 0/200. DB migrated (2a tables). Known minor
+follow-up: the recent-games strip shows the 'completed' status rather than the
+winning faction (matches.outcome stores status, not winner) — deferred to the UX pass.

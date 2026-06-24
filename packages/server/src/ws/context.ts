@@ -35,4 +35,11 @@ export interface GatewayContext {
    * All sends are best-effort — a mail failure never affects the request.
    */
   email: EmailService;
+  /**
+   * Live socket count for the public "souls around" social-proof strip
+   * (retention front-end). Wired in app.ts to gateway.connectionCount() after
+   * the gateway is constructed; optional so the test/NO_DB context (which never
+   * builds a gateway) can omit it — public routes default to 0 when absent.
+   */
+  onlineCount?: () => number;
 }

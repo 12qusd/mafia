@@ -10,6 +10,7 @@ const TOKEN_KEY = 'nocturne.token';
 const SETTINGS_KEY = 'nocturne.settings';
 const GUEST_NAME_KEY = 'nocturne.guestName';
 const VERIFY_BANNER_DISMISSED_KEY = 'nocturne.verifyBannerDismissed';
+const ONBOARD_DISMISSED_KEY = 'nocturne.onboardDismissed';
 
 export type TextScale = 'small' | 'normal' | 'large';
 
@@ -92,6 +93,14 @@ export function loadVerifyBannerDismissed(): boolean {
 }
 export function saveVerifyBannerDismissed(): void {
   safeSet(VERIFY_BANNER_DISMISSED_KEY, '1');
+}
+
+/** Whether the user dismissed the first-game onboarding welcome (retention). */
+export function loadOnboardDismissed(): boolean {
+  return safeGet(ONBOARD_DISMISSED_KEY) === '1';
+}
+export function saveOnboardDismissed(): void {
+  safeSet(ONBOARD_DISMISSED_KEY, '1');
 }
 
 export function loadSettings(): ClientSettings {

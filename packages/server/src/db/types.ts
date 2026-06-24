@@ -102,6 +102,48 @@ export interface MatchReplay {
   chat: { seq: number; channel: string; senderSeat: number | null; body: string }[];
 }
 
+/**
+ * One row of the public "recent games" strip (retention front-end). Derived
+ * ONLY from FINISHED matches (ended_at NOT NULL) — never an in-progress game,
+ * so no live roles/seats leak. No auth required to read.
+ */
+export interface RecentMatchSummary {
+  id: string;
+  setupId: string;
+  outcome: string | null;
+  /** Epoch ms the match ended. Never null (finished-only). */
+  endedAt: number;
+  mode: string | null;
+  /** Number of seats in the match (match_players count). */
+  players: number;
+}
+
+/**
+ * The public, no-auth match summary backing the shareable replay card. Returned
+ * ONLY for a FINISHED match (ended_at NOT NULL); a finished game's roles are
+ * already revealed at game-over, so exposing them post-hoc is safe. An
+ * in-progress match yields null — its roles/seats must NEVER leak.
+ */
+export interface PublicMatchSummary {
+  id: string;
+  setupId: string;
+  outcome: string | null;
+  startedAt: number;
+  /** Epoch ms the match ended. Never null (finished-only). */
+  endedAt: number;
+  mode: string | null;
+  seats: Array<{
+    seat: number;
+    role: string;
+    faction: string;
+    outcome: string;
+    survived: boolean;
+    deathDay: number | null;
+    /** Account username for the seat, or null for a guest/unknown id. */
+    name: string | null;
+  }>;
+}
+
 // --------------------------------------------------------------------------
 // Points & achievements (goal: points system)
 // --------------------------------------------------------------------------
@@ -421,6 +463,23 @@ export interface Store {
   getMatchReplay(matchId: string): Promise<MatchReplay | null>;
   /** User ids that participated in a match (replay-access authorization, §9). */
   getMatchParticipants(matchId: string): Promise<string[]>;
+
+  // Public, no-auth retention surfaces (home-page social proof + share cards).
+  // CRITICAL leak-safety: both MUST expose ONLY finished matches (ended_at NOT
+  // NULL). An in-progress game's roles/seats must never be returned here.
+  /**
+   * Recent FINISHED matches (newest first), each with a seat count. `limit` is
+   * capped (≤30) by the caller; the store also clamps defensively. Empty under
+   * a non-persistent store (NO_DB derives from in-memory matches, or []).
+   */
+  getRecentMatches(limit: number): Promise<RecentMatchSummary[]>;
+  /**
+   * Public summary for a FINISHED match (the shareable, no-auth replay card), or
+   * null when the id is unknown OR the match is still in progress (ended_at
+   * null). `name` resolves to the account username for seats whose
+   * user_or_guest_id maps to a users row, else null (guests). Seats ordered.
+   */
+  getPublicMatchSummary(matchId: string): Promise<PublicMatchSummary | null>;
 
   // Points & achievements (goal: points system) — written at match end.
   /** Apply per-match stat increments and refresh last_match_at. */

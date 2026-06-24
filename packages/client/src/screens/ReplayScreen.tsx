@@ -15,8 +15,9 @@ import { getRole, type Faction, type RoleId } from '@nocturne/shared';
 import { useStore } from '../store/store.js';
 import { DecoHead, FactionTag } from '../components/common.js';
 import { IconSkull } from '../components/Icons.js';
-import { REPLAY, OUTCOME_LABEL, GAME } from '../lib/strings-extra.js';
+import { REPLAY, OUTCOME_LABEL, GAME, SHARE } from '../lib/strings-extra.js';
 import { sanitizeInline, sanitizeText } from '../lib/sanitize.js';
+import { copyReplayLink } from '../lib/social.js';
 import * as api from '../lib/api.js';
 import type { MatchReplay } from '../lib/api.js';
 import { reconstructReplay } from '../lib/replay.js';
@@ -111,6 +112,17 @@ export function ReplayScreen() {
             >
               {verified ? '✓' : '!'} {verified ? REPLAY.verified : REPLAY.unverified}
             </span>
+            <button
+              className="btn btn-sm"
+              title={SHARE.title}
+              onClick={() => {
+                void copyReplayLink(m.id).then((ok) =>
+                  pushInfo(ok ? SHARE.copied : SHARE.failed),
+                );
+              }}
+            >
+              {SHARE.button}
+            </button>
             <button
               className="btn btn-sm"
               onClick={() => {

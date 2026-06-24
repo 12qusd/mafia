@@ -20,6 +20,8 @@ import type {
   ActiveSanctions,
   MatchRecord,
   MatchReplay,
+  RecentMatchSummary,
+  PublicMatchSummary,
   UserStatsRow,
   LeaderboardEntry,
   PointAwardRecord,
@@ -104,6 +106,12 @@ export class MemoryStore implements Store {
   private readonly achievementsByUser = new Map<string, Set<string>>();
   /** In-process custom setups (process-lifetime only). */
   private readonly customSetups = new Map<string, CustomSetupRow>();
+  /**
+   * In-process match records (process-lifetime only). Kept so the public,
+   * FINISHED-only retention surfaces (getRecentMatches / getPublicMatchSummary)
+   * can be exercised under NO_DB; the full replay path still drops these.
+   */
+  private readonly matches = new Map<string, MatchRecord>();
   /** In-process ranked state (process-lifetime only; guests excluded upstream). */
   private currentSeason: SeasonRow | null = null;
   private readonly ratings = new Map<string, RatingRow>();
@@ -312,14 +320,75 @@ export class MemoryStore implements Store {
   }
   async logAdminAction(): Promise<void> {}
 
-  async writeMatch(_record: MatchRecord): Promise<void> {
-    // Dropped in NO_DB mode.
+  async writeMatch(record: MatchRecord): Promise<void> {
+    // Retained in-process (process-lifetime only) so the public FINISHED-only
+    // retention surfaces work under NO_DB. The full replay path still drops it.
+    this.matches.set(record.id, record);
   }
   async getMatchReplay(_matchId: string): Promise<MatchReplay | null> {
-    return null; // matches are not persisted in NO_DB mode.
+    return null; // matches are not persisted for replay/export in NO_DB mode.
   }
   async getMatchParticipants(_matchId: string): Promise<string[]> {
     return [];
+  }
+
+  // --- Public retention surfaces (FINISHED-only, no auth) -------------------
+
+  /**
+   * Test/seed helper: insert a match record directly. `endedAt: null` records an
+   * IN-PROGRESS match (its roles must never leak via the public surfaces); a
+   * non-null `endedAt` records a finished one. Mirrors what writeMatch stores.
+   */
+  setMatchForTest(
+    record: Omit<MatchRecord, 'endedAt'> & { endedAt: number | null },
+  ): void {
+    // Cast through the shared shape; the public reads below honour a null
+    // endedAt as "in progress" regardless of the MatchRecord.endedAt typing.
+    this.matches.set(record.id, record as unknown as MatchRecord);
+  }
+
+  async getRecentMatches(limit: number): Promise<RecentMatchSummary[]> {
+    const cap = Math.max(1, Math.min(Math.floor(limit) || 0, 30));
+    return [...this.matches.values()]
+      // Leak-safety: FINISHED matches only (a null/absent endedAt is in-progress).
+      .filter((m) => m.endedAt !== null && m.endedAt !== undefined)
+      .sort((a, b) => b.endedAt - a.endedAt)
+      .slice(0, cap)
+      .map((m) => ({
+        id: m.id,
+        setupId: m.setupId,
+        outcome: m.outcome ?? null,
+        endedAt: m.endedAt,
+        mode: m.mode ?? null,
+        players: m.players.length,
+      }));
+  }
+
+  async getPublicMatchSummary(matchId: string): Promise<PublicMatchSummary | null> {
+    const m = this.matches.get(matchId);
+    // Leak-safety: unknown id OR an in-progress match (null endedAt) ⇒ null.
+    if (!m || m.endedAt === null || m.endedAt === undefined) return null;
+    const seats = [...m.players]
+      .sort((a, b) => a.seat - b.seat)
+      .map((p) => ({
+        seat: p.seat,
+        role: p.role,
+        faction: p.faction,
+        outcome: p.outcome,
+        survived: p.survived,
+        deathDay: p.deathDay,
+        // MemoryStore has no users table; resolve a test-supplied name if any.
+        name: this.usernames.get(p.userOrGuestId) ?? null,
+      }));
+    return {
+      id: m.id,
+      setupId: m.setupId,
+      outcome: m.outcome ?? null,
+      startedAt: m.startedAt,
+      endedAt: m.endedAt,
+      mode: m.mode ?? null,
+      seats,
+    };
   }
 
   async addToUserStats(userId: string, delta: StatsDelta, at: number): Promise<void> {
