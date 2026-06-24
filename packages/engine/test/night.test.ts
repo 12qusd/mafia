@@ -71,6 +71,30 @@ describe('§6.8 night resolution — golden cases', () => {
     expect(died).toHaveLength(1);
   });
 
+  it('Vigilante holds fire on Night 1 — no kill, no bullet spent (role card)', () => {
+    // 0 Vigilante, 1 Mafioso, 2..4 Citizen. The vig tries to shoot N1.
+    let s = makeGame(['VIGILANTE', 'MAFIOSO', 'CITIZEN', 'CITIZEN', 'CITIZEN']);
+    s = toFirstNight(s); // nightNumber === 1
+    expect(s.nightNumber).toBe(1);
+    const bulletsBefore = s.seats[0]!.usesRemaining;
+    s = night(s, 0, 'kill_vigilante', 2); // illegal on N1 — dropped
+    const { state } = resolveNightPhase(s);
+    expect(state.seats[2]!.alive).toBe(true); // target survives
+    expect(state.seats[0]!.usesRemaining).toBe(bulletsBefore); // both bullets retained
+    expect(state.traces.some((t) => t.step === 'kill' && t.source === 'vigilante')).toBe(false);
+  });
+
+  it('Vigilante CAN fire from Night 2 onward (bullet consumed, target dies)', () => {
+    let s = makeGame(['VIGILANTE', 'MAFIOSO', 'CITIZEN', 'CITIZEN', 'CITIZEN']);
+    s = toFirstNight(s);
+    s.nightNumber = 2; // past the first-night hold
+    const bulletsBefore = s.seats[0]!.usesRemaining;
+    s = night(s, 0, 'kill_vigilante', 2);
+    const { state } = resolveNightPhase(s);
+    expect(state.seats[2]!.alive).toBe(false);
+    expect(state.seats[0]!.usesRemaining).toBe(bulletsBefore - 1);
+  });
+
   it('SK kills his roleblocker (Escort variant); original target survives', () => {
     // 0 SK, 1 Escort, 2 Citizen(original target)
     let s = makeGame(['SERIAL_KILLER', 'ESCORT', 'CITIZEN']);

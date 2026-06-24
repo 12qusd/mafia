@@ -28,6 +28,7 @@ import { registerSocialRoutes } from './http/social-routes.js';
 import { registerForumRoutes } from './http/forum-routes.js';
 import { registerAdminRoutes } from './http/admin-routes.js';
 import { registerTestRoutes } from './http/test-routes.js';
+import { makeRateLimiter } from './http/rate-limit.js';
 import { BotManager, type BotLlmConfig } from './bots/manager.js';
 import { log } from './log.js';
 
@@ -41,6 +42,32 @@ export interface BuiltApp {
 
 export async function buildApp(cfg: ServerConfig): Promise<BuiltApp> {
   const store = createStore(cfg);
+
+  // Fail fast if the configured DB is unreachable, rather than booting "healthy"
+  // against a dead Postgres (Task D). No-op for the in-memory store.
+  if (store.persistent) {
+    try {
+      await store.healthCheck();
+    } catch (err) {
+      log.error('database health check failed at boot; refusing to start', {
+        err: String(err),
+      });
+      await store.close().catch(() => {});
+      throw new Error(`database unreachable: ${String(err)}`);
+    }
+  }
+
+  // TEST MODE in production is a deliberate owner-QA escape hatch, but it must
+  // never be silently on: any test/audit/debug surface it opens is now admin-
+  // gated (Task A), yet a loud boot warning keeps the operator aware of it.
+  if (cfg.testModeEnv && (store.persistent || cfg.production)) {
+    log.warn(
+      'NOCTURNE_TEST_MODE is ENABLED in a production/persistent deployment — ' +
+        'test-lobby creation and test/audit endpoints are admin-only; disable the flag if not actively running QA',
+      { production: cfg.production, persistent: store.persistent },
+    );
+  }
+
   const engine = await getEngine();
   if (isUsingFallbackEngine()) {
     log.warn('using the in-server reference engine (real @nocturne/engine not detected)');
@@ -91,7 +118,20 @@ export async function buildApp(cfg: ServerConfig): Promise<BuiltApp> {
   // (ranked requires accounts). Season rollover/soft-reset is a documented stub.
   await manager.ensureSeason('Season 1');
 
-  const ctx: GatewayContext = { cfg, store, identity, manager, moderation, telemetry, nameOf };
+  // HTTP rate limiting (Task B): enabled only for a persistent store, so the
+  // NO_DB test suite (which hammers auth/account endpoints) is never throttled.
+  const rateLimit = makeRateLimiter(store.persistent);
+
+  const ctx: GatewayContext = {
+    cfg,
+    store,
+    identity,
+    manager,
+    moderation,
+    telemetry,
+    nameOf,
+    rateLimit,
+  };
 
   // Capture names when identities are bound (the gateway calls onIdentityBound).
   const gateway = new Gateway(ctx);

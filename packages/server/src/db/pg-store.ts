@@ -121,6 +121,27 @@ export class PgStore implements Store {
     await this.pool.query(`UPDATE sessions SET revoked = true WHERE token_hash = $1`, [tokenHash]);
   }
 
+  async getSession(
+    tokenHash: string,
+  ): Promise<{ userId: string; expiresAt: number } | null> {
+    const { rows } = await this.pool.query<{ user_id: string; expires_at: Date }>(
+      `SELECT user_id, expires_at FROM sessions
+       WHERE token_hash = $1 AND NOT revoked AND expires_at > now()`,
+      [tokenHash],
+    );
+    const row = rows[0];
+    if (!row) return null;
+    return { userId: row.user_id, expiresAt: row.expires_at.getTime() };
+  }
+
+  async extendSession(tokenHash: string, expiresAt: number): Promise<void> {
+    await this.pool.query(
+      `UPDATE sessions SET expires_at = to_timestamp($2 / 1000.0)
+       WHERE token_hash = $1 AND NOT revoked`,
+      [tokenHash, expiresAt],
+    );
+  }
+
   async getActiveSanctions(userId: string): Promise<ActiveSanctions> {
     const { rows } = await this.pool.query<{ type: string; expires_at: Date | null }>(
       `SELECT type, expires_at FROM sanctions
@@ -1604,6 +1625,11 @@ export class PgStore implements Store {
 
   async close(): Promise<void> {
     await this.pool.end();
+  }
+
+  /** Connectivity probe (Task D): a trivial round-trip; throws if unreachable. */
+  async healthCheck(): Promise<void> {
+    await this.pool.query('SELECT 1');
   }
 }
 

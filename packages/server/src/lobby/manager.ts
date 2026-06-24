@@ -94,6 +94,8 @@ export class LobbyManager {
   /**
    * Best-effort MMR cache (identityId → mmr) for synchronous ranked bucketing.
    * Refreshed when a player enters the ranked queue; defaults to {@link DEFAULT_RATING}.
+   * Bounded to {@link MMR_CACHE_CAP} entries with simple FIFO eviction so a long-
+   * lived server with many distinct ranked players cannot grow it unboundedly.
    */
   private readonly mmrCache = new Map<string, number>();
 
@@ -155,8 +157,7 @@ export class LobbyManager {
     const requestedTest = input.config?.testMode === true;
     let testMode = false;
     if (requestedTest) {
-      const allowed = this.deps.testModeEnv === true || conn.identity?.isAdmin === true;
-      if (!allowed) return { error: 'forbidden' };
+      if (!this.testModeAllowed(conn)) return { error: 'forbidden' };
       testMode = true;
     }
     const visibility: LobbyVisibility = testMode ? 'private' : input.visibility;
@@ -185,6 +186,22 @@ export class LobbyManager {
     log.info('lobby created', { id, visibility, setup: input.setupId, testMode });
     this.broadcastLobby(lobby);
     return { lobby };
+  }
+
+  /**
+   * Whether this connection may create or control a TEST-mode lobby.
+   *
+   * - Persistent store (production with real accounts): admin-only. The
+   *   NOCTURNE_TEST_MODE env gate no longer opens test mode to any user — it
+   *   would let any player reach test/audit/debug surfaces. Owner QA still works
+   *   via an admin account. (Task A: close the abuse hole.)
+   * - Non-persistent store (NO_DB/CI/dev, no accounts exist): keep it open —
+   *   honored when the env gate is on OR the (mock) identity is admin, so the
+   *   existing test-mode test suite behaves unchanged.
+   */
+  private testModeAllowed(conn: Connection): boolean {
+    if (this.deps.store.persistent) return conn.identity?.isAdmin === true;
+    return this.deps.testModeEnv === true || conn.identity?.isAdmin === true;
   }
 
   private uniqueInvite(): string {
@@ -310,6 +327,9 @@ export class LobbyManager {
   ): Promise<string | null> {
     const identityId = conn.identityId;
     if (!identityId) return 'not_authenticated';
+    // Persistent (production) test-control is admin-only — same gate as creating
+    // a test lobby. In NO_DB the gate is open (the host check below suffices).
+    if (this.deps.store.persistent && conn.identity?.isAdmin !== true) return 'forbidden';
 
     // In-game controls (room exists).
     const room = this.roomOf(conn);
@@ -652,9 +672,23 @@ export class LobbyManager {
     void this.deps.store
       .getRating(identityId, RANKED_MODE, this.currentSeasonId)
       .then((row) => {
-        if (row) this.mmrCache.set(identityId, row.mmr);
+        if (row) this.setMmrCache(identityId, row.mmr);
       })
       .catch(() => {});
+  }
+
+  /**
+   * Insert into the bounded MMR cache. When at capacity, evict the oldest entry
+   * (Map preserves insertion order, so the first key is the oldest). Re-setting
+   * an existing key keeps its original position — acceptable for a best-effort
+   * bucketing cache and keeps eviction simple and deterministic.
+   */
+  private setMmrCache(identityId: string, mmr: number): void {
+    if (!this.mmrCache.has(identityId) && this.mmrCache.size >= MMR_CACHE_CAP) {
+      const oldest = this.mmrCache.keys().next().value;
+      if (oldest !== undefined) this.mmrCache.delete(oldest);
+    }
+    this.mmrCache.set(identityId, mmr);
   }
 
   /**
@@ -927,6 +961,9 @@ export class LobbyManager {
     this.lobbies.clear();
   }
 }
+
+/** Max entries kept in the best-effort MMR bucketing cache (Task E). */
+const MMR_CACHE_CAP = 10_000;
 
 /**
  * Build a single-count setup whose `slotsByPlayerCount` has exactly the locked

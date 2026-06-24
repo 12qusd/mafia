@@ -217,6 +217,21 @@ export class MemoryStore implements Store {
   async revokeSession(tokenHash: string): Promise<void> {
     this.sessions.delete(tokenHash);
   }
+  async getSession(
+    tokenHash: string,
+  ): Promise<{ userId: string; expiresAt: number } | null> {
+    const s = this.sessions.get(tokenHash);
+    if (!s) return null;
+    if (s.expiresAt < Date.now()) {
+      this.sessions.delete(tokenHash);
+      return null;
+    }
+    return { userId: s.userId, expiresAt: s.expiresAt };
+  }
+  async extendSession(tokenHash: string, expiresAt: number): Promise<void> {
+    const s = this.sessions.get(tokenHash);
+    if (s) s.expiresAt = expiresAt;
+  }
 
   async getActiveSanctions(userId: string): Promise<ActiveSanctions> {
     const now = Date.now();
@@ -932,4 +947,7 @@ export class MemoryStore implements Store {
   }
 
   async close(): Promise<void> {}
+
+  /** No-op connectivity probe (Task D): the in-memory store is always reachable. */
+  async healthCheck(): Promise<void> {}
 }

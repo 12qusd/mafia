@@ -28,6 +28,7 @@ import { Gateway } from '../ws/gateway.js';
 import type { GatewayContext } from '../ws/context.js';
 import { loadConfig } from '../config.js';
 import { registerAuthRoutes } from '../http/auth-routes.js';
+import { makeRateLimiter } from '../http/rate-limit.js';
 import { FakeClock } from './helpers.js';
 
 // --------------------------------------------------------------------------
@@ -250,7 +251,16 @@ async function bootRealServer(): Promise<RealStack> {
     matchmakingTimings: { fillWindowMs: 30, botJoinPollMs: 20, botJoinTimeoutMs: 4000 },
   });
 
-  const ctx: GatewayContext = { cfg, store, identity, manager, moderation, telemetry, nameOf };
+  const ctx: GatewayContext = {
+    cfg,
+    store,
+    identity,
+    manager,
+    moderation,
+    telemetry,
+    nameOf,
+    rateLimit: makeRateLimiter(store.persistent),
+  };
   const app: FastifyInstance = Fastify({ logger: false });
   await app.register(fastifyCookie);
   registerAuthRoutes(app, ctx);

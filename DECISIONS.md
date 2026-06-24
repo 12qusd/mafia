@@ -2337,3 +2337,59 @@ cards at 820px.
 (+18 forum) / bots 36; `npx eslint .` exit 0; leak sweep 0/200. Verified live
 end-to-end (create thread, reply, view-count, scoped cooldown, garbage-id→404,
 admin gate) + desktop/mobile screenshots, 0 console errors.
+
+---
+
+## Production-readiness Wave 1 — launch-blockers (ops + security + engine)
+
+Driven by a 153-agent, 124-finding code-grounded gap audit (themes: ops, security,
+retention, a11y, ranked, social, perf, tests). Wave 1 closes the launch-blockers.
+HTTP/auth/boot only — engine determinism + the §5 leak path untouched (auditor 0/200).
+
+### Engine
+- **Vigilante Night-1 hold-fire (real bug fixed):** the role card promises no shot
+  N1, and `nightNumber` exists "for the no-shot-on-N1 rule" (state.ts), but
+  resolve.ts fired unconditionally. Fixed at the intent layer (apply.ts
+  `handleNightAction`): a `kill_vigilante` submitted while `nightNumber===1` is
+  dropped — no kill, no visit, no bullet spent (Witch-forced shots resolve via the
+  control path, unaffected). +2 regression tests. (Tests already worked around this
+  with `nightNumber=2`, confirming the intent.)
+- The audit's "trial-timer resume extends the day" was a **FALSE POSITIVE**:
+  BUILD_SPEC §242 + DECISIONS §262 mandate exactly the pause-and-resume
+  (`now + pausedRemainingMs`) the code already does. Left untouched.
+
+### Security
+- **Test mode admin-gated in production:** `testModeAllowed(conn)` — when the store
+  is persistent (prod), test-lobby creation + `test_control` require `isAdmin`; in
+  NO_DB (CI, no accounts) it stays open so existing tests pass. `NOCTURNE_TEST_MODE=1`
+  in the live env no longer opens test/audit/debug surfaces to any user; owner QA
+  works via an admin login. Loud boot warning when on in prod.
+- **HTTP rate limiting** (new `http/rate-limit.ts`): bounded (20k-key FIFO) per-route
+  sliding window; register 5 / login 10 / guest 20 per-IP-min, friend-request /
+  profile-edit / setup-create per-user. Disabled when `!store.persistent` so the
+  test suite isn't throttled. Adversarial review caught an **XFF-spoof bypass**
+  (behind cloudflared, no trustProxy, the client-controlled leftmost
+  `x-forwarded-for` hop was the only key) → now keys on Cloudflare's unforgeable
+  `cf-connecting-ip`, then the RIGHTMOST XFF hop, then `req.ip`. +7 unit tests.
+- **Auth hygiene:** `Secure` cookie when `cfg.production` (gated on `NODE_ENV`,
+  now set in the pm2 env); sliding session refresh (`getSession`/`extendSession`,
+  extend past half-TTL, best-effort); constant-time register AND login (both burn
+  an argon2 verify/hash on the miss path — no username-enumeration timing oracle).
+
+### Reliability
+- Boot **DB health-check** (`SELECT 1`, persistent only) fails fast instead of
+  booting healthy against a dead Postgres. `unhandledRejection` logs;
+  `uncaughtException` logs → graceful drain → exit 1 (+10s force-exit) so pm2
+  restarts cleanly. Bounded `mmrCache` (10k FIFO). `scripts/backup-db.sh` +
+  restore docs (operator wires the cron).
+- **Leak-auditor role-coverage test:** asserts `KNOWN_ROLES` ⊇ every `ALL_ROLES`
+  id (was already complete — now a guard so a new role can't silently escape).
+
+Operator follow-ups (flagged, not code): `pm2 startup systemd` (sudo) for reboot
+survival; `NODE_ENV=production` added to ecosystem.config.cjs (restart `--update-env`);
+a cron line for the backup script.
+
+Gate green: build clean; tests shared 210 / engine 234 / client 167 / server 134 /
+bots 38 (783); eslint exit 0; leak 0/200. Wave-1 security diff independently
+reviewed by a 4-lens adversarial workflow (verdict: ship-with-fixes; both must-fixes
+applied).

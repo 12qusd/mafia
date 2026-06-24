@@ -31,6 +31,12 @@ function today(): string {
 }
 
 export function registerSetupRoutes(app: FastifyInstance, ctx: GatewayContext): void {
+  // Per-user rate guard for setup creation (Task B); no-op in NO_DB/test.
+  const setupCreateLimit = ctx.rateLimit({
+    max: ctx.cfg.rateLimit.setupCreate,
+    windowMs: ctx.cfg.rateLimit.windowMs,
+  });
+
   // --- Custom setup builder ------------------------------------------------
 
   // Save a custom setup (authenticated, non-guest). Validated before insert.
@@ -39,6 +45,7 @@ export function registerSetupRoutes(app: FastifyInstance, ctx: GatewayContext): 
     if (!identity) return reply.code(401).send({ error: 'not_authenticated' });
     if (identity.isGuest) return reply.code(403).send({ error: 'forbidden' });
     if (!ctx.store.persistent) return reply.code(503).send({ error: 'accounts_disabled' });
+    if (setupCreateLimit(identity.id, reply)) return reply;
 
     const parsed = CreateBody.safeParse(req.body);
     if (!parsed.success) return reply.code(400).send({ error: 'bad_request' });

@@ -229,8 +229,13 @@ function mentionsRoleForOtherSeat(msg: ServerMessage, role: string): boolean {
   return collectRoleStrings(msg).has(role);
 }
 
-/** The MVP role-id set (BUILD_SPEC §6.5). Used to detect role strings in frames. */
-const KNOWN_ROLES = new Set<string>([
+/**
+ * The full role-id set (BUILD_SPEC §6.5). Used to detect role strings in frames.
+ * MUST cover every RoleId in `@nocturne/shared`'s `ALL_ROLES`, or a new role
+ * could be broadcast without the auditor recognizing (and flagging) its id —
+ * enforced by `__tests__/known-roles.test.ts`.
+ */
+export const KNOWN_ROLES = new Set<string>([
   'CITIZEN',
   'SHERIFF',
   'INVESTIGATOR',

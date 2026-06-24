@@ -11,6 +11,7 @@ import { DISPLAY_NAME_MAX } from '@nocturne/shared';
 import type { GatewayContext } from '../ws/context.js';
 import { buildUserStatsSummary } from '../points/stats.js';
 import { buildRankedSummary } from '../ranked/award.js';
+import { clientIp } from './rate-limit.js';
 
 const COOKIE = 'nocturne_session';
 
@@ -37,11 +38,22 @@ export function registerAuthRoutes(app: FastifyInstance, ctx: GatewayContext): v
   const cookieOpts = {
     httpOnly: true,
     sameSite: 'lax' as const,
+    // Secure flag in production so the session cookie is never sent over plain
+    // HTTP (Task C). Left off in dev so local http://localhost still works.
+    secure: ctx.cfg.production,
     path: '/',
     maxAge: Math.floor(ctx.cfg.sessionTtlMs / 1000),
   };
 
+  // Per-IP rate guards for the unauthenticated auth endpoints (Task B). No-ops
+  // when the store is non-persistent (NO_DB/test). Built once at registration.
+  const rl = ctx.cfg.rateLimit;
+  const registerLimit = ctx.rateLimit({ max: rl.register, windowMs: rl.windowMs });
+  const loginLimit = ctx.rateLimit({ max: rl.login, windowMs: rl.windowMs });
+  const guestLimit = ctx.rateLimit({ max: rl.guest, windowMs: rl.windowMs });
+
   app.post('/api/register', async (req, reply) => {
+    if (registerLimit(clientIp(req), reply)) return reply;
     if (!ctx.store.persistent) return reply.code(503).send({ error: 'accounts_disabled' });
     const parsed = RegisterBody.safeParse(req.body);
     if (!parsed.success) return reply.code(400).send({ error: 'bad_request' });
@@ -56,6 +68,7 @@ export function registerAuthRoutes(app: FastifyInstance, ctx: GatewayContext): v
   });
 
   app.post('/api/login', async (req, reply) => {
+    if (loginLimit(clientIp(req), reply)) return reply;
     if (!ctx.store.persistent) return reply.code(503).send({ error: 'accounts_disabled' });
     const parsed = LoginBody.safeParse(req.body);
     if (!parsed.success) return reply.code(400).send({ error: 'bad_request' });
@@ -110,7 +123,8 @@ export function registerAuthRoutes(app: FastifyInstance, ctx: GatewayContext): v
   });
 
   // Issue a guest session over HTTP (for clients that prefer a cookie first).
-  app.post('/api/guest', async (_req, reply) => {
+  app.post('/api/guest', async (req, reply) => {
+    if (guestLimit(clientIp(req), reply)) return reply;
     const guest = ctx.identity.createGuest();
     reply.setCookie(COOKIE, guest.token, cookieOpts);
     return reply.send({

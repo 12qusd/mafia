@@ -340,6 +340,13 @@ export interface ForumPostRow {
 export interface Store {
   readonly persistent: boolean;
 
+  /**
+   * Verify the store is reachable (Task D). PgStore runs `SELECT 1`; MemoryStore
+   * resolves immediately. Called once at boot for persistent stores so the
+   * server fails fast against a dead database instead of booting "healthy".
+   */
+  healthCheck(): Promise<void>;
+
   // Users / auth (§7.1) — absent in NO_DB (returns null / throws on register).
   createUser(input: {
     username: string;
@@ -354,6 +361,15 @@ export interface Store {
   createSession(tokenHash: string, userId: string, expiresAt: number): Promise<void>;
   getSessionUserId(tokenHash: string): Promise<string | null>;
   revokeSession(tokenHash: string): Promise<void>;
+  /**
+   * Read a session's user id AND its current expiry (epoch ms), or null if the
+   * session is absent/revoked/expired. Used by sliding-refresh (Task C) so the
+   * server can decide whether the session is past its half-life without a second
+   * round-trip.
+   */
+  getSession(tokenHash: string): Promise<{ userId: string; expiresAt: number } | null>;
+  /** Extend a live session's expiry to `expiresAt` (sliding refresh, Task C). */
+  extendSession(tokenHash: string, expiresAt: number): Promise<void>;
 
   // Moderation (§11)
   getActiveSanctions(userId: string): Promise<ActiveSanctions>;

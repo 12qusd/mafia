@@ -468,6 +468,12 @@ function handleNightAction(
 
   // Remove any prior intent for this seat (last submission wins).
   state.nightIntents = state.nightIntents.filter((i) => i.seat !== seat);
+  // Vigilante holds fire on the very first night (role card: "You will not fire on
+  // the very first night, while the town is still strangers"). nightNumber is 1
+  // throughout the first NIGHT, so drop the intent entirely — no kill, no visit,
+  // and no bullet spent. A Witch-forced shot resolves via the control path, not
+  // here, so this does not constrain a controlled Vigilante.
+  if (ability === 'kill_vigilante' && state.nightNumber === 1) return;
   // `vest`/`alert`/`spy`/`ignite`/`divine` are self-only toggles with no external
   // target; any other ability with a null target is a cancellation.
   if (

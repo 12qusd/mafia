@@ -66,6 +66,15 @@ export function registerSocialRoutes(app: FastifyInstance, ctx: GatewayContext):
   const lastPostAt = new Map<string, number>();
   // Per-user presence-write throttle (in-memory).
   const lastPresenceWrite = new Map<string, number>();
+  // Per-route rate guards (Task B): keyed per user, no-op in NO_DB/test.
+  const friendRequestLimit = ctx.rateLimit({
+    max: ctx.cfg.rateLimit.friendRequest,
+    windowMs: ctx.cfg.rateLimit.windowMs,
+  });
+  const profileEditLimit = ctx.rateLimit({
+    max: ctx.cfg.rateLimit.profileEdit,
+    windowMs: ctx.cfg.rateLimit.windowMs,
+  });
 
   /** Record presence at most once per PRESENCE_THROTTLE_MS for a user. */
   async function recordPresence(userId: string): Promise<void> {
@@ -181,6 +190,7 @@ export function registerSocialRoutes(app: FastifyInstance, ctx: GatewayContext):
     if (!identity) return reply.code(401).send({ error: 'not_authenticated' });
     if (identity.isGuest) return reply.code(403).send({ error: 'forbidden' });
     if (!ctx.store.persistent) return reply.code(503).send({ error: 'accounts_disabled' });
+    if (profileEditLimit(identity.id, reply)) return reply;
     const parsed = ProfileBody.safeParse(req.body);
     if (!parsed.success) return reply.code(400).send({ error: 'bad_request' });
     await ctx.store.upsertProfile(identity.id, parsed.data);
@@ -212,6 +222,7 @@ export function registerSocialRoutes(app: FastifyInstance, ctx: GatewayContext):
     if (!identity) return reply.code(401).send({ error: 'not_authenticated' });
     if (identity.isGuest) return reply.code(403).send({ error: 'forbidden' });
     if (!ctx.store.persistent) return reply.code(503).send({ error: 'accounts_disabled' });
+    if (friendRequestLimit(identity.id, reply)) return reply;
     const parsed = FriendRequestBody.safeParse(req.body);
     if (!parsed.success) return reply.code(400).send({ error: 'bad_request' });
     const target = await ctx.store.getUserByUsername(parsed.data.username);

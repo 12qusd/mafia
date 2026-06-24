@@ -77,6 +77,15 @@ class MockPersistentStore extends MemoryStore {
   override async getSessionUserId(tokenHash: string): Promise<string | null> {
     return this.dbSessions.get(tokenHash)?.userId ?? null;
   }
+  override async getSession(
+    tokenHash: string,
+  ): Promise<{ userId: string; expiresAt: number } | null> {
+    return this.dbSessions.get(tokenHash) ?? null;
+  }
+  override async extendSession(tokenHash: string, expiresAt: number): Promise<void> {
+    const s = this.dbSessions.get(tokenHash);
+    if (s) s.expiresAt = expiresAt;
+  }
   override async revokeSession(tokenHash: string): Promise<void> {
     this.dbSessions.delete(tokenHash);
   }

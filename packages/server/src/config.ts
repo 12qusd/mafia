@@ -30,12 +30,36 @@ export interface ServerConfig {
   sessionTtlMs: number;
   /** TEST MODE gate (NOCTURNE_TEST_MODE=1): allow non-admins to create test lobbies. */
   testModeEnv: boolean;
+  /** True when NODE_ENV==='production'. Tightens cookie security + test-mode logging. */
+  production: boolean;
+  /**
+   * Per-route HTTP rate limits (requests / window). Overridable via env; disabled
+   * entirely in NO_DB/non-persistent mode so the test suite (which hammers
+   * endpoints) never trips. See {@link RateLimitConfig}.
+   */
+  rateLimit: RateLimitConfig;
   /** LLM bot config (TEST MODE LLM bots); base url unset ⇒ LLM disabled. */
   llmBaseUrl: string | undefined;
   llmModel: string;
   llmApiKey: string | undefined;
   llmMaxConcurrency: number;
   llmTimeoutMs: number;
+}
+
+/**
+ * Per-route rate-limit knobs (Task B). Each entry is `max` requests per
+ * `windowMs`. Defaults come from the BUILD spec; every value is env-overridable.
+ * The limiter is bypassed entirely when the store is non-persistent (NO_DB),
+ * so the test suite is never throttled.
+ */
+export interface RateLimitConfig {
+  windowMs: number;
+  register: number;
+  login: number;
+  guest: number;
+  friendRequest: number;
+  profileEdit: number;
+  setupCreate: number;
 }
 
 function envBool(name: string, fallback: boolean): boolean {
@@ -65,6 +89,16 @@ export function loadConfig(env: NodeJS.ProcessEnv = process.env): ServerConfig {
     adminToken: env.ADMIN_TOKEN,
     sessionTtlMs: envInt('SESSION_TTL_MS', 30 * 24 * 60 * 60 * 1000),
     testModeEnv: envBool('NOCTURNE_TEST_MODE', false),
+    production: (env.NODE_ENV ?? '') === 'production',
+    rateLimit: {
+      windowMs: envInt('RATE_LIMIT_WINDOW_MS', 60_000),
+      register: envInt('RATE_LIMIT_REGISTER', 5),
+      login: envInt('RATE_LIMIT_LOGIN', 10),
+      guest: envInt('RATE_LIMIT_GUEST', 20),
+      friendRequest: envInt('RATE_LIMIT_FRIEND_REQUEST', 20),
+      profileEdit: envInt('RATE_LIMIT_PROFILE_EDIT', 20),
+      setupCreate: envInt('RATE_LIMIT_SETUP_CREATE', 10),
+    },
     llmBaseUrl: env.LLM_BASE_URL,
     llmModel: env.LLM_MODEL ?? 'llama3.2',
     llmApiKey: env.LLM_API_KEY,

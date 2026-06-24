@@ -10,6 +10,7 @@ import { LobbyManager } from '../lobby/manager.js';
 import { Moderation } from '../moderation/moderation.js';
 import { Telemetry } from '../telemetry.js';
 import { makeFallbackEngine } from '../engine-fallback.js';
+import { makeRateLimiter } from '../http/rate-limit.js';
 import type { ScheduleFn } from '../room/room.js';
 import type { GatewayContext } from '../ws/context.js';
 import type { RawSocket } from '../ws/connection.js';
@@ -123,6 +124,16 @@ export function buildTestContext(opts: { clock?: FakeClock; testModeEnv?: boolea
     ...(opts.bots ? { bots: opts.bots as never } : {}),
     ...(opts.clock ? { schedule: opts.clock.schedule, clock: opts.clock.clock } : {}),
   });
-  const ctx: GatewayContext = { cfg, store, identity, manager, moderation, telemetry, nameOf };
+  const ctx: GatewayContext = {
+    cfg,
+    store,
+    identity,
+    manager,
+    moderation,
+    telemetry,
+    nameOf,
+    // Store is non-persistent in tests ⇒ limiter disabled (every guard a no-op).
+    rateLimit: makeRateLimiter(store.persistent),
+  };
   return { ctx, store };
 }

@@ -49,8 +49,13 @@ export class IdentityService {
     email: string | null,
   ): Promise<{ identity: Identity; token: string } | { error: string }> {
     if (!this.store.persistent) return { error: 'accounts_disabled' };
-    if (await this.store.getUserByUsername(username)) return { error: 'username_taken' };
+    const taken = (await this.store.getUserByUsername(username)) !== null;
+    // Always run the (expensive) password hash, even when the username is taken,
+    // so response timing does not reveal whether an account exists (Task C: no
+    // username-enumeration oracle). The 409 result is unchanged; only the work is
+    // equalized.
     const passwordHash = await hashPassword(password);
+    if (taken) return { error: 'username_taken' };
     const user = await this.store.createUser({ username, email, passwordHash });
     const token = await this.issueSession(user.id);
     return {
@@ -65,7 +70,13 @@ export class IdentityService {
   ): Promise<{ identity: Identity; token: string } | { error: string }> {
     if (!this.store.persistent) return { error: 'accounts_disabled' };
     const user = await this.store.getUserByUsername(username);
-    if (!user) return { error: 'invalid_credentials' };
+    if (!user) {
+      // Burn an equivalent argon2 verify against a dummy hash so login response
+      // timing cannot reveal whether a username exists (no enumeration oracle —
+      // symmetric with the equalized register path).
+      await verifyPassword(await this.dummyHash(), password);
+      return { error: 'invalid_credentials' };
+    }
     if (!(await verifyPassword(user.passwordHash, password)))
       return { error: 'invalid_credentials' };
     const sanctions = await this.store.getActiveSanctions(user.id);
@@ -122,16 +133,49 @@ export class IdentityService {
       if (g) return { id: g.id, name: g.name, isGuest: true, isAdmin: false };
       return null;
     }
-    const userId = await this.store.getSessionUserId(hash);
-    if (!userId) return null;
-    const user = await this.store.getUserById(userId);
+    const session = await this.store.getSession(hash);
+    if (!session) return null;
+    const user = await this.store.getUserById(session.userId);
     if (!user) return null;
+    // Sliding refresh (Task C): once a session is past its half-life, push the
+    // expiry back out to a full TTL so an active user is never logged out on a
+    // hard cutoff. Gated on the half-life so this is at most one cheap UPDATE per
+    // ~half-TTL per session — no per-request write storm.
+    await this.maybeRefreshSession(hash, session.expiresAt);
     return {
       id: user.id,
       name: user.username,
       isGuest: false,
       isAdmin: (user.flags & ADMIN_FLAG) !== 0,
     };
+  }
+
+  /**
+   * Cached dummy argon2 hash used to equalize login timing for unknown
+   * usernames. Computed once with the LIVE hashing params (via hashPassword) so
+   * a verify against it costs the same as a verify against a real account hash.
+   */
+  private dummyHashCache: Promise<string> | null = null;
+  private dummyHash(): Promise<string> {
+    if (!this.dummyHashCache) this.dummyHashCache = hashPassword('nocturne::no-such-user');
+    return this.dummyHashCache;
+  }
+
+  /**
+   * Extend a live session's expiry when it is past the halfway point of its TTL.
+   * Best-effort: a failed refresh must never reject an otherwise-valid request.
+   */
+  private async maybeRefreshSession(hash: string, expiresAt: number): Promise<void> {
+    const ttl = this.cfg.sessionTtlMs;
+    const now = Date.now();
+    // Refresh once we're within the back half of the lifetime (issued_at ≈
+    // expiresAt - ttl; halfway ⇒ remaining < ttl/2).
+    if (expiresAt - now >= ttl / 2) return;
+    try {
+      await this.store.extendSession(hash, now + ttl);
+    } catch {
+      // Ignore: the session is still valid until its current expiry.
+    }
   }
 
   /** Whether an identity is currently banned (login & lobby-join check, §10). */
