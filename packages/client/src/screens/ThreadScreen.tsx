@@ -147,6 +147,7 @@ export function ThreadScreen() {
             key={p.id}
             post={p}
             canEdit={(canPost && me?.id === p.authorId) || isAdmin}
+            canDelete={(canPost && me?.id === p.authorId) || isAdmin}
             onEdited={load}
           />
         ))}
@@ -172,10 +173,12 @@ export function ThreadScreen() {
 function PostCard({
   post,
   canEdit,
+  canDelete,
   onEdited,
 }: {
   post: ForumPost;
   canEdit: boolean;
+  canDelete: boolean;
   onEdited: () => Promise<void> | void;
 }) {
   const pushInfo = useStore((s) => s.pushInfo);
@@ -200,6 +203,16 @@ function PostCard({
     }
   }
 
+  async function remove(): Promise<void> {
+    const ok = await api.deleteForumPost(post.id);
+    if (ok) {
+      pushInfo(FORUM.deleted);
+      await onEdited();
+    } else {
+      pushInfo(FORUM.postFailed);
+    }
+  }
+
   return (
     <div className="panel forum-post">
       <aside className="forum-post-author">
@@ -218,8 +231,10 @@ function PostCard({
           <span className="forum-post-time" aria-hidden="true">
             {clockTime(post.createdAt)}
           </span>
-          {post.editedAt && <span className="forum-post-edited">({FORUM.edited})</span>}
-          {canEdit && !editing && (
+          {post.editedAt && !post.deleted && (
+            <span className="forum-post-edited">({FORUM.edited})</span>
+          )}
+          {canEdit && !editing && !post.deleted && (
             <button
               type="button"
               className="btn btn-sm btn-ghost forum-edit-btn"
@@ -229,6 +244,16 @@ function PostCard({
               }}
             >
               {FORUM.edit}
+            </button>
+          )}
+          {canDelete && !editing && !post.deleted && (
+            <button
+              type="button"
+              className="btn btn-sm btn-ghost forum-edit-btn"
+              title={FORUM.confirmDelete}
+              onClick={() => void remove()}
+            >
+              {FORUM.delete}
             </button>
           )}
         </div>
@@ -256,7 +281,9 @@ function PostCard({
             </div>
           </form>
         ) : (
-          <div className="forum-post-body">{sanitizeText(post.body)}</div>
+          <div className={`forum-post-body ${post.deleted ? 'msg-removed' : ''}`}>
+            {post.deleted ? FORUM.removed : sanitizeText(post.body)}
+          </div>
         )}
       </div>
     </div>

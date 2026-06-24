@@ -38,6 +38,16 @@ const ProfileBody = z.object({
 
 const FriendRequestBody = z.object({ username: z.string().min(1).max(64) });
 const FriendRespondBody = z.object({ id: z.string().min(1).max(128), accept: z.boolean() });
+/** Block/unblock a user by username or id (account-only). */
+const BlockBody = z
+  .object({
+    username: z.string().min(1).max(64).optional(),
+    userId: z.string().min(1).max(128).optional(),
+    on: z.boolean(),
+  })
+  .refine((b) => b.username !== undefined || b.userId !== undefined, {
+    message: 'username or userId required',
+  });
 
 /** A trimmed, non-empty body capped at `max` chars. */
 function bodySchema(max: number) {
@@ -84,6 +94,43 @@ export function registerSocialRoutes(app: FastifyInstance, ctx: GatewayContext):
     if (now - last < PRESENCE_THROTTLE_MS) return;
     lastPresenceWrite.set(userId, now);
     await ctx.store.touchPresence(userId, now);
+  }
+
+  /**
+   * The set of user ids the (possibly anonymous) viewer has blocked, used to
+   * filter blocked authors out of room/forum/DM reads server-side. Empty for
+   * guests/anon (no mutes) or a non-persistent store.
+   */
+  async function viewerBlocks(req: { headers: unknown; cookies?: unknown }): Promise<string[]> {
+    if (!ctx.store.persistent) return [];
+    const viewer = await ctx.identity.resolveToken(readToken(req as never));
+    if (!viewer || viewer.isGuest) return [];
+    return ctx.store.getMutes(viewer.id);
+  }
+
+  /**
+   * Resolve an account holder (non-guest), or send the right error code. Unlike
+   * {@link requirePoster} this does NOT check mutes/bans — used for non-posting
+   * account actions (blocks, marking DMs read, deleting one's own content).
+   */
+  async function requireAccount(
+    token: string | undefined,
+    reply: FastifyReply,
+  ): Promise<{ id: string; isAdmin: boolean } | null> {
+    const identity = await ctx.identity.resolveToken(token);
+    if (!identity) {
+      reply.code(401).send({ error: 'not_authenticated' });
+      return null;
+    }
+    if (identity.isGuest) {
+      reply.code(403).send({ error: 'forbidden' });
+      return null;
+    }
+    if (!ctx.store.persistent) {
+      reply.code(503).send({ error: 'accounts_disabled' });
+      return null;
+    }
+    return { id: identity.id, isAdmin: identity.isAdmin };
   }
 
   /** Resolve a non-guest, non-sanctioned poster, or send the right error code. */
@@ -154,10 +201,16 @@ export function registerSocialRoutes(app: FastifyInstance, ctx: GatewayContext):
         | 'friends'
         | 'self'
         | null = null;
+      // Whether the viewer has blocked this user (null for guests/anon/self).
+      let blocked: boolean | null = null;
       const viewer = await ctx.identity.resolveToken(readToken(req));
       if (viewer && !viewer.isGuest) {
-        friendship =
-          viewer.id === user.id ? 'self' : await ctx.store.friendshipStatus(viewer.id, user.id);
+        if (viewer.id === user.id) {
+          friendship = 'self';
+        } else {
+          friendship = await ctx.store.friendshipStatus(viewer.id, user.id);
+          blocked = (await ctx.store.getMutes(viewer.id)).includes(user.id);
+        }
       }
 
       return reply.send({
@@ -180,6 +233,7 @@ export function registerSocialRoutes(app: FastifyInstance, ctx: GatewayContext):
         ranked,
         achievements,
         friendship,
+        blocked,
       });
     },
   );
@@ -204,15 +258,21 @@ export function registerSocialRoutes(app: FastifyInstance, ctx: GatewayContext):
     if (!identity) return reply.code(401).send({ error: 'not_authenticated' });
     if (identity.isGuest) return reply.code(403).send({ error: 'forbidden' });
     if (!ctx.store.persistent) {
-      return reply.send({ friends: [], requests: { incoming: [], outgoing: [] }, threads: [] });
+      return reply.send({
+        friends: [],
+        requests: { incoming: [], outgoing: [] },
+        threads: [],
+        unreadTotal: 0,
+      });
     }
     await recordPresence(identity.id);
-    const [friends, requests, threads] = await Promise.all([
+    const [friends, requests, threads, unreadTotal] = await Promise.all([
       ctx.store.listFriends(identity.id),
       ctx.store.listFriendRequests(identity.id),
       ctx.store.listDmThreads(identity.id),
+      ctx.store.getTotalUnread(identity.id),
     ]);
-    return reply.send({ friends, requests, threads });
+    return reply.send({ friends, requests, threads, unreadTotal });
   });
 
   // --- Friends -------------------------------------------------------------
@@ -228,6 +288,10 @@ export function registerSocialRoutes(app: FastifyInstance, ctx: GatewayContext):
     const target = await ctx.store.getUserByUsername(parsed.data.username);
     if (!target) return reply.code(404).send({ error: 'not_found' });
     if (target.id === identity.id) return reply.code(400).send({ error: 'self' });
+    // If the addressee has blocked the requester, the request is rejected.
+    if ((await ctx.store.getMutes(target.id)).includes(identity.id)) {
+      return reply.code(403).send({ error: 'blocked' });
+    }
     const result = await ctx.store.requestFriend(identity.id, target.id);
     return reply.send({ result });
   });
@@ -267,6 +331,8 @@ export function registerSocialRoutes(app: FastifyInstance, ctx: GatewayContext):
         topic: r.topic,
         kind: r.kind,
         sort: r.sort,
+        // Recently-active poster count (last 10 min) — the "N chatting" signal.
+        activeCount: r.activeCount,
       })),
     });
   });
@@ -277,9 +343,11 @@ export function registerSocialRoutes(app: FastifyInstance, ctx: GatewayContext):
       const room = await ctx.store.getRoomBySlug(req.params.slug);
       if (!room) return reply.code(404).send({ error: 'not_found' });
       const limit = parseLimit(req.query.limit);
-      const opts = req.query.sinceId
-        ? { limit, sinceId: req.query.sinceId }
-        : { limit };
+      // Filter out messages by anyone the (authed) viewer has blocked, server-side.
+      const blocked = await viewerBlocks(req);
+      const opts: { limit: number; sinceId?: string; blocked?: string[] } = { limit };
+      if (req.query.sinceId) opts.sinceId = req.query.sinceId;
+      if (blocked.length) opts.blocked = blocked;
       const messages = await ctx.store.listRoomMessages(room.id, opts);
       return reply.send({ messages });
     },
@@ -316,6 +384,8 @@ export function registerSocialRoutes(app: FastifyInstance, ctx: GatewayContext):
       const limit = parseLimit(req.query.limit);
       const opts = req.query.sinceId ? { limit, sinceId: req.query.sinceId } : { limit };
       const messages = await ctx.store.listDmMessages(threadId, opts);
+      // Opening a thread marks it read up to now (clears the unread badge).
+      await ctx.store.markDmRead(identity.id, threadId, Date.now());
       await recordPresence(identity.id);
       return reply.send({ threadId, messages });
     },
@@ -329,6 +399,10 @@ export function registerSocialRoutes(app: FastifyInstance, ctx: GatewayContext):
     if (other === poster.id) return reply.code(400).send({ error: 'self' });
     const target = await ctx.store.getUserById(other);
     if (!target) return reply.code(404).send({ error: 'not_found' });
+    // If the RECIPIENT has blocked the sender, the DM is rejected.
+    if ((await ctx.store.getMutes(other)).includes(poster.id)) {
+      return reply.code(403).send({ error: 'blocked' });
+    }
     const parsed = bodySchema(CHANNEL_BODY_MAX).safeParse(req.body);
     if (!parsed.success) return reply.code(400).send({ error: 'bad_request' });
     if (tooFast(poster.id, `dm:${other}`)) return reply.code(429).send({ error: 'slow_down' });
@@ -336,6 +410,96 @@ export function registerSocialRoutes(app: FastifyInstance, ctx: GatewayContext):
     const message = await ctx.store.postDm(threadId, poster.id, parsed.data.body);
     void recordPresence(poster.id);
     return reply.send({ message });
+  });
+
+  // Mark a DM thread read (clears the unread badge for the open conversation).
+  app.post<{ Params: { otherUserId: string } }>(
+    '/api/dms/:otherUserId/read',
+    async (req, reply) => {
+      const account = await requireAccount(readToken(req), reply);
+      if (!account) return reply;
+      const other = req.params.otherUserId;
+      if (!UUID_RE.test(other)) return reply.code(404).send({ error: 'not_found' });
+      if (other === account.id) return reply.code(400).send({ error: 'self' });
+      const threadId = await ctx.store.ensureDmThread(account.id, other);
+      await ctx.store.markDmRead(account.id, threadId, Date.now());
+      return reply.send({ ok: true });
+    },
+  );
+
+  // Soft-delete one of the caller's own DMs (or any DM when admin).
+  app.delete<{ Params: { id: string } }>('/api/dms/messages/:id', async (req, reply) => {
+    const account = await requireAccount(readToken(req), reply);
+    if (!account) return reply;
+    if (!UUID_RE.test(req.params.id)) return reply.code(404).send({ error: 'not_found' });
+    const res = await ctx.store.deleteDmMessage(req.params.id, account.id, account.isAdmin);
+    if (res === 'not_found') return reply.code(404).send({ error: 'not_found' });
+    if (res === 'forbidden') return reply.code(403).send({ error: 'forbidden' });
+    return reply.send({ ok: true });
+  });
+
+  // Soft-delete one of the caller's own room messages (or any when admin).
+  app.delete<{ Params: { id: string } }>('/api/rooms/messages/:id', async (req, reply) => {
+    const account = await requireAccount(readToken(req), reply);
+    if (!account) return reply;
+    if (!UUID_RE.test(req.params.id)) return reply.code(404).send({ error: 'not_found' });
+    const res = await ctx.store.deleteRoomMessage(req.params.id, account.id, account.isAdmin);
+    if (res === 'not_found') return reply.code(404).send({ error: 'not_found' });
+    if (res === 'forbidden') return reply.code(403).send({ error: 'forbidden' });
+    return reply.send({ ok: true });
+  });
+
+  // --- User search ---------------------------------------------------------
+
+  app.get<{ Querystring: { q?: string } }>('/api/users/search', async (req, reply) => {
+    if (!ctx.store.persistent) return reply.send({ users: [] });
+    const q = (req.query.q ?? '').trim();
+    if (q.length < 2) return reply.send({ users: [] });
+    // Exclude the caller + anyone the caller has blocked (if authed).
+    const viewer = await ctx.identity.resolveToken(readToken(req));
+    const self = viewer && !viewer.isGuest ? viewer.id : undefined;
+    const blocked = self ? await ctx.store.getMutes(self) : [];
+    const users = await ctx.store.searchUsers(q, 20, self, blocked);
+    return reply.send({ users });
+  });
+
+  // --- Blocking (reuses the mutes table) -----------------------------------
+
+  app.post('/api/blocks', async (req, reply) => {
+    const account = await requireAccount(readToken(req), reply);
+    if (!account) return reply;
+    const parsed = BlockBody.safeParse(req.body);
+    if (!parsed.success) return reply.code(400).send({ error: 'bad_request' });
+    // Resolve the target by id or username.
+    let targetId: string | null = null;
+    if (parsed.data.userId) {
+      if (!UUID_RE.test(parsed.data.userId)) return reply.code(404).send({ error: 'not_found' });
+      const u = await ctx.store.getUserById(parsed.data.userId);
+      targetId = u ? u.id : null;
+    } else if (parsed.data.username) {
+      const u = await ctx.store.getUserByUsername(parsed.data.username);
+      targetId = u ? u.id : null;
+    }
+    if (!targetId) return reply.code(404).send({ error: 'not_found' });
+    if (targetId === account.id) return reply.code(400).send({ error: 'self' });
+    await ctx.store.setMute(account.id, targetId, parsed.data.on);
+    return reply.send({ ok: true, blocked: parsed.data.on });
+  });
+
+  app.get('/api/me/blocks', async (req, reply) => {
+    const account = await requireAccount(readToken(req), reply);
+    if (!account) return reply;
+    const ids = await ctx.store.getMutes(account.id);
+    // Resolve names; drop any id that no longer maps to a user.
+    const users = (
+      await Promise.all(
+        ids.map(async (id) => {
+          const u = await ctx.store.getUserById(id);
+          return u ? { id: u.id, username: u.username } : null;
+        }),
+      )
+    ).filter((u): u is { id: string; username: string } => u !== null);
+    return reply.send({ users });
   });
 
   // --- Presence ------------------------------------------------------------

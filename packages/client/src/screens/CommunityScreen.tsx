@@ -17,7 +17,7 @@ import { COMMUNITY } from '../lib/strings-extra.js';
 import { sanitizeInline, sanitizeText } from '../lib/sanitize.js';
 import { clockTime, isOnline } from '../lib/social.js';
 import * as api from '../lib/api.js';
-import type { ChatRoom, RoomMessage, FriendItem } from '../lib/api.js';
+import type { ChatRoom, RoomMessage, FriendItem, UserHit } from '../lib/api.js';
 
 const SHOUTBOX_POLL_MS = 5000;
 const CHANNEL_POLL_MS = 5000;
@@ -113,7 +113,14 @@ export function CommunityScreen() {
                   className={`channel-tab ${c.slug === activeSlug ? 'active' : ''}`}
                   onClick={() => setActiveSlug(c.slug)}
                 >
-                  <span className="channel-tab-name">{c.name}</span>
+                  <span className="channel-tab-name">
+                    {c.name}
+                    {c.activeCount > 0 && (
+                      <span className="channel-active" title={COMMUNITY.chatting(c.activeCount)}>
+                        {COMMUNITY.chatting(c.activeCount)}
+                      </span>
+                    )}
+                  </span>
                   <span className="channel-tab-topic">{c.topic}</span>
                 </button>
               ))}
@@ -188,6 +195,17 @@ function MessageBoard({
     bottomRef.current?.scrollIntoView({ block: 'nearest' });
   }, [messages.length]);
 
+  async function onDelete(messageId: string): Promise<void> {
+    const ok = await api.deleteRoomMessage(messageId);
+    if (ok) {
+      setMessages((prev) =>
+        prev.map((m) => (m.id === messageId ? { ...m, body: '', deleted: true } : m)),
+      );
+    } else {
+      pushInfo(COMMUNITY.postFailed);
+    }
+  }
+
   async function submit(e: React.FormEvent): Promise<void> {
     e.preventDefault();
     const body = draft.trim();
@@ -216,17 +234,34 @@ function MessageBoard({
         {messages.length === 0 ? (
           <div className="faint board-empty">{emptyLabel}</div>
         ) : (
-          messages.map((m) => (
-            <div key={m.id} className={`board-row ${me && m.userId === me.id ? 'board-mine' : ''}`}>
-              <span className="board-time" aria-hidden="true">
-                {clockTime(m.createdAt)}
-              </span>
-              <Link className="board-author" to={`/u/${encodeURIComponent(m.username)}`}>
-                {sanitizeInline(m.username)}
-              </Link>
-              <span className="board-body">{sanitizeText(m.body)}</span>
-            </div>
-          ))
+          messages.map((m) => {
+            const mine = !!me && m.userId === me.id;
+            const canDelete = (mine || !!me?.isAdmin) && !m.deleted;
+            return (
+              <div key={m.id} className={`board-row ${mine ? 'board-mine' : ''}`}>
+                <span className="board-time" aria-hidden="true">
+                  {clockTime(m.createdAt)}
+                </span>
+                <Link className="board-author" to={`/u/${encodeURIComponent(m.username)}`}>
+                  {sanitizeInline(m.username)}
+                </Link>
+                <span className={`board-body ${m.deleted ? 'msg-removed' : ''}`}>
+                  {m.deleted ? COMMUNITY.removed : sanitizeText(m.body)}
+                </span>
+                {canDelete && (
+                  <button
+                    type="button"
+                    className="btn btn-sm btn-ghost msg-del"
+                    title={COMMUNITY.deleteMsg}
+                    aria-label={COMMUNITY.deleteMsg}
+                    onClick={() => void onDelete(m.id)}
+                  >
+                    ×
+                  </button>
+                )}
+              </div>
+            );
+          })
         )}
         <div ref={bottomRef} />
       </div>
@@ -296,6 +331,7 @@ function WhosAround({ friends }: { friends: FriendItem[] }) {
   return (
     <div className="panel panel-pad stack">
       <DecoHead>{COMMUNITY.whosAroundHeading}</DecoHead>
+      <PeopleSearch />
       {around.length === 0 ? (
         <span className="faint">{COMMUNITY.whosAroundEmpty}</span>
       ) : (
@@ -309,6 +345,62 @@ function WhosAround({ friends }: { friends: FriendItem[] }) {
               <span className="around-status">{COMMUNITY.online}</span>
             </li>
           ))}
+        </ul>
+      )}
+    </div>
+  );
+}
+
+/** Debounced username search → links to profiles (social v1). */
+function PeopleSearch() {
+  const [q, setQ] = useState('');
+  const [results, setResults] = useState<UserHit[]>([]);
+  const [searched, setSearched] = useState(false);
+
+  useEffect(() => {
+    const trimmed = q.trim();
+    if (trimmed.length < 2) {
+      setResults([]);
+      setSearched(false);
+      return;
+    }
+    let live = true;
+    const t = setTimeout(() => {
+      void api.searchUsers(trimmed).then((hits) => {
+        if (!live) return;
+        setResults(hits);
+        setSearched(true);
+      });
+    }, 250);
+    return () => {
+      live = false;
+      clearTimeout(t);
+    };
+  }, [q]);
+
+  return (
+    <div className="stack" style={{ gap: 6 }}>
+      <input
+        className="board-input"
+        value={q}
+        onChange={(e) => setQ(e.target.value.slice(0, 64))}
+        placeholder={COMMUNITY.searchPlaceholder}
+        maxLength={64}
+        aria-label={COMMUNITY.findPeople}
+      />
+      {q.trim().length >= 2 && (
+        <ul className="around-list" aria-live="polite">
+          {results.length === 0 && searched ? (
+            <li className="faint">{COMMUNITY.searchEmpty}</li>
+          ) : (
+            results.map((u) => (
+              <li key={u.id} className="around-row">
+                <Link className="around-name" to={`/u/${encodeURIComponent(u.username)}`}>
+                  {sanitizeInline(u.username)}
+                </Link>
+              </li>
+            ))
+          )}
         </ul>
       )}
     </div>

@@ -283,6 +283,11 @@ export interface ChatRoomRow {
   kind: string;
   sort: number;
   createdAt: number;
+  /**
+   * Distinct non-deleted posters in the last ~10 minutes (an "alive" signal, NOT
+   * true presence). Populated by {@link Store.listRooms}; absent elsewhere.
+   */
+  activeCount?: number;
 }
 
 /** A single posted room message (joined to its author's username). */
@@ -293,6 +298,8 @@ export interface RoomMessageRow {
   username: string;
   body: string;
   createdAt: number;
+  /** Soft-delete tombstone: when true the body is nulled on read ("[removed]"). */
+  deleted?: boolean;
 }
 
 /** A single direct message in a thread. */
@@ -302,6 +309,25 @@ export interface DmMessageRow {
   senderId: string;
   body: string;
   createdAt: number;
+  /** Soft-delete tombstone: when true the body is nulled on read ("[removed]"). */
+  deleted?: boolean;
+}
+
+/** A user-search hit (social v1 user search). */
+export interface UserSearchHit {
+  id: string;
+  username: string;
+}
+
+/** A DM thread row for the social hub, including the caller's unread count. */
+export interface DmThreadSummary {
+  threadId: string;
+  otherUserId: string;
+  otherUsername: string;
+  lastAt: number;
+  preview: string;
+  /** Unread messages from the OTHER participant since the caller's last read. */
+  unread: number;
 }
 
 /** Canonical friendship status between the caller and another user. */
@@ -388,6 +414,8 @@ export interface ForumPostRow {
   body: string;
   createdAt: number;
   editedAt: number | null;
+  /** Soft-delete tombstone: when true the body is nulled on read ("[removed]"). */
+  deleted?: boolean;
 }
 
 export interface Store {
@@ -456,6 +484,20 @@ export interface Store {
   setMute(muterId: string, mutedId: string, on: boolean): Promise<void>;
   getMutes(muterId: string): Promise<string[]>;
   logAdminAction(adminId: string, action: string, detail: unknown): Promise<void>;
+
+  // --- Social v1: user search + blocking (blocking reuses mutes) ------------
+  /**
+   * Search accounts by username (citext prefix then substring), case-insensitive.
+   * `q` is matched as a literal (no injection — passed as a parameter). Excludes
+   * `excludeId` (the caller) and any id in `excludeIds` (the caller's blocks).
+   * Returns at most `limit` hits. Empty under a non-persistent store.
+   */
+  searchUsers(
+    q: string,
+    limit: number,
+    excludeId?: string,
+    excludeIds?: string[],
+  ): Promise<UserSearchHit[]>;
 
   // Match persistence (§10) — bulk write at match end.
   writeMatch(record: MatchRecord): Promise<void>;
@@ -607,7 +649,7 @@ export interface Store {
   friendshipStatus(userId: string, otherId: string): Promise<FriendshipStatus>;
 
   // --- Social: chat rooms ---------------------------------------------------
-  /** All chat rooms, ordered by sort. */
+  /** All chat rooms, ordered by sort. Each carries an `activeCount` "alive" signal. */
   listRooms(): Promise<ChatRoomRow[]>;
   /** A room by its slug, or null. */
   getRoomBySlug(slug: string): Promise<ChatRoomRow | null>;
@@ -616,36 +658,70 @@ export interface Store {
   /**
    * The newest `limit` messages for a room, ascending by time. With `sinceId`,
    * only messages strictly newer than that id (poll deltas). `limit` capped ≤100.
+   * `blocked` (the viewer's mute set) excludes those authors' messages server-side.
+   * A deleted message is surfaced as a tombstone (body '', `deleted:true`).
    */
   listRoomMessages(
     roomId: string,
-    opts: { limit: number; sinceId?: string },
+    opts: { limit: number; sinceId?: string; blocked?: string[] },
   ): Promise<
-    Array<{ id: string; userId: string; username: string; body: string; createdAt: number }>
+    Array<{
+      id: string;
+      userId: string;
+      username: string;
+      body: string;
+      createdAt: number;
+      deleted: boolean;
+    }>
   >;
+  /**
+   * Soft-delete a room message (author-or-admin). Returns 'ok' on success,
+   * 'forbidden' if the requester is neither author nor admin, 'not_found' if
+   * the id is unknown.
+   */
+  deleteRoomMessage(
+    id: string,
+    requesterId: string,
+    isAdmin: boolean,
+  ): Promise<'ok' | 'forbidden' | 'not_found'>;
 
   // --- Social: direct messages ---------------------------------------------
   /** The canonical thread id for an unordered pair (creating it if needed). */
   ensureDmThread(a: string, b: string): Promise<string>;
   /** Post a DM (bumps the thread's last_at). */
   postDm(threadId: string, senderId: string, body: string): Promise<DmMessageRow>;
-  /** The caller's DM threads, newest first (with the other participant + preview). */
-  listDmThreads(userId: string): Promise<
-    Array<{
-      threadId: string;
-      otherUserId: string;
-      otherUsername: string;
-      lastAt: number;
-      preview: string;
-    }>
-  >;
-  /** Messages in a thread, ascending. With `sinceId`, only newer ones. `limit` ≤100. */
+  /**
+   * The caller's DM threads, newest first (other participant + preview + the
+   * caller's per-thread `unread` count). The preview reflects a tombstone when
+   * the latest message is soft-deleted.
+   */
+  listDmThreads(userId: string): Promise<DmThreadSummary[]>;
+  /**
+   * Messages in a thread, ascending. With `sinceId`, only newer ones. `limit` ≤100.
+   * A deleted message is surfaced as a tombstone (body '', `deleted:true`).
+   */
   listDmMessages(
     threadId: string,
     opts: { limit: number; sinceId?: string },
-  ): Promise<Array<{ id: string; senderId: string; body: string; createdAt: number }>>;
+  ): Promise<
+    Array<{ id: string; senderId: string; body: string; createdAt: number; deleted: boolean }>
+  >;
   /** The two participant user ids of a thread (for authorization), or null. */
   dmThreadParticipants(threadId: string): Promise<[string, string] | null>;
+  /** Mark a DM thread read for a user (upsert last_read_at to `at`, epoch ms). */
+  markDmRead(userId: string, threadId: string, at: number): Promise<void>;
+  /** Total unread DM count for a user across all their threads. */
+  getTotalUnread(userId: string): Promise<number>;
+  /**
+   * Soft-delete a DM message (author-or-admin). Returns 'ok' on success,
+   * 'forbidden' if the requester is neither sender nor admin, 'not_found' if
+   * the id is unknown.
+   */
+  deleteDmMessage(
+    id: string,
+    requesterId: string,
+    isAdmin: boolean,
+  ): Promise<'ok' | 'forbidden' | 'not_found'>;
 
   // --- Forums: categories, boards, threads, posts --------------------------
   /** The forum index: categories (ordered) with their boards + aggregate stats. */
@@ -668,10 +744,14 @@ export interface Store {
   getThread(threadId: string): Promise<ForumThreadView | null>;
   /** Bump a thread's view counter by one. */
   incrementThreadViews(threadId: string): Promise<void>;
-  /** Posts in a thread, ascending by created_at. `limit` ≤50. */
+  /**
+   * Posts in a thread, ascending by created_at. `limit` ≤50. `blocked` (the
+   * viewer's mute set) excludes those authors' posts server-side. A soft-deleted
+   * post is surfaced as a tombstone (body '', `deleted:true`).
+   */
   listPosts(
     threadId: string,
-    opts: { limit: number; offset: number },
+    opts: { limit: number; offset: number; blocked?: string[] },
   ): Promise<{ posts: ForumPostRow[]; total: number }>;
   /**
    * Append a post to a thread; null if the thread is missing or locked. Bumps the
@@ -680,6 +760,16 @@ export interface Store {
   createPost(threadId: string, authorId: string, body: string): Promise<{ postId: string } | null>;
   /** Edit a post — only the author (or an admin) may; sets edited_at. */
   editPost(postId: string, editorId: string, isAdmin: boolean, body: string): Promise<boolean>;
+  /**
+   * Soft-delete a forum post (author-or-admin). Returns 'ok' on success,
+   * 'forbidden' if the requester is neither author nor admin, 'not_found' if
+   * the id is unknown. The thread persists (post_count is left intact).
+   */
+  deleteForumPost(
+    id: string,
+    requesterId: string,
+    isAdmin: boolean,
+  ): Promise<'ok' | 'forbidden' | 'not_found'>;
   /** Admin moderation: set a thread's locked/pinned flags. */
   setThreadFlags(threadId: string, flags: { locked?: boolean; pinned?: boolean }): Promise<boolean>;
 

@@ -380,6 +380,28 @@ CREATE TABLE IF NOT EXISTS dm_messages (
 CREATE INDEX IF NOT EXISTS dm_messages_thread_idx ON dm_messages (thread_id, created_at);
 
 -- --------------------------------------------------------------------------
+-- Social completeness (social v1): DM unread tracking + soft-delete tombstones.
+-- Additive + idempotent; HTTP-only, never in the game hot path. Blocking reuses
+-- the existing `mutes` table (muter→muted) — no new table needed for blocks.
+-- --------------------------------------------------------------------------
+
+-- Per-(user, thread) read cursor for DM unread badges. last_read_at is bumped
+-- to now() whenever the user opens (fetches) a thread; unread = count of newer
+-- messages from the OTHER participant that are not soft-deleted.
+CREATE TABLE IF NOT EXISTS dm_reads (
+  user_id      uuid NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+  thread_id    uuid NOT NULL REFERENCES dm_threads(id) ON DELETE CASCADE,
+  last_read_at timestamptz NOT NULL DEFAULT now(),
+  PRIMARY KEY (user_id, thread_id)
+);
+
+-- Soft-delete tombstones. Deleted rows are KEPT (thread/forum continuity) but
+-- reads surface `deleted` and null the body so the client renders "[removed]".
+ALTER TABLE dm_messages   ADD COLUMN IF NOT EXISTS deleted boolean NOT NULL DEFAULT false;
+ALTER TABLE room_messages ADD COLUMN IF NOT EXISTS deleted boolean NOT NULL DEFAULT false;
+ALTER TABLE forum_posts   ADD COLUMN IF NOT EXISTS deleted boolean NOT NULL DEFAULT false;
+
+-- --------------------------------------------------------------------------
 -- Forums: a phpBB-style message board — categories → boards → threads
 -- (topics) → posts (Forums feature). Additive + idempotent; HTTP-only, never
 -- in the game hot path. Guests are read-only; account-only writes are enforced

@@ -162,6 +162,158 @@ describe('DMs: canonicalization + isolation + thread order + preview', () => {
   });
 });
 
+describe('DM unread tracking (social v1)', () => {
+  it('post → unread=1 for recipient, 0 after markDmRead; own messages never count', async () => {
+    const store = new MemoryStore();
+    const tAB = await store.ensureDmThread(A, B);
+    // B sends a message → A has 1 unread, B (the sender) has 0.
+    await store.postDm(tAB, B, 'hey A');
+    expect(await store.getTotalUnread(A)).toBe(1);
+    expect(await store.getTotalUnread(B)).toBe(0);
+    const aThreads = await store.listDmThreads(A);
+    expect(aThreads[0]!.unread).toBe(1);
+    // A's own message to B does not count toward A's unread.
+    await store.postDm(tAB, A, 'hey back');
+    expect(await store.getTotalUnread(A)).toBe(1);
+    // B now has 1 unread (A's reply).
+    expect(await store.getTotalUnread(B)).toBe(1);
+
+    // A reads the thread → A's unread clears.
+    await store.markDmRead(A, tAB, Date.now() + 1_000_000);
+    expect(await store.getTotalUnread(A)).toBe(0);
+    expect((await store.listDmThreads(A))[0]!.unread).toBe(0);
+    // B still unread until B reads.
+    expect(await store.getTotalUnread(B)).toBe(1);
+  });
+
+  it('sums unread across multiple threads', async () => {
+    const store = new MemoryStore();
+    const tAB = await store.ensureDmThread(A, B);
+    const tAC = await store.ensureDmThread(A, C);
+    await store.postDm(tAB, B, 'one');
+    await store.postDm(tAC, C, 'two');
+    await store.postDm(tAC, C, 'three');
+    expect(await store.getTotalUnread(A)).toBe(3);
+    await store.markDmRead(A, tAC, Date.now() + 1_000_000);
+    expect(await store.getTotalUnread(A)).toBe(1);
+  });
+});
+
+describe('blocking (reuses mutes) — store effects', () => {
+  it('blocked author excluded from room + forum reads; unblock restores', async () => {
+    const store = new MemoryStore();
+    const room = (await store.getRoomBySlug('parlor'))!;
+    await store.postRoomMessage(room.id, A, 'from A');
+    await store.postRoomMessage(room.id, B, 'from B');
+
+    // A blocks B → A's room read excludes B's message.
+    await store.setMute(A, B, true);
+    const blocked = await store.getMutes(A);
+    const filtered = await store.listRoomMessages(room.id, { limit: 50, blocked });
+    expect(filtered.map((m) => m.body)).toEqual(['from A']);
+    // An unblocked viewer (B) still sees everything.
+    const unfiltered = await store.listRoomMessages(room.id, { limit: 50 });
+    expect(unfiltered.map((m) => m.body)).toEqual(['from A', 'from B']);
+
+    // Forum: a thread with posts from A and B.
+    const board = (await store.listForumIndex())[0]!.boards[0]!;
+    const fb = (await store.getBoardBySlug(board.slug))!;
+    const { threadId } = await store.createThread(fb.id, A, 'topic', 'opener by A');
+    await store.createPost(threadId, B, 'reply by B');
+    const aView = await store.listPosts(threadId, { limit: 50, offset: 0, blocked });
+    expect(aView.posts.map((p) => p.body)).toEqual(['opener by A']);
+    expect(aView.total).toBe(1); // B's post excluded from the total too.
+
+    // Unblock restores visibility.
+    await store.setMute(A, B, false);
+    const after = await store.listRoomMessages(room.id, {
+      limit: 50,
+      blocked: await store.getMutes(A),
+    });
+    expect(after.map((m) => m.body)).toEqual(['from A', 'from B']);
+  });
+});
+
+describe('soft-delete (social v1)', () => {
+  it('room: author deletes own → tombstone; non-author cannot; admin can', async () => {
+    const store = new MemoryStore();
+    const room = (await store.getRoomBySlug('parlor'))!;
+    const m = await store.postRoomMessage(room.id, A, 'secret');
+    // Non-author (B) cannot delete.
+    expect(await store.deleteRoomMessage(m.id, B, false)).toBe('forbidden');
+    // Author can.
+    expect(await store.deleteRoomMessage(m.id, A, false)).toBe('ok');
+    const list = await store.listRoomMessages(room.id, { limit: 50 });
+    expect(list[0]!.deleted).toBe(true);
+    expect(list[0]!.body).toBe('');
+    // Unknown id → not_found.
+    expect(await store.deleteRoomMessage('nope', A, false)).toBe('not_found');
+  });
+
+  it('DM: admin can delete anyone; tombstone nulls body; not counted unread', async () => {
+    const store = new MemoryStore();
+    const tAB = await store.ensureDmThread(A, B);
+    const msg = await store.postDm(tAB, B, 'to delete');
+    expect(await store.getTotalUnread(A)).toBe(1);
+    // Admin (C) deletes B's message.
+    expect(await store.deleteDmMessage(msg.id, C, true)).toBe('ok');
+    const list = await store.listDmMessages(tAB, { limit: 50 });
+    expect(list[0]!.deleted).toBe(true);
+    expect(list[0]!.body).toBe('');
+    // A deleted message no longer counts toward unread.
+    expect(await store.getTotalUnread(A)).toBe(0);
+  });
+
+  it('forum: author deletes own post → tombstone; thread persists', async () => {
+    const store = new MemoryStore();
+    const board = (await store.getBoardBySlug('strategy'))!;
+    const { threadId } = await store.createThread(board.id, A, 'topic', 'opener');
+    const reply = await store.createPost(threadId, A, 'a reply');
+    expect(await store.deleteForumPost(reply!.postId, B, false)).toBe('forbidden');
+    expect(await store.deleteForumPost(reply!.postId, A, false)).toBe('ok');
+    const { posts } = await store.listPosts(threadId, { limit: 50, offset: 0 });
+    const tomb = posts.find((p) => p.id === reply!.postId)!;
+    expect(tomb.deleted).toBe(true);
+    expect(tomb.body).toBe('');
+    // The thread (and its opener) persist.
+    expect((await store.getThread(threadId))!.id).toBe(threadId);
+  });
+});
+
+describe('user search (social v1)', () => {
+  it('prefix + substring, excludes caller + blocked, respects limit', async () => {
+    const store = new MemoryStore();
+    store.setUsernameForTest(A, 'Capone');
+    store.setUsernameForTest(B, 'Caponi');
+    store.setUsernameForTest(C, 'Lucky');
+    const D = 'user-dddddddd';
+    store.setUsernameForTest(D, 'Scarface');
+
+    // Min length: <2 chars returns [].
+    expect(await store.searchUsers('c', 20)).toHaveLength(0);
+
+    // Prefix matches rank above substring. 'cap' matches Capone, Caponi, Scarface.
+    const hits = await store.searchUsers('cap', 20);
+    // Capone/Caponi (prefix) rank above Scarface (substring 'cap' in scarfaCe? no);
+    // 'cap' is a substring of 'Scarface'? S-c-a-r-f-a-c-e — no 'cap'. So only A,B.
+    expect(hits.map((h) => h.username).sort()).toEqual(['Capone', 'Caponi']);
+
+    // Exclude the caller (A) + a blocked id (B) → only... nothing left for 'cap'.
+    const excl = await store.searchUsers('cap', 20, A, [B]);
+    expect(excl).toHaveLength(0);
+
+    // Substring match: 'ar' is in Scarface.
+    const sub = await store.searchUsers('ar', 20);
+    expect(sub.map((h) => h.username)).toContain('Scarface');
+
+    // Limit is respected.
+    const lim = await store.searchUsers('c', 1); // <2 → [] regardless
+    expect(lim).toHaveLength(0);
+    const lim2 = await store.searchUsers('ca', 1);
+    expect(lim2).toHaveLength(1);
+  });
+});
+
 describe('profiles + presence', () => {
   it('upsert round-trips and merges fields', async () => {
     const store = new MemoryStore();

@@ -887,6 +887,8 @@ export interface PublicProfile {
   achievements: string[];
   /** Computed only for an authed non-guest viewing someone else; else null. */
   friendship: 'none' | 'pending_out' | 'pending_in' | 'friends' | 'self' | null;
+  /** Whether the viewer has blocked this user (null for guests/anon/self). */
+  blocked: boolean | null;
 }
 
 function numOrNull(v: unknown): number | null {
@@ -938,6 +940,7 @@ export async function fetchPublicProfile(username: string): Promise<PublicProfil
         ? d['achievements'].filter((a): a is string => typeof a === 'string')
         : [],
       friendship,
+      blocked: typeof d['blocked'] === 'boolean' ? d['blocked'] : null,
     };
   } catch {
     return null;
@@ -980,11 +983,15 @@ export interface DmThreadItem {
   otherUsername: string;
   lastAt: number;
   preview: string;
+  /** Unread messages from the other party since the caller last read (social v1). */
+  unread: number;
 }
 export interface SocialState {
   friends: FriendItem[];
   requests: { incoming: FriendRequestItem[]; outgoing: FriendRequestItem[] };
   threads: DmThreadItem[];
+  /** Total unread DMs across all threads (topbar Messages badge). */
+  unreadTotal: number;
 }
 
 function narrowFriend(v: unknown): FriendItem | null {
@@ -1011,6 +1018,7 @@ function narrowThread(v: unknown): DmThreadItem | null {
     otherUsername: str(v['otherUsername']) ?? otherUserId,
     lastAt: num(v['lastAt']),
     preview: str(v['preview']) ?? '',
+    unread: num(v['unread']),
   };
 }
 
@@ -1018,6 +1026,7 @@ const EMPTY_SOCIAL: SocialState = {
   friends: [],
   requests: { incoming: [], outgoing: [] },
   threads: [],
+  unreadTotal: 0,
 };
 
 /** `GET /api/me/social` — the caller's friends, requests, and DM threads. */
@@ -1038,7 +1047,7 @@ export async function fetchSocial(): Promise<SocialState> {
     const threads = Array.isArray(d['threads'])
       ? d['threads'].map(narrowThread).filter((x): x is DmThreadItem => x !== null)
       : [];
-    return { friends, requests: { incoming, outgoing }, threads };
+    return { friends, requests: { incoming, outgoing }, threads, unreadTotal: num(d['unreadTotal']) };
   } catch {
     return EMPTY_SOCIAL;
   }
@@ -1100,6 +1109,103 @@ export async function removeFriend(otherUserId: string): Promise<boolean> {
   }
 }
 
+/** A user-search hit (social v1). */
+export interface UserHit {
+  id: string;
+  username: string;
+}
+
+function narrowUserHit(v: unknown): UserHit | null {
+  if (!isObj(v)) return null;
+  const id = str(v['id']);
+  const username = str(v['username']);
+  if (id === undefined || username === undefined) return null;
+  return { id, username };
+}
+
+/** `GET /api/users/search?q=` — username search (min 2 chars). [] on failure/short query. */
+export async function searchUsers(q: string): Promise<UserHit[]> {
+  const trimmed = q.trim();
+  if (trimmed.length < 2) return [];
+  try {
+    const d = await getJson(`/api/users/search?q=${encodeURIComponent(trimmed)}`);
+    const list = isObj(d) ? d['users'] : undefined;
+    if (!Array.isArray(list)) return [];
+    return list.map(narrowUserHit).filter((u): u is UserHit => u !== null);
+  } catch {
+    return [];
+  }
+}
+
+/** `POST /api/blocks` { username|userId, on }. true on success (social v1). */
+export async function setBlock(
+  target: { username?: string; userId?: string },
+  on: boolean,
+): Promise<boolean> {
+  try {
+    const res = await fetch('/api/blocks', {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      credentials: 'include',
+      body: JSON.stringify({ ...target, on }),
+    });
+    return res.ok;
+  } catch {
+    return false;
+  }
+}
+
+/** `GET /api/me/blocks` — the caller's blocked users. [] on failure (social v1). */
+export async function fetchBlocks(): Promise<UserHit[]> {
+  try {
+    const d = await getJson('/api/me/blocks');
+    const list = isObj(d) ? d['users'] : undefined;
+    if (!Array.isArray(list)) return [];
+    return list.map(narrowUserHit).filter((u): u is UserHit => u !== null);
+  } catch {
+    return [];
+  }
+}
+
+/** `POST /api/dms/:otherUserId/read` — mark a thread read (clears unread). */
+export async function markDmRead(otherUserId: string): Promise<boolean> {
+  try {
+    const res = await fetch(`/api/dms/${encodeURIComponent(otherUserId)}/read`, {
+      method: 'POST',
+      credentials: 'include',
+    });
+    return res.ok;
+  } catch {
+    return false;
+  }
+}
+
+/** `DELETE /api/dms/messages/:id` — soft-delete one of your DMs (social v1). */
+export async function deleteDm(messageId: string): Promise<boolean> {
+  try {
+    const res = await fetch(`/api/dms/messages/${encodeURIComponent(messageId)}`, {
+      method: 'DELETE',
+      credentials: 'include',
+    });
+    return res.ok;
+  } catch {
+    return false;
+  }
+}
+
+/** `DELETE /api/rooms/messages/:id` — soft-delete one of your room messages. */
+export async function deleteRoomMessage(messageId: string): Promise<boolean> {
+  try {
+    const res = await fetch(`/api/rooms/messages/${encodeURIComponent(messageId)}`, {
+      method: 'DELETE',
+      credentials: 'include',
+    });
+    return res.ok;
+  } catch {
+    return false;
+  }
+}
+
 /** A public chat room (the shoutbox or a channel). */
 export interface ChatRoom {
   slug: string;
@@ -1107,6 +1213,8 @@ export interface ChatRoom {
   topic: string;
   kind: 'shoutbox' | 'channel';
   sort: number;
+  /** Distinct posters in the last ~10 min — an "alive" signal, not true presence. */
+  activeCount: number;
 }
 
 /** A single posted room message. */
@@ -1116,6 +1224,8 @@ export interface RoomMessage {
   username: string;
   body: string;
   createdAt: number;
+  /** Soft-delete tombstone: the client renders "[removed]" (social v1). */
+  deleted: boolean;
 }
 
 function narrowRoom(v: unknown): ChatRoom | null {
@@ -1124,7 +1234,14 @@ function narrowRoom(v: unknown): ChatRoom | null {
   const name = str(v['name']);
   if (slug === undefined || name === undefined) return null;
   const kind = str(v['kind']) === 'shoutbox' ? 'shoutbox' : 'channel';
-  return { slug, name, topic: str(v['topic']) ?? '', kind, sort: num(v['sort']) };
+  return {
+    slug,
+    name,
+    topic: str(v['topic']) ?? '',
+    kind,
+    sort: num(v['sort']),
+    activeCount: num(v['activeCount']),
+  };
 }
 function narrowRoomMessage(v: unknown): RoomMessage | null {
   if (!isObj(v)) return null;
@@ -1136,6 +1253,7 @@ function narrowRoomMessage(v: unknown): RoomMessage | null {
     username: str(v['username']) ?? '',
     body: str(v['body']) ?? '',
     createdAt: num(v['createdAt']),
+    deleted: bool(v['deleted']),
   };
 }
 
@@ -1203,6 +1321,8 @@ export interface DmMessage {
   senderId: string;
   body: string;
   createdAt: number;
+  /** Soft-delete tombstone: the client renders "[removed]" (social v1). */
+  deleted: boolean;
 }
 
 function narrowDm(v: unknown): DmMessage | null {
@@ -1214,6 +1334,7 @@ function narrowDm(v: unknown): DmMessage | null {
     senderId: str(v['senderId']) ?? '',
     body: str(v['body']) ?? '',
     createdAt: num(v['createdAt']),
+    deleted: bool(v['deleted']),
   };
 }
 
@@ -1346,6 +1467,8 @@ export interface ForumPost {
   body: string;
   createdAt: number;
   editedAt: number | null;
+  /** Soft-delete tombstone: the client renders "[removed]" (social v1). */
+  deleted: boolean;
 }
 
 function narrowLastPost(v: unknown): ForumLastPost | null {
@@ -1427,6 +1550,7 @@ function narrowPost(v: unknown): ForumPost | null {
     body: str(v['body']) ?? '',
     createdAt: num(v['createdAt']),
     editedAt: numOrNull(v['editedAt']),
+    deleted: bool(v['deleted']),
   };
 }
 
@@ -1578,6 +1702,19 @@ export async function editPost(postId: string, body: string): Promise<boolean> {
       headers: { 'content-type': 'application/json' },
       credentials: 'include',
       body: JSON.stringify({ body }),
+    });
+    return res.ok;
+  } catch {
+    return false;
+  }
+}
+
+/** `DELETE /api/forum/posts/:id` — soft-delete a post (author-or-admin). true on success. */
+export async function deleteForumPost(postId: string): Promise<boolean> {
+  try {
+    const res = await fetch(`/api/forum/posts/${encodeURIComponent(postId)}`, {
+      method: 'DELETE',
+      credentials: 'include',
     });
     return res.ok;
   } catch {

@@ -109,3 +109,113 @@ describe('POST /api/me/profile — write gate', () => {
     await app.close();
   });
 });
+
+describe('GET /api/users/search (social v1)', () => {
+  it('returns [] for a query under 2 chars', async () => {
+    const { app } = await buildSocialApp();
+    const res = await app.inject({ method: 'GET', url: '/api/users/search?q=a' });
+    expect(res.statusCode).toBe(200);
+    expect((res.json() as { users: unknown[] }).users).toEqual([]);
+    await app.close();
+  });
+
+  it('returns [] in NO_DB even for a valid query (no user table)', async () => {
+    const { app } = await buildSocialApp();
+    const res = await app.inject({ method: 'GET', url: '/api/users/search?q=cap' });
+    expect(res.statusCode).toBe(200);
+    expect((res.json() as { users: unknown[] }).users).toEqual([]);
+    await app.close();
+  });
+});
+
+describe('POST /api/blocks — write gate', () => {
+  it('a guest gets 403 (account-only)', async () => {
+    const { app, ctx } = await buildSocialApp();
+    const guest = ctx.identity.createGuest();
+    const res = await app.inject({
+      method: 'POST',
+      url: '/api/blocks',
+      headers: { authorization: `Bearer ${guest.token}` },
+      payload: { username: 'someone', on: true },
+    });
+    expect(res.statusCode).toBe(403);
+    await app.close();
+  });
+
+  it('an unauthenticated caller gets 401', async () => {
+    const { app } = await buildSocialApp();
+    const res = await app.inject({
+      method: 'POST',
+      url: '/api/blocks',
+      payload: { username: 'someone', on: true },
+    });
+    expect(res.statusCode).toBe(401);
+    await app.close();
+  });
+});
+
+describe('GET /api/me/blocks — read gate', () => {
+  it('a guest gets 403', async () => {
+    const { app, ctx } = await buildSocialApp();
+    const guest = ctx.identity.createGuest();
+    const res = await app.inject({
+      method: 'GET',
+      url: '/api/me/blocks',
+      headers: { authorization: `Bearer ${guest.token}` },
+    });
+    expect(res.statusCode).toBe(403);
+    await app.close();
+  });
+});
+
+describe('DELETE /api/dms/messages/:id — delete gate', () => {
+  it('a guest gets 403', async () => {
+    const { app, ctx } = await buildSocialApp();
+    const guest = ctx.identity.createGuest();
+    const res = await app.inject({
+      method: 'DELETE',
+      url: '/api/dms/messages/11111111-1111-1111-1111-111111111111',
+      headers: { authorization: `Bearer ${guest.token}` },
+    });
+    expect(res.statusCode).toBe(403);
+    await app.close();
+  });
+
+  it('an unauthenticated caller gets 401', async () => {
+    const { app } = await buildSocialApp();
+    const res = await app.inject({
+      method: 'DELETE',
+      url: '/api/dms/messages/11111111-1111-1111-1111-111111111111',
+    });
+    expect(res.statusCode).toBe(401);
+    await app.close();
+  });
+});
+
+describe('DELETE /api/rooms/messages/:id — delete gate', () => {
+  it('a guest gets 403', async () => {
+    const { app, ctx } = await buildSocialApp();
+    const guest = ctx.identity.createGuest();
+    const res = await app.inject({
+      method: 'DELETE',
+      url: '/api/rooms/messages/11111111-1111-1111-1111-111111111111',
+      headers: { authorization: `Bearer ${guest.token}` },
+    });
+    expect(res.statusCode).toBe(403);
+    await app.close();
+  });
+});
+
+describe('POST /api/dms/:otherUserId/read — gate + bad id', () => {
+  it('a guest gets 403', async () => {
+    const { app, ctx } = await buildSocialApp();
+    const guest = ctx.identity.createGuest();
+    const res = await app.inject({
+      method: 'POST',
+      url: '/api/dms/11111111-1111-1111-1111-111111111111/read',
+      headers: { authorization: `Bearer ${guest.token}` },
+    });
+    expect(res.statusCode).toBe(403);
+    await app.close();
+  });
+});

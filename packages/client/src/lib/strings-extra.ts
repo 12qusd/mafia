@@ -428,6 +428,13 @@ export const COMMUNITY = {
   slowDown: 'Easy — one at a time.',
   postFailed: 'That did not go through.',
   refreshing: 'Listening…',
+  // Per-room activity + search + delete (social v1).
+  chatting: (n: number) => `${n} chatting`,
+  removed: '[removed]',
+  deleteMsg: 'Remove this message',
+  findPeople: 'Find people',
+  searchPlaceholder: 'Search names…',
+  searchEmpty: 'No one by that name.',
 } as const;
 
 /** Public profile screen copy (Social feature). */
@@ -460,6 +467,12 @@ export const PUBLIC_PROFILE = {
   friends: 'Friends',
   message: 'Message',
   signInToFriend: 'Sign in to add friends and send word.',
+  // Blocking (social v1).
+  block: 'Block',
+  unblock: 'Unblock',
+  blocked: 'Blocked',
+  blockToast: 'Blocked. You will not see their words.',
+  unblockToast: 'Unblocked.',
 } as const;
 
 /** Friends + direct-messages screen copy (Social feature). */
@@ -497,6 +510,20 @@ export const FRIENDS = {
   addSent: 'Word sent.',
   addAccepted: 'You are now friends.',
   addExists: 'Already on the books.',
+  // Search (social v1).
+  searchPlaceholder: 'Search names…',
+  searchEmpty: 'No one by that name.',
+  searchHint: 'Type at least two letters.',
+  // Unread badges (social v1).
+  unread: 'unread',
+  messages: 'Messages',
+  // Deletion (social v1).
+  deleteDm: 'Remove this message',
+  removed: '[removed]',
+  // Blocking (social v1).
+  blockedHeading: 'Blocked',
+  blockedEmpty: 'You have not blocked anyone.',
+  unblock: 'Unblock',
 } as const;
 
 /** Forums copy (Forums feature) — a phpBB-style message board, noir register. */
@@ -560,6 +587,11 @@ export const FORUM = {
   saved: 'Post updated.',
   loading: 'Reading the boards…',
   notFound: 'No such board or topic in this town.',
+  // Deletion (social v1).
+  delete: 'Delete',
+  deleted: 'Post removed.',
+  removed: '[removed]',
+  confirmDelete: 'Remove this post?',
 } as const;
 
 /** Game-over points celebration copy (goal 3 + ranked play). */

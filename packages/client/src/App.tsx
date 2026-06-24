@@ -10,7 +10,7 @@ import { strings } from '@nocturne/shared';
 import { conn } from './ws/connection.js';
 import { useStore } from './store/store.js';
 import { refreshMe } from './lib/me.js';
-import { pingPresence } from './lib/api.js';
+import { pingPresence, fetchSocial } from './lib/api.js';
 import { Toasts } from './components/Toasts.js';
 import { ForceUpdateModal } from './components/ForceUpdateModal.js';
 import { Glossary } from './components/Glossary.js';
@@ -81,6 +81,9 @@ export function App() {
   // Public role glossary ("The Cast") — open from the topbar on every screen so
   // any player can read every role's canonical card (anti fake-verify, §13.1).
   const [glossaryOpen, setGlossaryOpen] = useState(false);
+  // Unread DM count for the topbar Friends badge (social v1). Polled while an
+  // account is signed in; cleared on sign-out.
+  const [unreadDms, setUnreadDms] = useState(0);
   // Mobile nav drawer (collapsed under the topbar on narrow screens). Hidden on
   // desktop entirely via CSS; the hamburger only appears at the mobile breakpoint.
   const [navOpen, setNavOpen] = useState(false);
@@ -127,6 +130,27 @@ export function App() {
     const t = setInterval(() => void pingPresence(), 60_000);
     return () => clearInterval(t);
   }, [meId]);
+
+  // Unread DM badge (social v1): poll the social hub for the total while signed
+  // in. Same cadence as presence so it stays warm without a write storm; the
+  // FriendsScreen clears per-thread unread eagerly on open.
+  useEffect(() => {
+    if (!meId) {
+      setUnreadDms(0);
+      return;
+    }
+    let live = true;
+    const load = () =>
+      void fetchSocial().then((s) => {
+        if (live) setUnreadDms(s.unreadTotal);
+      });
+    load();
+    const t = setInterval(load, 30_000);
+    return () => {
+      live = false;
+      clearInterval(t);
+    };
+  }, [meId, location.pathname]);
 
   // Apply display settings + scene tint to the document root.
   useEffect(() => {
@@ -185,6 +209,11 @@ export function App() {
             </Link>
             <Link className="linkbtn" to="/friends">
               Friends
+              {unreadDms > 0 && (
+                <span className="nav-badge" aria-label={`${unreadDms} unread messages`}>
+                  {unreadDms}
+                </span>
+              )}
             </Link>
             <Link className="linkbtn" to="/setups">
               Setups

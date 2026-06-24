@@ -2511,3 +2511,36 @@ DB + a little client; engine/§5 leak path untouched; account+persistent+season 
 
 Gate green: tests 849 (shared 220 / server 182); eslint 0; leak 0/200. Rollover SQL
 reviewed (not executed on the live season); read endpoints + placements verified live.
+
+---
+
+## Production-readiness Wave 4b — social completeness
+
+Closes the audit's "social v1" gaps. HTTP + social/forum tables + client; engine/§5
+leak path untouched. Account-only writes; reuses the existing `mutes` table for blocking.
+
+- **DM unread**: `dm_reads(user_id, thread_id, last_read_at)` (idempotent). Unread per
+  thread = messages newer than last_read_at, not the viewer's own, not deleted. Marked
+  read on DM fetch + `POST /api/dms/:id/read` (monotonic via GREATEST). `/api/me/social`
+  carries `unreadTotal` + per-thread `unread`; topbar Friends badge + per-thread badges.
+- **User search**: `GET /api/users/search?q=` (≥2 chars, citext ILIKE prefix-ranked-above-
+  substring, excludes caller + caller's blocks, limit 20). Debounced search boxes on
+  Community + Friends.
+- **Blocking** (reuses mutes): `POST /api/blocks {userId|username,on}` + `GET /api/me/blocks`
+  (returns `{users:[…]}`); profile carries `blocked`. Effects: a blocked user can't DM you
+  (403) or friend-request you; your room/forum reads filter blocked authors server-side
+  (page AND total stay consistent). Block/Unblock on /u/:username.
+- **Soft-delete**: `deleted` column on dm_messages/room_messages/forum_posts (idempotent).
+  Author-or-admin `DELETE /api/dms/messages/:id` · `/api/rooms/messages/:id` ·
+  `/api/forum/posts/:id`; deleted rows kept (continuity), reads return `deleted:true` + null
+  body → client renders "[removed]". 403 non-author, 404 unknown/non-uuid.
+- **Per-room activity**: `listRooms` gains `activeCount` (distinct non-deleted posters in
+  the last 10 min — an "alive" signal, not true presence). Community shows "N chatting".
+  (Route DTO fix: the handler was dropping activeCount from the response — added.)
+
+PgStore SQL uses parameterized `= ANY($n::uuid[])` block filters (null-guarded for the
+empty set, avoiding the uuid=text class of bug) + escaped ILIKE; all verified live
+(search, unread clear, DM-block 403, tombstone delete, non-author 403, activeCount).
+
+Gate green: tests 867 (shared 220 / server 200 / client 174 / bots 39); eslint 0; leak
+0/200. DB migrated (dm_reads + 3 deleted columns).

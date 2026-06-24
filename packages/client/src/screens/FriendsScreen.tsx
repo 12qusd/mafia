@@ -17,12 +17,17 @@ import { FRIENDS } from '../lib/strings-extra.js';
 import { sanitizeInline, sanitizeText } from '../lib/sanitize.js';
 import { clockTime, isOnline } from '../lib/social.js';
 import * as api from '../lib/api.js';
-import type { SocialState, DmMessage, DmThreadItem, FriendItem } from '../lib/api.js';
+import type { SocialState, DmMessage, DmThreadItem, FriendItem, UserHit } from '../lib/api.js';
 
 const DM_POLL_MS = 5000;
 const SOCIAL_POLL_MS = 15_000;
 
-const EMPTY: SocialState = { friends: [], requests: { incoming: [], outgoing: [] }, threads: [] };
+const EMPTY: SocialState = {
+  friends: [],
+  requests: { incoming: [], outgoing: [] },
+  threads: [],
+  unreadTotal: 0,
+};
 
 export function FriendsScreen() {
   const me = useStore((s) => s.me);
@@ -31,7 +36,6 @@ export function FriendsScreen() {
   const [params, setParams] = useSearchParams();
   const [social, setSocial] = useState<SocialState>(EMPTY);
   const [openUserId, setOpenUserId] = useState<string | null>(params.get('to'));
-  const [addName, setAddName] = useState('');
 
   const reload = useCallback(async () => {
     const s = await api.fetchSocial();
@@ -71,6 +75,16 @@ export function FriendsScreen() {
   function openConversation(userId: string): void {
     setOpenUserId(userId);
     setParams({ to: userId }, { replace: true });
+    // Optimistically clear this thread's unread badge + tell the server.
+    setSocial((s) => {
+      const cleared = s.threads.find((t) => t.otherUserId === userId)?.unread ?? 0;
+      return {
+        ...s,
+        unreadTotal: Math.max(0, s.unreadTotal - cleared),
+        threads: s.threads.map((t) => (t.otherUserId === userId ? { ...t, unread: 0 } : t)),
+      };
+    });
+    void api.markDmRead(userId);
   }
 
   async function respond(id: string, accept: boolean): Promise<void> {
@@ -81,10 +95,7 @@ export function FriendsScreen() {
     await api.removeFriend(userId);
     await reload();
   }
-  async function addByName(e: React.FormEvent): Promise<void> {
-    e.preventDefault();
-    const name = addName.trim();
-    if (!name) return;
+  async function addByName(name: string): Promise<void> {
     const res = await api.requestFriend(name);
     if (res.ok) {
       pushInfo(
@@ -94,7 +105,6 @@ export function FriendsScreen() {
             ? FRIENDS.addExists
             : FRIENDS.addSent,
       );
-      setAddName('');
       await reload();
     } else if (res.status === 404) {
       pushInfo(FRIENDS.addNotFound);
@@ -109,7 +119,14 @@ export function FriendsScreen() {
     <div className="page stack">
       <div className="spread">
         <div className="stack" style={{ gap: 2 }}>
-          <h1 style={{ margin: 0 }}>{FRIENDS.heading}</h1>
+          <h1 style={{ margin: 0 }}>
+            {FRIENDS.heading}
+            {social.unreadTotal > 0 && (
+              <span className="dm-badge" aria-label={`${social.unreadTotal} ${FRIENDS.unread}`}>
+                {social.unreadTotal}
+              </span>
+            )}
+          </h1>
           <span className="faint">{FRIENDS.sub}</span>
         </div>
         <Link className="btn btn-sm" to="/community">
@@ -122,19 +139,7 @@ export function FriendsScreen() {
         <div className="stack">
           <div className="panel panel-pad stack">
             <DecoHead>{FRIENDS.addByNameLabel}</DecoHead>
-            <form className="board-post" onSubmit={addByName}>
-              <input
-                className="board-input"
-                value={addName}
-                onChange={(e) => setAddName(e.target.value.slice(0, 64))}
-                placeholder={FRIENDS.addByNamePlaceholder}
-                maxLength={64}
-                aria-label={FRIENDS.addByNameLabel}
-              />
-              <button type="submit" className="btn btn-sm btn-primary" disabled={!addName.trim()}>
-                {FRIENDS.add}
-              </button>
-            </form>
+            <UserSearch onAdd={addByName} />
           </div>
 
           {social.requests.incoming.length > 0 && (
@@ -276,13 +281,88 @@ function ThreadRow({
   active: boolean;
   onOpen: () => void;
 }) {
+  const unread = !active && thread.unread > 0;
   return (
     <li>
-      <button type="button" className={`thread-tab ${active ? 'active' : ''}`} onClick={onOpen}>
-        <span className="thread-name">{sanitizeInline(thread.otherUsername)}</span>
+      <button
+        type="button"
+        className={`thread-tab ${active ? 'active' : ''} ${unread ? 'thread-unread' : ''}`}
+        onClick={onOpen}
+      >
+        <span className="thread-name">
+          {sanitizeInline(thread.otherUsername)}
+          {unread && (
+            <span className="dm-badge" aria-label={`${thread.unread} ${FRIENDS.unread}`}>
+              {thread.unread}
+            </span>
+          )}
+        </span>
         <span className="thread-preview">{sanitizeInline(thread.preview)}</span>
       </button>
     </li>
+  );
+}
+
+/** Live username search → result list with an Add-friend action (social v1). */
+function UserSearch({ onAdd }: { onAdd: (name: string) => void | Promise<void> }) {
+  const [q, setQ] = useState('');
+  const [results, setResults] = useState<UserHit[]>([]);
+  const [searched, setSearched] = useState(false);
+
+  useEffect(() => {
+    const trimmed = q.trim();
+    if (trimmed.length < 2) {
+      setResults([]);
+      setSearched(false);
+      return;
+    }
+    let live = true;
+    const t = setTimeout(() => {
+      void api.searchUsers(trimmed).then((hits) => {
+        if (!live) return;
+        setResults(hits);
+        setSearched(true);
+      });
+    }, 250);
+    return () => {
+      live = false;
+      clearTimeout(t);
+    };
+  }, [q]);
+
+  return (
+    <div className="stack" style={{ gap: 8 }}>
+      <input
+        className="board-input"
+        value={q}
+        onChange={(e) => setQ(e.target.value.slice(0, 64))}
+        placeholder={FRIENDS.searchPlaceholder}
+        maxLength={64}
+        aria-label={FRIENDS.addByNameLabel}
+      />
+      {q.trim().length >= 2 && (
+        <ul className="friend-list" aria-live="polite">
+          {results.length === 0 && searched ? (
+            <li className="faint">{FRIENDS.searchEmpty}</li>
+          ) : (
+            results.map((u) => (
+              <li key={u.id} className="friend-row">
+                <Link className="friend-name" to={`/u/${encodeURIComponent(u.username)}`}>
+                  {sanitizeInline(u.username)}
+                </Link>
+                <button
+                  type="button"
+                  className="btn btn-sm btn-primary"
+                  onClick={() => void onAdd(u.username)}
+                >
+                  {FRIENDS.add}
+                </button>
+              </li>
+            ))
+          )}
+        </ul>
+      )}
+    </div>
   );
 }
 
@@ -331,6 +411,17 @@ function Conversation({
     bottomRef.current?.scrollIntoView({ block: 'nearest' });
   }, [messages.length]);
 
+  async function onDelete(messageId: string): Promise<void> {
+    const ok = await api.deleteDm(messageId);
+    if (ok) {
+      setMessages((prev) =>
+        prev.map((m) => (m.id === messageId ? { ...m, body: '', deleted: true } : m)),
+      );
+    } else {
+      pushInfo(FRIENDS.sendFailed);
+    }
+  }
+
   async function submit(e: React.FormEvent): Promise<void> {
     e.preventDefault();
     const body = draft.trim();
@@ -365,14 +456,30 @@ function Conversation({
         {messages.length === 0 ? (
           <div className="faint board-empty">{FRIENDS.dmEmpty}</div>
         ) : (
-          messages.map((m) => (
-            <div key={m.id} className={`dm-row ${m.senderId === meId ? 'dm-mine' : 'dm-theirs'}`}>
-              <span className="dm-bubble">{sanitizeText(m.body)}</span>
-              <span className="dm-time" aria-hidden="true">
-                {clockTime(m.createdAt)}
-              </span>
-            </div>
-          ))
+          messages.map((m) => {
+            const mine = m.senderId === meId;
+            return (
+              <div key={m.id} className={`dm-row ${mine ? 'dm-mine' : 'dm-theirs'}`}>
+                <span className={`dm-bubble ${m.deleted ? 'msg-removed' : ''}`}>
+                  {m.deleted ? FRIENDS.removed : sanitizeText(m.body)}
+                </span>
+                <span className="dm-time" aria-hidden="true">
+                  {clockTime(m.createdAt)}
+                </span>
+                {mine && !m.deleted && (
+                  <button
+                    type="button"
+                    className="btn btn-sm btn-ghost msg-del"
+                    title={FRIENDS.deleteDm}
+                    aria-label={FRIENDS.deleteDm}
+                    onClick={() => void onDelete(m.id)}
+                  >
+                    ×
+                  </button>
+                )}
+              </div>
+            );
+          })
         )}
         <div ref={bottomRef} />
       </div>

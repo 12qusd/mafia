@@ -61,6 +61,17 @@ export function registerForumRoutes(app: FastifyInstance, ctx: GatewayContext): 
   // Per-(user, scope) cooldown clocks (in-memory; reset on restart).
   const lastPostAt = new Map<string, number>();
 
+  /**
+   * The set of user ids the (possibly anonymous) viewer has blocked, used to
+   * filter blocked authors out of forum reads server-side. Empty for guests/anon.
+   */
+  async function viewerBlocks(req: { headers: unknown; cookies?: unknown }): Promise<string[]> {
+    if (!ctx.store.persistent) return [];
+    const viewer = await ctx.identity.resolveToken(readToken(req as never));
+    if (!viewer || viewer.isGuest) return [];
+    return ctx.store.getMutes(viewer.id);
+  }
+
   /** Resolve a non-guest, non-sanctioned poster, or send the right error code. */
   async function requirePoster(
     token: string | undefined,
@@ -163,10 +174,14 @@ export function registerForumRoutes(app: FastifyInstance, ctx: GatewayContext): 
       await ctx.store.incrementThreadViews(thread.id);
       const page = parsePage(req.query.page);
       const offset = (page - 1) * POSTS_PAGE_SIZE;
-      const { posts, total } = await ctx.store.listPosts(thread.id, {
+      // Filter out posts by anyone the (authed) viewer has blocked, server-side.
+      const blocked = await viewerBlocks(req);
+      const listOpts: { limit: number; offset: number; blocked?: string[] } = {
         limit: POSTS_PAGE_SIZE,
         offset,
-      });
+      };
+      if (blocked.length) listOpts.blocked = blocked;
+      const { posts, total } = await ctx.store.listPosts(thread.id, listOpts);
       // Reflect the just-counted view in the returned thread.
       return reply.send({
         thread: { ...thread, views: thread.views + 1 },
@@ -217,6 +232,20 @@ export function registerForumRoutes(app: FastifyInstance, ctx: GatewayContext): 
       parsed.data.body,
     );
     if (!ok) return reply.code(403).send({ error: 'forbidden' });
+    return reply.send({ ok: true });
+  });
+
+  // --- Post: delete (author-or-admin; soft-delete tombstone) ---------------
+
+  app.delete<{ Params: { id: string } }>('/api/forum/posts/:id', async (req, reply) => {
+    const identity = await ctx.identity.resolveToken(readToken(req));
+    if (!identity) return reply.code(401).send({ error: 'not_authenticated' });
+    if (identity.isGuest) return reply.code(403).send({ error: 'forbidden' });
+    if (!ctx.store.persistent) return reply.code(503).send({ error: 'accounts_disabled' });
+    if (!UUID_RE.test(req.params.id)) return reply.code(404).send({ error: 'not_found' });
+    const res = await ctx.store.deleteForumPost(req.params.id, identity.id, identity.isAdmin);
+    if (res === 'not_found') return reply.code(404).send({ error: 'not_found' });
+    if (res === 'forbidden') return reply.code(403).send({ error: 'forbidden' });
     return reply.send({ ok: true });
   });
 

@@ -119,3 +119,27 @@ describe('POST /api/forum/threads/:id/moderate — admin gate', () => {
     await app.close();
   });
 });
+
+describe('DELETE /api/forum/posts/:id — delete gate (social v1)', () => {
+  it('an unauthenticated caller gets 401', async () => {
+    const { app } = await buildForumApp();
+    const res = await app.inject({
+      method: 'DELETE',
+      url: '/api/forum/posts/11111111-1111-1111-1111-111111111111',
+    });
+    expect(res.statusCode).toBe(401);
+    await app.close();
+  });
+
+  it('a guest gets 403 (account-only)', async () => {
+    const { app, ctx } = await buildForumApp();
+    const guest = ctx.identity.createGuest();
+    const res = await app.inject({
+      method: 'DELETE',
+      url: '/api/forum/posts/11111111-1111-1111-1111-111111111111',
+      headers: { authorization: `Bearer ${guest.token}` },
+    });
+    expect(res.statusCode).toBe(403);
+    await app.close();
+  });
+});

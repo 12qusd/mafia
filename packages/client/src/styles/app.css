@@ -3494,6 +3494,62 @@ table {
   color: var(--c-text-faint);
 }
 
+/* ---------------------------------------------------------------------------
+   Social completeness (social v1): unread badges, per-room activity, soft-delete
+   tombstones, and the inline delete (×) affordance.
+   --------------------------------------------------------------------------- */
+
+/* Unread DM count pill — used on the topbar Friends link, the Messages heading,
+   and per-thread in the DM list. */
+.dm-badge,
+.nav-badge {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 18px;
+  height: 18px;
+  margin-left: 6px;
+  padding: 0 5px;
+  border-radius: var(--radius-pill);
+  font-size: var(--fs-xs);
+  font-weight: 700;
+  line-height: 1;
+  color: var(--c-bg, #14110d);
+  background: var(--c-brass);
+}
+.nav-badge {
+  vertical-align: middle;
+}
+.thread-tab.thread-unread {
+  border-color: var(--c-brass-dim);
+}
+
+/* Per-room "N chatting" alive-signal. */
+.channel-active {
+  margin-left: 6px;
+  font-size: var(--fs-xs);
+  font-weight: 600;
+  color: var(--c-verdigris);
+}
+
+/* Soft-delete tombstone body ("[removed]"). */
+.msg-removed {
+  font-style: italic;
+  color: var(--c-text-faint);
+}
+
+/* Inline delete (×) affordance on the caller's own messages. */
+.msg-del {
+  padding: 0 6px;
+  line-height: 1;
+  color: var(--c-text-faint);
+  opacity: 0.6;
+}
+.msg-del:hover {
+  opacity: 1;
+  color: var(--c-danger, #c66);
+}
+
 /* ===========================================================================
    Forums (Forums feature): a phpBB-style message board laid over the noir deco
    system — category header bars, zebra board/thread tables, author side-panels.

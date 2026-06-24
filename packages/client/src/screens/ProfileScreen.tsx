@@ -91,6 +91,16 @@ export function ProfileScreen() {
     }
   }
 
+  async function onBlockToggle(): Promise<void> {
+    if (!profile) return;
+    const turnOn = !profile.blocked;
+    const ok = await api.setBlock({ userId: profile.id }, turnOn);
+    if (ok) {
+      pushInfo(turnOn ? PUBLIC_PROFILE.blockToast : PUBLIC_PROFILE.unblockToast);
+      await reload();
+    }
+  }
+
   return (
     <div className="page stack">
       <div className={`panel panel-pad stack profile-card profile-public ${accent ? `accent-${accent}` : ''}`}>
@@ -123,7 +133,13 @@ export function ProfileScreen() {
         {isSelf ? (
           <EditForm profile={profile} onSaved={reload} />
         ) : (
-          <FriendActions profile={profile} me={me} onAction={onFriendAction} navigate={navigate} />
+          <FriendActions
+            profile={profile}
+            me={me}
+            onAction={onFriendAction}
+            onBlockToggle={onBlockToggle}
+            navigate={navigate}
+          />
         )}
       </div>
 
@@ -179,11 +195,13 @@ function FriendActions({
   profile,
   me,
   onAction,
+  onBlockToggle,
   navigate,
 }: {
   profile: PublicProfile;
   me: { isGuest: boolean } | null;
   onAction: () => void;
+  onBlockToggle: () => void;
   navigate: ReturnType<typeof useNavigate>;
 }) {
   // Friendship is null for guests/anon viewers: nudge them to sign in.
@@ -215,6 +233,14 @@ function FriendActions({
         onClick={() => navigate(`/friends?to=${encodeURIComponent(profile.id)}`)}
       >
         {PUBLIC_PROFILE.message}
+      </button>
+      <button
+        type="button"
+        className={`btn btn-sm ${profile.blocked ? '' : 'btn-ghost'}`}
+        onClick={onBlockToggle}
+        aria-pressed={!!profile.blocked}
+      >
+        {profile.blocked ? PUBLIC_PROFILE.unblock : PUBLIC_PROFILE.block}
       </button>
     </div>
   );

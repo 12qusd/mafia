@@ -40,6 +40,8 @@ import type {
   ForumThreadListRow,
   ForumThreadView,
   ForumPostRow,
+  UserSearchHit,
+  DmThreadSummary,
 } from './types.js';
 
 interface PgUser {
@@ -115,6 +117,40 @@ export class PgStore implements Store {
 
   async setLastLogin(id: string): Promise<void> {
     await this.pool.query(`UPDATE users SET last_login_at = now() WHERE id = $1`, [id]);
+  }
+
+  async searchUsers(
+    q: string,
+    limit: number,
+    excludeId?: string,
+    excludeIds?: string[],
+  ): Promise<UserSearchHit[]> {
+    const trimmed = q.trim();
+    if (trimmed.length < 2) return [];
+    const cap = Math.max(1, Math.min(limit, 20));
+    // username is citext so ILIKE is case-insensitive. We pass `q` as a literal
+    // parameter and build the pattern with a parameter too (no injection). Prefix
+    // matches rank above substring matches. `like_escape` neutralises % and _ so
+    // user-typed wildcards are treated literally.
+    const like = `%${PgStore.likeEscape(trimmed)}%`;
+    const prefix = `${PgStore.likeEscape(trimmed)}%`;
+    // Exclude the caller + the caller's blocked ids (uuid[] param, ::text-safe).
+    const exclude = [...(excludeId ? [excludeId] : []), ...(excludeIds ?? [])];
+    const { rows } = await this.pool.query<{ id: string; username: string }>(
+      `SELECT id, username
+       FROM users
+       WHERE username ILIKE $1 ESCAPE '\\'
+         AND ($3::uuid[] IS NULL OR NOT (id = ANY($3::uuid[])))
+       ORDER BY (username ILIKE $2 ESCAPE '\\') DESC, username ASC
+       LIMIT $4`,
+      [like, prefix, exclude.length ? exclude : null, cap],
+    );
+    return rows.map((r) => ({ id: r.id, username: r.username }));
+  }
+
+  /** Escape LIKE/ILIKE wildcards so a user query is matched literally. */
+  private static likeEscape(s: string): string {
+    return s.replace(/[\\%_]/g, (c) => `\\${c}`);
   }
 
   async createSession(tokenHash: string, userId: string, expiresAt: number): Promise<void> {
@@ -1334,6 +1370,9 @@ export class PgStore implements Store {
   }
 
   async listRooms(): Promise<ChatRoomRow[]> {
+    // activeCount = distinct non-deleted posters in the last 10 minutes (an
+    // "alive" signal, NOT true presence). Cheap via the (room_id, created_at)
+    // index. LEFT JOIN LATERAL so a quiet room still returns 0.
     const { rows } = await this.pool.query<{
       id: string;
       slug: string;
@@ -1342,8 +1381,21 @@ export class PgStore implements Store {
       kind: string;
       sort: number;
       created_at: Date;
-    }>(`SELECT id, slug, name, topic, kind, sort, created_at FROM chat_rooms ORDER BY sort`);
-    return rows.map((r) => this.mapRoom(r));
+      active_count: string | null;
+    }>(
+      `SELECT r.id, r.slug, r.name, r.topic, r.kind, r.sort, r.created_at,
+              COALESCE(a.active_count, 0) AS active_count
+       FROM chat_rooms r
+       LEFT JOIN LATERAL (
+         SELECT count(DISTINCT m.user_id) AS active_count
+         FROM room_messages m
+         WHERE m.room_id = r.id
+           AND m.deleted = false
+           AND m.created_at > now() - interval '10 minutes'
+       ) a ON true
+       ORDER BY r.sort`,
+    );
+    return rows.map((r) => ({ ...this.mapRoom(r), activeCount: Number(r.active_count ?? 0) }));
   }
 
   async getRoomBySlug(slug: string): Promise<ChatRoomRow | null> {
@@ -1393,36 +1445,65 @@ export class PgStore implements Store {
 
   async listRoomMessages(
     roomId: string,
-    opts: { limit: number; sinceId?: string },
+    opts: { limit: number; sinceId?: string; blocked?: string[] },
   ): Promise<
-    Array<{ id: string; userId: string; username: string; body: string; createdAt: number }>
+    Array<{
+      id: string;
+      userId: string;
+      username: string;
+      body: string;
+      createdAt: number;
+      deleted: boolean;
+    }>
   > {
     const limit = Math.max(1, Math.min(opts.limit, 100));
+    const blocked = opts.blocked && opts.blocked.length > 0 ? opts.blocked : null;
     // Newest `limit` (delta past sinceId if given), then return ascending.
+    // Blocked authors are filtered server-side (uuid[] param). Deleted rows are
+    // surfaced as tombstones (body nulled below).
     const { rows } = await this.pool.query<{
       id: string;
       user_id: string;
       username: string;
       body: string;
       created_at: Date;
+      deleted: boolean;
     }>(
-      `SELECT m.id, m.user_id, u.username, m.body, m.created_at
+      `SELECT m.id, m.user_id, u.username, m.body, m.created_at, m.deleted
        FROM room_messages m JOIN users u ON u.id = m.user_id
        WHERE m.room_id = $1
          AND ($3::uuid IS NULL OR m.created_at > (SELECT created_at FROM room_messages WHERE id = $3))
+         AND ($4::uuid[] IS NULL OR NOT (m.user_id = ANY($4::uuid[])))
        ORDER BY m.created_at DESC, m.id DESC
        LIMIT $2`,
-      [roomId, limit, opts.sinceId ?? null],
+      [roomId, limit, opts.sinceId ?? null, blocked],
     );
     return rows
       .map((r) => ({
         id: r.id,
         userId: r.user_id,
         username: r.username,
-        body: r.body,
+        body: r.deleted ? '' : r.body,
         createdAt: r.created_at.getTime(),
+        deleted: r.deleted,
       }))
       .reverse();
+  }
+
+  async deleteRoomMessage(
+    id: string,
+    requesterId: string,
+    isAdmin: boolean,
+  ): Promise<'ok' | 'forbidden' | 'not_found'> {
+    const { rows } = await this.pool.query<{ user_id: string }>(
+      `SELECT user_id FROM room_messages WHERE id = $1`,
+      [id],
+    );
+    const row = rows[0];
+    if (!row) return 'not_found';
+    if (!isAdmin && row.user_id !== requesterId) return 'forbidden';
+    await this.pool.query(`UPDATE room_messages SET deleted = true WHERE id = $1`, [id]);
+    return 'ok';
   }
 
   // --- Social: direct messages ---------------------------------------------
@@ -1475,30 +1556,37 @@ export class PgStore implements Store {
     };
   }
 
-  async listDmThreads(userId: string): Promise<
-    Array<{
-      threadId: string;
-      otherUserId: string;
-      otherUsername: string;
-      lastAt: number;
-      preview: string;
-    }>
-  > {
+  async listDmThreads(userId: string): Promise<DmThreadSummary[]> {
+    // Preview reflects a tombstone when the latest message is soft-deleted.
+    // unread = newer-than-last-read messages FROM the other party that are not
+    // deleted. A missing dm_reads row means "never read" (epoch).
     const { rows } = await this.pool.query<{
       thread_id: string;
       other_id: string;
       other_username: string;
       last_at: Date;
       preview: string | null;
+      preview_deleted: boolean | null;
+      unread: string | null;
     }>(
       `SELECT t.id AS thread_id,
               other.id AS other_id,
               other.username AS other_username,
               t.last_at,
-              (SELECT body FROM dm_messages m WHERE m.thread_id = t.id
-               ORDER BY m.created_at DESC, m.id DESC LIMIT 1) AS preview
+              last_msg.body AS preview,
+              last_msg.deleted AS preview_deleted,
+              (SELECT count(*) FROM dm_messages m
+                 WHERE m.thread_id = t.id
+                   AND m.sender_id <> $1
+                   AND m.deleted = false
+                   AND m.created_at > COALESCE(rd.last_read_at, 'epoch'::timestamptz)) AS unread
        FROM dm_threads t
        JOIN users other ON other.id = CASE WHEN t.user_lo = $1 THEN t.user_hi ELSE t.user_lo END
+       LEFT JOIN dm_reads rd ON rd.thread_id = t.id AND rd.user_id = $1
+       LEFT JOIN LATERAL (
+         SELECT body, deleted FROM dm_messages m WHERE m.thread_id = t.id
+         ORDER BY m.created_at DESC, m.id DESC LIMIT 1
+       ) last_msg ON true
        WHERE t.user_lo = $1 OR t.user_hi = $1
        ORDER BY t.last_at DESC`,
       [userId],
@@ -1508,22 +1596,26 @@ export class PgStore implements Store {
       otherUserId: r.other_id,
       otherUsername: r.other_username,
       lastAt: r.last_at.getTime(),
-      preview: r.preview ?? '',
+      preview: r.preview_deleted ? '' : (r.preview ?? ''),
+      unread: Number(r.unread ?? 0),
     }));
   }
 
   async listDmMessages(
     threadId: string,
     opts: { limit: number; sinceId?: string },
-  ): Promise<Array<{ id: string; senderId: string; body: string; createdAt: number }>> {
+  ): Promise<
+    Array<{ id: string; senderId: string; body: string; createdAt: number; deleted: boolean }>
+  > {
     const limit = Math.max(1, Math.min(opts.limit, 100));
     const { rows } = await this.pool.query<{
       id: string;
       sender_id: string;
       body: string;
       created_at: Date;
+      deleted: boolean;
     }>(
-      `SELECT id, sender_id, body, created_at FROM dm_messages
+      `SELECT id, sender_id, body, created_at, deleted FROM dm_messages
        WHERE thread_id = $1
          AND ($3::uuid IS NULL OR created_at > (SELECT created_at FROM dm_messages WHERE id = $3))
        ORDER BY created_at DESC, id DESC
@@ -1534,8 +1626,9 @@ export class PgStore implements Store {
       .map((r) => ({
         id: r.id,
         senderId: r.sender_id,
-        body: r.body,
+        body: r.deleted ? '' : r.body,
         createdAt: r.created_at.getTime(),
+        deleted: r.deleted,
       }))
       .reverse();
   }
@@ -1547,6 +1640,50 @@ export class PgStore implements Store {
     );
     const r = rows[0];
     return r ? [r.user_lo, r.user_hi] : null;
+  }
+
+  async markDmRead(userId: string, threadId: string, at: number): Promise<void> {
+    await this.pool.query(
+      `INSERT INTO dm_reads (user_id, thread_id, last_read_at)
+       VALUES ($1, $2, to_timestamp($3 / 1000.0))
+       ON CONFLICT (user_id, thread_id)
+       DO UPDATE SET last_read_at = GREATEST(dm_reads.last_read_at, EXCLUDED.last_read_at)`,
+      [userId, threadId, at],
+    );
+  }
+
+  async getTotalUnread(userId: string): Promise<number> {
+    const { rows } = await this.pool.query<{ unread: string }>(
+      `SELECT COALESCE(sum(c.unread), 0) AS unread
+       FROM dm_threads t
+       LEFT JOIN dm_reads rd ON rd.thread_id = t.id AND rd.user_id = $1
+       LEFT JOIN LATERAL (
+         SELECT count(*) AS unread FROM dm_messages m
+         WHERE m.thread_id = t.id
+           AND m.sender_id <> $1
+           AND m.deleted = false
+           AND m.created_at > COALESCE(rd.last_read_at, 'epoch'::timestamptz)
+       ) c ON true
+       WHERE t.user_lo = $1 OR t.user_hi = $1`,
+      [userId],
+    );
+    return Number(rows[0]?.unread ?? 0);
+  }
+
+  async deleteDmMessage(
+    id: string,
+    requesterId: string,
+    isAdmin: boolean,
+  ): Promise<'ok' | 'forbidden' | 'not_found'> {
+    const { rows } = await this.pool.query<{ sender_id: string }>(
+      `SELECT sender_id FROM dm_messages WHERE id = $1`,
+      [id],
+    );
+    const row = rows[0];
+    if (!row) return 'not_found';
+    if (!isAdmin && row.sender_id !== requesterId) return 'forbidden';
+    await this.pool.query(`UPDATE dm_messages SET deleted = true WHERE id = $1`, [id]);
+    return 'ok';
   }
 
   // --- Forums ---------------------------------------------------------------
@@ -1797,10 +1934,13 @@ export class PgStore implements Store {
 
   async listPosts(
     threadId: string,
-    opts: { limit: number; offset: number },
+    opts: { limit: number; offset: number; blocked?: string[] },
   ): Promise<{ posts: ForumPostRow[]; total: number }> {
     const limit = Math.max(1, Math.min(opts.limit, 50));
     const offset = Math.max(0, opts.offset);
+    // Blocked authors are filtered from BOTH the page and the total (so the
+    // viewer's pagination stays consistent). Deleted posts remain (tombstoned).
+    const blocked = opts.blocked && opts.blocked.length > 0 ? opts.blocked : null;
     const { rows } = await this.pool.query<{
       id: string;
       author_id: string;
@@ -1809,28 +1949,33 @@ export class PgStore implements Store {
       body: string;
       created_at: Date;
       edited_at: Date | null;
+      deleted: boolean;
     }>(
       `SELECT p.id, p.author_id, u.username AS author_name, u.created_at AS author_joined,
-              p.body, p.created_at, p.edited_at
+              p.body, p.created_at, p.edited_at, p.deleted
        FROM forum_posts p
        JOIN users u ON u.id = p.author_id
        WHERE p.thread_id = $1
+         AND ($4::uuid[] IS NULL OR NOT (p.author_id = ANY($4::uuid[])))
        ORDER BY p.created_at, p.id
        LIMIT $2 OFFSET $3`,
-      [threadId, limit, offset],
+      [threadId, limit, offset, blocked],
     );
     const totalQ = await this.pool.query<{ count: string }>(
-      `SELECT count(*) FROM forum_posts WHERE thread_id = $1`,
-      [threadId],
+      `SELECT count(*) FROM forum_posts
+       WHERE thread_id = $1
+         AND ($2::uuid[] IS NULL OR NOT (author_id = ANY($2::uuid[])))`,
+      [threadId, blocked],
     );
     const posts = rows.map((r) => ({
       id: r.id,
       authorId: r.author_id,
       authorName: r.author_name,
       authorJoined: r.author_joined ? r.author_joined.getTime() : null,
-      body: r.body,
+      body: r.deleted ? '' : r.body,
       createdAt: r.created_at.getTime(),
       editedAt: r.edited_at ? r.edited_at.getTime() : null,
+      deleted: r.deleted,
     }));
     return { posts, total: Number(totalQ.rows[0]?.count ?? 0) };
   }
@@ -1893,6 +2038,23 @@ export class PgStore implements Store {
           [postId, editorId, body],
         );
     return (res.rowCount ?? 0) > 0;
+  }
+
+  async deleteForumPost(
+    id: string,
+    requesterId: string,
+    isAdmin: boolean,
+  ): Promise<'ok' | 'forbidden' | 'not_found'> {
+    const { rows } = await this.pool.query<{ author_id: string }>(
+      `SELECT author_id FROM forum_posts WHERE id = $1`,
+      [id],
+    );
+    const row = rows[0];
+    if (!row) return 'not_found';
+    if (!isAdmin && row.author_id !== requesterId) return 'forbidden';
+    // The thread persists (post_count untouched); only this post is tombstoned.
+    await this.pool.query(`UPDATE forum_posts SET deleted = true WHERE id = $1`, [id]);
+    return 'ok';
   }
 
   async setThreadFlags(

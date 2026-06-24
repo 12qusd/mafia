@@ -42,6 +42,8 @@ import type {
   ForumThreadListRow,
   ForumThreadView,
   ForumPostRow,
+  UserSearchHit,
+  DmThreadSummary,
 } from './types.js';
 
 /** Internal friendship record (one per unordered pair). */
@@ -93,6 +95,7 @@ interface MemForumPost {
   body: string;
   createdAt: number;
   editedAt: number | null;
+  deleted: boolean;
 }
 
 export class MemoryStore implements Store {
@@ -127,6 +130,8 @@ export class MemoryStore implements Store {
   private readonly roomMessages: RoomMessageRow[] = [];
   private readonly dmThreads: MemDmThread[] = [];
   private readonly dmMessages: DmMessageRow[] = [];
+  /** Per-(user, thread) last-read cursor for DM unread tracking (epoch ms). */
+  private readonly dmReads = new Map<string, number>();
   // --- Forums (process-lifetime only) --------------------------------------
   private readonly forumCategories: MemForumCategory[] = [];
   private readonly forumBoards: ForumBoardRow[] = [];
@@ -320,6 +325,32 @@ export class MemoryStore implements Store {
   async getMutes(muterId: string): Promise<string[]> {
     return [...(this.mutes.get(muterId) ?? [])];
   }
+
+  async searchUsers(
+    q: string,
+    limit: number,
+    excludeId?: string,
+    excludeIds?: string[],
+  ): Promise<UserSearchHit[]> {
+    const needle = q.trim().toLowerCase();
+    if (needle.length < 2) return [];
+    const cap = Math.max(1, Math.min(limit, 20));
+    const exclude = new Set<string>([...(excludeId ? [excludeId] : []), ...(excludeIds ?? [])]);
+    // MemoryStore has no users table; search the synthetic test name registry
+    // so the social-store search tests run under NO_DB. Prefix matches rank
+    // above substring matches, then alphabetical.
+    const hits: Array<{ id: string; username: string; rank: number }> = [];
+    for (const [id, username] of this.usernames) {
+      if (exclude.has(id)) continue;
+      const lower = username.toLowerCase();
+      const idx = lower.indexOf(needle);
+      if (idx < 0) continue;
+      hits.push({ id, username, rank: idx === 0 ? 0 : 1 });
+    }
+    hits.sort((a, b) => a.rank - b.rank || a.username.localeCompare(b.username));
+    return hits.slice(0, cap).map((h) => ({ id: h.id, username: h.username }));
+  }
+
   async logAdminAction(): Promise<void> {}
 
   async writeMatch(record: MatchRecord): Promise<void> {
@@ -797,7 +828,20 @@ export class MemoryStore implements Store {
   // --- Social: chat rooms ---------------------------------------------------
 
   async listRooms(): Promise<ChatRoomRow[]> {
-    return [...this.rooms].sort((a, b) => a.sort - b.sort).map((r) => ({ ...r }));
+    // activeCount = distinct non-deleted posters in the last 10 minutes (an
+    // "alive" signal, NOT true presence). `this.now()` advances per insert, so
+    // tests without wall-clock churn see every posted message as recent.
+    const cutoff = this.now() - 10 * 60_000;
+    return [...this.rooms]
+      .sort((a, b) => a.sort - b.sort)
+      .map((r) => {
+        const active = new Set(
+          this.roomMessages
+            .filter((m) => m.roomId === r.id && !m.deleted && m.createdAt > cutoff)
+            .map((m) => m.userId),
+        );
+        return { ...r, activeCount: active.size };
+      });
   }
   async getRoomBySlug(slug: string): Promise<ChatRoomRow | null> {
     const r = this.rooms.find((x) => x.slug === slug);
@@ -811,19 +855,28 @@ export class MemoryStore implements Store {
       username: this.nameFor(userId),
       body,
       createdAt: this.now(),
+      deleted: false,
     };
     this.roomMessages.push(row);
     return { ...row };
   }
   async listRoomMessages(
     roomId: string,
-    opts: { limit: number; sinceId?: string },
+    opts: { limit: number; sinceId?: string; blocked?: string[] },
   ): Promise<
-    Array<{ id: string; userId: string; username: string; body: string; createdAt: number }>
+    Array<{
+      id: string;
+      userId: string;
+      username: string;
+      body: string;
+      createdAt: number;
+      deleted: boolean;
+    }>
   > {
     const limit = Math.max(1, Math.min(opts.limit, 100));
-    // Insertion order is chronological; assign a stable sequence per row.
-    const all = this.roomMessages.filter((m) => m.roomId === roomId);
+    const blocked = new Set(opts.blocked ?? []);
+    // Insertion order is chronological; filter blocked authors server-side.
+    const all = this.roomMessages.filter((m) => m.roomId === roomId && !blocked.has(m.userId));
     let slice = all;
     if (opts.sinceId) {
       const idx = all.findIndex((m) => m.id === opts.sinceId);
@@ -835,9 +888,21 @@ export class MemoryStore implements Store {
       id: m.id,
       userId: m.userId,
       username: this.nameFor(m.userId),
-      body: m.body,
+      body: m.deleted ? '' : m.body,
       createdAt: m.createdAt,
+      deleted: !!m.deleted,
     }));
+  }
+  async deleteRoomMessage(
+    id: string,
+    requesterId: string,
+    isAdmin: boolean,
+  ): Promise<'ok' | 'forbidden' | 'not_found'> {
+    const m = this.roomMessages.find((x) => x.id === id);
+    if (!m) return 'not_found';
+    if (!isAdmin && m.userId !== requesterId) return 'forbidden';
+    m.deleted = true;
+    return 'ok';
   }
 
   // --- Social: direct messages ---------------------------------------------
@@ -862,21 +927,25 @@ export class MemoryStore implements Store {
       senderId,
       body,
       createdAt: this.now(),
+      deleted: false,
     };
     this.dmMessages.push(row);
     const t = this.dmThreads.find((x) => x.id === threadId);
     if (t) t.lastAt = row.createdAt;
     return { ...row };
   }
-  async listDmThreads(userId: string): Promise<
-    Array<{
-      threadId: string;
-      otherUserId: string;
-      otherUsername: string;
-      lastAt: number;
-      preview: string;
-    }>
-  > {
+  /** Unread for a user in a thread = newer-than-last-read, from the other party, not deleted. */
+  private dmUnread(userId: string, threadId: string): number {
+    const lastRead = this.dmReads.get(`${userId}:${threadId}`) ?? 0;
+    return this.dmMessages.filter(
+      (m) =>
+        m.threadId === threadId &&
+        m.senderId !== userId &&
+        !m.deleted &&
+        m.createdAt > lastRead,
+    ).length;
+  }
+  async listDmThreads(userId: string): Promise<DmThreadSummary[]> {
     return this.dmThreads
       .filter((t) => t.userLo === userId || t.userHi === userId)
       .sort((a, b) => b.lastAt - a.lastAt)
@@ -889,14 +958,17 @@ export class MemoryStore implements Store {
           otherUserId: other,
           otherUsername: this.nameFor(other),
           lastAt: t.lastAt,
-          preview: last?.body ?? '',
+          preview: last ? (last.deleted ? '' : last.body) : '',
+          unread: this.dmUnread(userId, t.id),
         };
       });
   }
   async listDmMessages(
     threadId: string,
     opts: { limit: number; sinceId?: string },
-  ): Promise<Array<{ id: string; senderId: string; body: string; createdAt: number }>> {
+  ): Promise<
+    Array<{ id: string; senderId: string; body: string; createdAt: number; deleted: boolean }>
+  > {
     const limit = Math.max(1, Math.min(opts.limit, 100));
     const all = this.dmMessages.filter((m) => m.threadId === threadId);
     let slice = all;
@@ -908,13 +980,35 @@ export class MemoryStore implements Store {
     return tail.map((m) => ({
       id: m.id,
       senderId: m.senderId,
-      body: m.body,
+      body: m.deleted ? '' : m.body,
       createdAt: m.createdAt,
+      deleted: !!m.deleted,
     }));
   }
   async dmThreadParticipants(threadId: string): Promise<[string, string] | null> {
     const t = this.dmThreads.find((x) => x.id === threadId);
     return t ? [t.userLo, t.userHi] : null;
+  }
+  async markDmRead(userId: string, threadId: string, at: number): Promise<void> {
+    const key = `${userId}:${threadId}`;
+    const cur = this.dmReads.get(key) ?? 0;
+    this.dmReads.set(key, Math.max(cur, at));
+  }
+  async getTotalUnread(userId: string): Promise<number> {
+    return this.dmThreads
+      .filter((t) => t.userLo === userId || t.userHi === userId)
+      .reduce((sum, t) => sum + this.dmUnread(userId, t.id), 0);
+  }
+  async deleteDmMessage(
+    id: string,
+    requesterId: string,
+    isAdmin: boolean,
+  ): Promise<'ok' | 'forbidden' | 'not_found'> {
+    const m = this.dmMessages.find((x) => x.id === id);
+    if (!m) return 'not_found';
+    if (!isAdmin && m.senderId !== requesterId) return 'forbidden';
+    m.deleted = true;
+    return 'ok';
   }
 
   // --- Forums ---------------------------------------------------------------
@@ -1026,7 +1120,15 @@ export class MemoryStore implements Store {
       lastPostAt: at,
       lastPosterId: authorId,
     });
-    this.forumPosts.push({ id: postId, threadId, authorId, body, createdAt: at, editedAt: null });
+    this.forumPosts.push({
+      id: postId,
+      threadId,
+      authorId,
+      body,
+      createdAt: at,
+      editedAt: null,
+      deleted: false,
+    });
     return { threadId, postId };
   }
 
@@ -1057,12 +1159,15 @@ export class MemoryStore implements Store {
 
   async listPosts(
     threadId: string,
-    opts: { limit: number; offset: number },
+    opts: { limit: number; offset: number; blocked?: string[] },
   ): Promise<{ posts: ForumPostRow[]; total: number }> {
     const limit = Math.max(1, Math.min(opts.limit, 50));
     const offset = Math.max(0, opts.offset);
+    const blocked = new Set(opts.blocked ?? []);
+    // Blocked authors are filtered from BOTH the page and the total. Deleted
+    // posts remain (tombstoned).
     const all = this.forumPosts
-      .filter((p) => p.threadId === threadId)
+      .filter((p) => p.threadId === threadId && !blocked.has(p.authorId))
       .sort((a, b) => a.createdAt - b.createdAt);
     const total = all.length;
     const posts = all.slice(offset, offset + limit).map((p) => ({
@@ -1070,9 +1175,10 @@ export class MemoryStore implements Store {
       authorId: p.authorId,
       authorName: this.nameFor(p.authorId),
       authorJoined: this.userJoined.get(p.authorId) ?? null,
-      body: p.body,
+      body: p.deleted ? '' : p.body,
       createdAt: p.createdAt,
       editedAt: p.editedAt,
+      deleted: p.deleted,
     }));
     return { posts, total };
   }
@@ -1086,7 +1192,15 @@ export class MemoryStore implements Store {
     if (!t || t.locked) return null;
     const at = this.now();
     const postId = newId();
-    this.forumPosts.push({ id: postId, threadId, authorId, body, createdAt: at, editedAt: null });
+    this.forumPosts.push({
+      id: postId,
+      threadId,
+      authorId,
+      body,
+      createdAt: at,
+      editedAt: null,
+      deleted: false,
+    });
     t.postCount += 1;
     t.lastPostAt = at;
     t.lastPosterId = authorId;
@@ -1105,6 +1219,19 @@ export class MemoryStore implements Store {
     p.body = body;
     p.editedAt = this.now();
     return true;
+  }
+
+  async deleteForumPost(
+    id: string,
+    requesterId: string,
+    isAdmin: boolean,
+  ): Promise<'ok' | 'forbidden' | 'not_found'> {
+    const p = this.forumPosts.find((x) => x.id === id);
+    if (!p) return 'not_found';
+    if (!isAdmin && p.authorId !== requesterId) return 'forbidden';
+    // The thread persists (post_count untouched); only this post is tombstoned.
+    p.deleted = true;
+    return 'ok';
   }
 
   async setThreadFlags(
