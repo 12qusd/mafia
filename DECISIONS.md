@@ -2581,3 +2581,31 @@ loud active-room count on drain timeout. Review pass also masked a 4xx err.messa
 stopped the referral bonus bumping last_match_at.
 
 Operator: optional `SENTRY_DSN` for error reporting; `users.referred_by` migration applied.
+
+---
+
+## Pre-merge final review — fixes (5-lens adversarial workflow, 22 agents)
+
+A final adversarial review (authz/IDOR · leak-safety · economy/abuse · cross-wave
+state · regression/ops) before merging feat/nocturne-full-buildout → main. Verdict:
+merge-with-fixes. Most "high" findings re-verified as ALREADY CORRECT (session
+revocation, password-reset reuse, points additive-only, admin-point isolation,
+test-mode excluded from ranking/points). Fixes applied:
+
+- **CRITICAL §5 leak — setConfig test-mode bypass.** createLobby gates testMode behind
+  testModeAllowed() (admin-only on a persistent store), but the host-power setConfig
+  path applied the same override with NO gate: a non-admin host could send
+  `lobby_config{testMode:true}` on a waiting lobby → formGame sets godIdentityId=host →
+  the host receives every seat's role via debug_* frames + the audit endpoint during the
+  LIVE game. NOT caught by the bots leak auditor (it runs in-engine, never the server
+  god-view path). Fixed: setConfig now gates testMode identically (forced false for
+  non-admins, admin-set value preserved across partial updates). +2 regression tests;
+  verified live over WS (non-admin flip → testMode stays false on the persistent store).
+- Defense-in-depth: isBanned() checks added to onStartGame + onPlayAgain (a player
+  banned mid-lobby can no longer start/rematch before reconnect). Rate-limit on
+  POST /api/blocks. extendSession gains `AND expires_at > now()` parity.
+- Data cleanliness: getRecentMatches + getPublicMatchSummary now exclude test-mode
+  games (`config->>'testMode' IS DISTINCT FROM 'true'`) so admin QA games never appear
+  on public recent/replay surfaces (they already never counted for ranking/points).
+
+Gate: build clean; tests 955 (server 250); eslint 0; leak 0/200.

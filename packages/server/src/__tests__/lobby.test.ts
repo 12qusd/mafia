@@ -100,6 +100,42 @@ describe('lobby flow (§7)', () => {
     expect(resolveConfig('public', undefined).deadSeeAll).toBe(false);
     expect(resolveConfig('private', undefined).deadSeeAll).toBe(true);
   });
+
+  it('a non-admin host cannot flip testMode on via lobby_config (§5 god-view gate)', async () => {
+    // testModeEnv is OFF and the host is a plain guest (not admin) ⇒ testModeAllowed
+    // is false, so the host-power setConfig path must refuse to enable test mode
+    // (which would hand the host a live god-view). createLobby already gates this;
+    // this guards the setConfig mutation path.
+    const { ctx } = buildTestContext(); // testModeEnv defaults false
+    const gw = new Gateway(ctx);
+    const host = await hello(gw, new FakeSocket());
+    await gw.deliverForTest(
+      host,
+      JSON.stringify({ v: 1, type: 'create_lobby', name: 'L', visibility: 'private', setupId: 'classic-nocturne' }),
+    );
+    const lobbyId = ctx.manager.lobbyOf(host)!.id;
+    await gw.deliverForTest(
+      host,
+      JSON.stringify({ v: 1, type: 'lobby_config', config: { testMode: true } }),
+    );
+    expect(ctx.manager.getLobby(lobbyId)!.config.testMode).toBe(false);
+  });
+
+  it('test mode IS allowed via lobby_config when the env gate is on', async () => {
+    const { ctx } = buildTestContext({ testModeEnv: true });
+    const gw = new Gateway(ctx);
+    const host = await hello(gw, new FakeSocket());
+    await gw.deliverForTest(
+      host,
+      JSON.stringify({ v: 1, type: 'create_lobby', name: 'L', visibility: 'private', setupId: 'classic-nocturne' }),
+    );
+    const lobbyId = ctx.manager.lobbyOf(host)!.id;
+    await gw.deliverForTest(
+      host,
+      JSON.stringify({ v: 1, type: 'lobby_config', config: { testMode: true } }),
+    );
+    expect(ctx.manager.getLobby(lobbyId)!.config.testMode).toBe(true);
+  });
 });
 
 describe('duplicate-connection takeover (§8)', () => {

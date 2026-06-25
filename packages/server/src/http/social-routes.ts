@@ -554,6 +554,7 @@ export function registerSocialRoutes(app: FastifyInstance, ctx: GatewayContext):
   app.post('/api/blocks', async (req, reply) => {
     const account = await requireAccount(readToken(req), reply);
     if (!account) return reply;
+    if (profileEditLimit(account.id, reply)) return reply; // throttle the lookup loop
     const parsed = BlockBody.safeParse(req.body);
     if (!parsed.success) return reply.code(400).send({ error: 'bad_request' });
     // Resolve the target by id or username.

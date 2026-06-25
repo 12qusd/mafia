@@ -201,7 +201,7 @@ export class PgStore implements Store {
   async extendSession(tokenHash: string, expiresAt: number): Promise<void> {
     await this.pool.query(
       `UPDATE sessions SET expires_at = to_timestamp($2 / 1000.0)
-       WHERE token_hash = $1 AND NOT revoked`,
+       WHERE token_hash = $1 AND NOT revoked AND expires_at > now()`,
       [tokenHash, expiresAt],
     );
   }
@@ -573,6 +573,7 @@ export class PgStore implements Store {
          FROM matches m
          LEFT JOIN match_players mp ON mp.match_id = m.id
         WHERE m.ended_at IS NOT NULL
+          AND (m.config ->> 'testMode') IS DISTINCT FROM 'true'
         GROUP BY m.id
         ORDER BY m.ended_at DESC
         LIMIT $1`,
@@ -599,9 +600,13 @@ export class PgStore implements Store {
       ended_at: Date | null;
       mode: string | null;
     }>(
-      // FINISHED-only at the SQL level: a NULL ended_at row never matches.
+      // FINISHED-only at the SQL level: a NULL ended_at row never matches. Also
+      // exclude admin/dev TEST-mode games from the public summary (data cleanliness;
+      // test games never count for ranking/points and shouldn't be publicly shared).
       `SELECT id, setup_id, outcome, started_at, ended_at, mode
-         FROM matches WHERE id = $1 AND ended_at IS NOT NULL`,
+         FROM matches
+        WHERE id = $1 AND ended_at IS NOT NULL
+          AND (config ->> 'testMode') IS DISTINCT FROM 'true'`,
       [matchId],
     );
     const row = m.rows[0];

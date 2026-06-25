@@ -284,6 +284,12 @@ export class MessageHandlers {
   }
 
   private async onStartGame(conn: Connection): Promise<void> {
+    // Ban-check at the start-game entry point too (a player banned mid-lobby
+    // shouldn't launch a game before their next reconnect re-checks hello).
+    if (conn.identity && (await this.ctx.identity.isBanned(conn.identity))) {
+      replyError(conn, 'forbidden', 'banned');
+      return;
+    }
     const res = await this.ctx.manager.startGame(conn);
     if ('error' in res) replyError(conn, res.error as ErrorCode);
   }
@@ -323,6 +329,12 @@ export class MessageHandlers {
    * how {@link onQuickPlay}/{@link onStartGame} surface manager errors).
    */
   private async onPlayAgain(conn: Connection): Promise<void> {
+    // Ban-check at the rematch entry too (creating/joining the rematch lobby is a
+    // lobby action; the other lobby entry points already gate on isBanned).
+    if (conn.identity && (await this.ctx.identity.isBanned(conn.identity))) {
+      replyError(conn, 'forbidden', 'banned');
+      return;
+    }
     const err = await this.ctx.manager.playAgain(conn);
     if (!err) return;
     if (err === 'no_game') {

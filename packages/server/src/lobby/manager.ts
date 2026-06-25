@@ -537,7 +537,18 @@ export class LobbyManager {
     if (!lobby) return 'not_in_lobby';
     if (!lobby.isHost(conn.identityId as string)) return 'not_host';
     if (lobby.status !== 'waiting') return 'cannot_start';
-    lobby.config = resolveConfig(lobby.visibility, config);
+    // §5: test mode hands the host a god-view (every seat's role via debug_*
+    // frames + the audit endpoint). createLobby gates it behind testModeAllowed
+    // (admin-only in a persistent/production store); this host-power path MUST
+    // apply the SAME gate or a non-admin host could flip testMode:true on a
+    // waiting lobby after creation and leak the live game. A non-allowed request
+    // to enable it is forced false; an admin-set value is preserved across a
+    // partial update that omits the field.
+    const testMode =
+      config.testMode === true
+        ? this.testModeAllowed(conn)
+        : (config.testMode ?? lobby.config.testMode);
+    lobby.config = resolveConfig(lobby.visibility, { ...config, testMode });
     this.broadcastLobby(lobby);
     return null;
   }
