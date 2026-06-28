@@ -1396,11 +1396,15 @@ function narrowDm(v: unknown): DmMessage | null {
   };
 }
 
-/** `GET /api/dms/:otherUserId` — ensures the thread; returns its id + messages. */
+/**
+ * `GET /api/dms/:otherUserId` — ensures the thread; returns its id + messages,
+ * plus the OTHER party's ephemeral `otherTyping` flag (folded in for free on
+ * each poll; absent on older servers → false).
+ */
 export async function fetchDms(
   otherUserId: string,
   opts: { sinceId?: string; limit?: number } = {},
-): Promise<{ threadId: string; messages: DmMessage[] } | null> {
+): Promise<{ threadId: string; messages: DmMessage[]; otherTyping: boolean } | null> {
   try {
     const params = new URLSearchParams();
     if (opts.sinceId) params.set('sinceId', opts.sinceId);
@@ -1413,9 +1417,37 @@ export async function fetchDms(
     const messages = Array.isArray(d['messages'])
       ? d['messages'].map(narrowDm).filter((m): m is DmMessage => m !== null)
       : [];
-    return { threadId, messages };
+    return { threadId, messages, otherTyping: bool(d['otherTyping']) };
   } catch {
     return null;
+  }
+}
+
+/**
+ * `POST /api/dms/:otherUserId/typing` — stamp yourself as typing (ephemeral,
+ * best-effort). Fire-and-forget; a failure is silently ignored.
+ */
+export async function pingTyping(otherUserId: string): Promise<void> {
+  try {
+    await fetch(`/api/dms/${encodeURIComponent(otherUserId)}/typing`, {
+      method: 'POST',
+      credentials: 'include',
+    });
+  } catch {
+    /* best-effort: typing is cosmetic */
+  }
+}
+
+/**
+ * `GET /api/dms/:otherUserId/typing` — is the OTHER party typing right now? A
+ * tiny focused poll for the open composer. Returns false on any error.
+ */
+export async function fetchTyping(otherUserId: string): Promise<boolean> {
+  try {
+    const d = await getJson(`/api/dms/${encodeURIComponent(otherUserId)}/typing`);
+    return isObj(d) ? bool(d['typing']) : false;
+  } catch {
+    return false;
   }
 }
 

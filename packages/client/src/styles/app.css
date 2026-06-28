@@ -3519,6 +3519,34 @@ table {
   color: var(--c-text-faint);
 }
 
+/* Ephemeral "<name> is typing…" line above the composer (DM typing indicator).
+   Subtle + non-intrusive. The animated variant gently pulses; the static
+   variant (prefers-reduced-motion, no `-anim` class) is plain text. */
+.dm-typing {
+  font-size: var(--fs-xs);
+  font-style: italic;
+  color: var(--c-text-faint);
+  padding: 2px 4px;
+  min-height: 1.2em;
+}
+.dm-typing-anim {
+  animation: dm-typing-pulse 1.4s ease-in-out infinite;
+}
+@keyframes dm-typing-pulse {
+  0%,
+  100% {
+    opacity: 0.5;
+  }
+  50% {
+    opacity: 1;
+  }
+}
+@media (prefers-reduced-motion: reduce) {
+  .dm-typing-anim {
+    animation: none;
+  }
+}
+
 /* ---------------------------------------------------------------------------
    Social completeness (social v1): unread badges, per-room activity, soft-delete
    tombstones, and the inline delete (×) affordance.

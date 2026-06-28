@@ -18,11 +18,17 @@ import { RichText } from '../components/RichText.js';
 import { FRIENDS } from '../lib/strings-extra.js';
 import { sanitizeInline, sanitizeText } from '../lib/sanitize.js';
 import { clockTime, isOnline } from '../lib/social.js';
+import { prefersReducedMotion } from '../lib/anim.js';
 import * as api from '../lib/api.js';
 import type { SocialState, DmMessage, DmThreadItem, FriendItem, UserHit } from '../lib/api.js';
 
 const DM_POLL_MS = 5000;
 const SOCIAL_POLL_MS = 15_000;
+/** Focused typing poll cadence (other party) + outbound ping throttle. */
+const TYPING_POLL_MS = 2000;
+const TYPING_PING_MS = 2000;
+/** Clear the "is typing…" line locally if no fresh true within this window. */
+const TYPING_CLEAR_MS = 5000;
 
 const EMPTY: SocialState = {
   friends: [],
@@ -388,13 +394,20 @@ function Conversation({
   const [messages, setMessages] = useState<DmMessage[]>([]);
   const [draft, setDraft] = useState('');
   const [sending, setSending] = useState(false);
+  const [otherTyping, setOtherTyping] = useState(false);
   const sinceRef = useRef<string | undefined>(undefined);
   const bottomRef = useRef<HTMLDivElement | null>(null);
+  // Last outbound typing ping (ms) for the client-side throttle.
+  const lastPingRef = useRef<number>(0);
+  // Timer that clears the "is typing…" line after TYPING_CLEAR_MS of no truthy
+  // poll, so a stale indicator never sticks if polling pauses.
+  const clearTimerRef = useRef<ReturnType<typeof setTimeout> | undefined>(undefined);
 
   useEffect(() => {
     let live = true;
     sinceRef.current = undefined;
     setMessages([]);
+    setOtherTyping(false);
     const load = async () => {
       const since = sinceRef.current;
       const res = await api.fetchDms(otherUserId, since ? { sinceId: since } : { limit: 50 });
@@ -417,6 +430,44 @@ function Conversation({
   useEffect(() => {
     bottomRef.current?.scrollIntoView({ block: 'nearest' });
   }, [messages.length]);
+
+  /** Apply a fresh typing verdict: show + (re)arm the local clear timer on true. */
+  const applyTyping = useCallback((typing: boolean) => {
+    if (clearTimerRef.current) clearTimeout(clearTimerRef.current);
+    if (typing) {
+      setOtherTyping(true);
+      clearTimerRef.current = setTimeout(() => setOtherTyping(false), TYPING_CLEAR_MS);
+    } else {
+      setOtherTyping(false);
+    }
+  }, []);
+
+  // Focused typing poll while the conversation is open (~2s), independent of the
+  // 5s message poll so the indicator feels live without refetching messages.
+  useEffect(() => {
+    let live = true;
+    const poll = async () => {
+      const typing = await api.fetchTyping(otherUserId);
+      if (live) applyTyping(typing);
+    };
+    void poll();
+    const t = setInterval(() => void poll(), TYPING_POLL_MS);
+    return () => {
+      live = false;
+      clearInterval(t);
+      if (clearTimerRef.current) clearTimeout(clearTimerRef.current);
+    };
+  }, [otherUserId, applyTyping]);
+
+  /** Update the draft and send a throttled typing ping (≤1 per TYPING_PING_MS). */
+  function onDraftChange(value: string): void {
+    setDraft(value.slice(0, 1000));
+    const now = Date.now();
+    if (value.trim() && now - lastPingRef.current >= TYPING_PING_MS) {
+      lastPingRef.current = now;
+      void api.pingTyping(otherUserId);
+    }
+  }
 
   async function onDelete(messageId: string): Promise<void> {
     const ok = await api.deleteDm(messageId);
@@ -513,12 +564,17 @@ function Conversation({
         )}
         <div ref={bottomRef} />
       </div>
+      {otherTyping && (
+        <div className={`dm-typing ${prefersReducedMotion() ? '' : 'dm-typing-anim'}`} aria-live="polite">
+          {FRIENDS.typing.replace('%s', sanitizeInline(otherName))}
+        </div>
+      )}
       <form className="board-post" onSubmit={submit}>
         <input
           id="dm-input"
           className="board-input"
           value={draft}
-          onChange={(e) => setDraft(e.target.value.slice(0, 1000))}
+          onChange={(e) => onDraftChange(e.target.value)}
           placeholder={FRIENDS.dmPlaceholder}
           maxLength={1000}
           aria-label={FRIENDS.dmPlaceholder}

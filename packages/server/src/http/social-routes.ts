@@ -81,6 +81,17 @@ const POST_COOLDOWN_MS = 1200;
 /** Throttle presence DB writes per user. */
 const PRESENCE_THROTTLE_MS = 30_000;
 
+// --- DM typing indicators (ephemeral, in-memory; no DB) ----------------------
+// A typing stamp is "live" if it was set within TYPING_TTL_MS. The registry is
+// a Map<threadId, Map<userId, lastTypedMs>>, bounded both ways: at most
+// TYPING_MAX_THREADS threads are tracked (oldest-touched evicted first), and a
+// thread's inner map is pruned of dead stamps on every touch. Lost on restart —
+// that's fine; this is a cosmetic signal, never persisted, never notified.
+/** A typing stamp counts as "still typing" within this window of `now`. */
+const TYPING_TTL_MS = 5_000;
+/** Cap on distinct threads tracked at once (bounded memory); evict oldest. */
+const TYPING_MAX_THREADS = 2_000;
+
 /** Parse a bounded message limit from the query (default 50, cap 100). */
 function parseLimit(raw: unknown): number {
   const n = Number(raw);
@@ -96,6 +107,48 @@ export function registerSocialRoutes(app: FastifyInstance, ctx: GatewayContext):
   const lastPostAt = new Map<string, number>();
   // Per-user presence-write throttle (in-memory).
   const lastPresenceWrite = new Map<string, number>();
+  // Ephemeral DM typing registry: thread → (user → lastTypedMs). Bounded +
+  // pruned (see TYPING_* above). Never persisted; lost on restart by design.
+  const typingByThread = new Map<string, Map<string, number>>();
+
+  /**
+   * Stamp `userId` as typing in `threadId` at `now`, pruning dead stamps and
+   * evicting the oldest thread if the registry is over its cap. Insertion order
+   * of the outer Map approximates LRU well enough: a re-touch deletes-then-sets
+   * the thread key so the most-recently-active thread moves to the tail.
+   */
+  function stampTyping(threadId: string, userId: string, now: number): void {
+    let inner = typingByThread.get(threadId);
+    if (inner) {
+      // Move this thread to the tail (most-recently-active) for LRU eviction.
+      typingByThread.delete(threadId);
+    } else {
+      inner = new Map<string, number>();
+    }
+    // Prune dead stamps within this thread so inner maps stay tiny (≤2 in
+    // practice — the two participants).
+    for (const [uid, at] of inner) {
+      if (now - at >= TYPING_TTL_MS) inner.delete(uid);
+    }
+    inner.set(userId, now);
+    typingByThread.set(threadId, inner);
+    // Evict the oldest thread(s) if we are over the cap (front of the Map).
+    while (typingByThread.size > TYPING_MAX_THREADS) {
+      const oldest = typingByThread.keys().next().value;
+      if (oldest === undefined) break;
+      typingByThread.delete(oldest);
+    }
+  }
+
+  /** Whether anyone OTHER than `viewerId` has a live typing stamp in the thread. */
+  function otherIsTyping(threadId: string, viewerId: string, now: number): boolean {
+    const inner = typingByThread.get(threadId);
+    if (!inner) return false;
+    for (const [uid, at] of inner) {
+      if (uid !== viewerId && now - at < TYPING_TTL_MS) return true;
+    }
+    return false;
+  }
   // Per-route rate guards (Task B): keyed per user, no-op in NO_DB/test.
   const friendRequestLimit = ctx.rateLimit({
     max: ctx.cfg.rateLimit.friendRequest,
@@ -514,7 +567,48 @@ export function registerSocialRoutes(app: FastifyInstance, ctx: GatewayContext):
       // Opening a thread marks it read up to now (clears the unread badge).
       await ctx.store.markDmRead(identity.id, threadId, Date.now());
       await recordPresence(identity.id);
-      return reply.send({ threadId, messages });
+      // Fold the OTHER party's ephemeral typing state in for free on each poll
+      // (in-memory; never reveals typing to a non-participant — the caller is a
+      // participant of `threadId` by construction).
+      const otherTyping = otherIsTyping(threadId, identity.id, Date.now());
+      return reply.send({ threadId, messages, otherTyping });
+    },
+  );
+
+  // Stamp the caller as typing in their DM thread with `otherUserId` (ephemeral,
+  // in-memory, account-only). Cheap: resolve/ensure the thread, record `now`.
+  // Throttling is client-side; the server just stamps. Participant-only by
+  // construction (ensureDmThread makes the caller a participant); the UUID +
+  // self guards mirror the other DM routes so a non-participant can never stamp
+  // another pair's thread.
+  app.post<{ Params: { otherUserId: string } }>(
+    '/api/dms/:otherUserId/typing',
+    async (req, reply) => {
+      const account = await requireAccount(readToken(req), reply);
+      if (!account) return reply; // requireAccount already sent the error.
+      const other = req.params.otherUserId;
+      if (!UUID_RE.test(other)) return reply.code(404).send({ error: 'not_found' });
+      if (other === account.id) return reply.code(400).send({ error: 'self' });
+      const threadId = await ctx.store.ensureDmThread(account.id, other);
+      stampTyping(threadId, account.id, Date.now());
+      return reply.send({ ok: true });
+    },
+  );
+
+  // Focused typing poll (account-only): is the OTHER party typing in this DM
+  // thread right now? A tiny, fast endpoint the composer can poll ~2s without
+  // refetching messages. Participant-only by construction; never reveals typing
+  // to a non-participant.
+  app.get<{ Params: { otherUserId: string } }>(
+    '/api/dms/:otherUserId/typing',
+    async (req, reply) => {
+      const account = await requireAccount(readToken(req), reply);
+      if (!account) return reply;
+      const other = req.params.otherUserId;
+      if (!UUID_RE.test(other)) return reply.code(404).send({ error: 'not_found' });
+      if (other === account.id) return reply.code(400).send({ error: 'self' });
+      const threadId = await ctx.store.ensureDmThread(account.id, other);
+      return reply.send({ typing: otherIsTyping(threadId, account.id, Date.now()) });
     },
   );
 

@@ -2325,6 +2325,27 @@ export class PgStore implements Store {
   async healthCheck(): Promise<void> {
     await this.pool.query('SELECT 1');
   }
+
+  /**
+   * Best-effort /healthz observability snapshot: a fast `SELECT 1` for `ok` plus
+   * the pg Pool's connection counts. Failures are swallowed (`ok:false`) so the
+   * health endpoint never throws on a flaky DB. Exposes only counts — no DSN.
+   */
+  async poolStats(): Promise<{ ok: boolean; total: number; idle: number; waiting: number }> {
+    let ok = false;
+    try {
+      await this.pool.query('SELECT 1');
+      ok = true;
+    } catch {
+      ok = false;
+    }
+    return {
+      ok,
+      total: this.pool.totalCount,
+      idle: this.pool.idleCount,
+      waiting: this.pool.waitingCount,
+    };
+  }
 }
 
 // Re-export type to keep the report category narrow in pg-store.

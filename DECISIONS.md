@@ -2656,3 +2656,25 @@ No production code touched (test/config/e2e only).
   Scoped to the guest gameplay loop (account flows need a DB). Verified PASS here.
 
 Gate green: tests server 312 (+46); eslint 0; leak 0/200. E2E passes.
+
+---
+
+## Wave 6c — DM typing indicators + /healthz observability depth
+
+Final deferred-tail. HTTP + client + a /healthz addition; no schema (typing is in-memory);
+engine/§5 leak path untouched.
+
+- **Typing indicators** (ephemeral, in-memory, no DB): a bounded `Map<threadId,
+  Map<userId,lastTypedMs>>` (5s TTL, ~2000-thread LRU eviction). `POST /api/dms/:id/typing`
+  stamps the caller; `GET /api/dms/:id/typing` → `{typing}` (excludes self, participant-only)
+  for a focused 2s poll; `GET /api/dms/:id` also folds `otherTyping` (free on the 5s message
+  poll). Client pings ≤1/2s while drafting, polls /typing every 2s while the conversation is
+  open, self-clears after 5s; reduced-motion → static "typing…". Lost on restart (fine).
+- **/healthz depth**: bare /healthz stays a cheap liveness probe (+ uptimeSec + serverBuild,
+  no DB round-trip). `/healthz?deep=1` adds `db:{ok,total,idle,waiting}` from a new
+  `poolStats()` store method (PgStore: SELECT 1 + pg Pool counters; MemoryStore: null);
+  best-effort (a failure → db.ok:false, never a 500); no secrets exposed.
+
+Gate green: tests 1032 (server 327); eslint 0; leak 0/200. Verified live (typing both
+directions + self-exclude + guest-401; /healthz?deep=1 pool stats). Horizontal scaling
+remains the one knowingly-unaddressed audit item (an architecture decision, not a feature).

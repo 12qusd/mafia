@@ -553,6 +553,8 @@ export const FRIENDS = {
   // Quote/reply (QoL social rendering).
   reply: 'Reply',
   replyTo: 'Quote this message',
+  // Typing indicator (ephemeral). `%s` is the (sanitized) other party's name.
+  typing: '%s is typing…',
   // Blocking (social v1).
   blockedHeading: 'Blocked',
   blockedEmpty: 'You have not blocked anyone.',

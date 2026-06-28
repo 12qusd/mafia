@@ -1426,4 +1426,9 @@ export class MemoryStore implements Store {
 
   /** No-op connectivity probe (Task D): the in-memory store is always reachable. */
   async healthCheck(): Promise<void> {}
+
+  /** No pg Pool in NO_DB mode → no pool stats to report (/healthz observability). */
+  async poolStats(): Promise<null> {
+    return null;
+  }
 }

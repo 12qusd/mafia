@@ -473,6 +473,15 @@ export interface Store {
    */
   healthCheck(): Promise<void>;
 
+  /**
+   * Best-effort observability snapshot for /healthz (readiness/deep probe). The
+   * persistent store runs a fast `SELECT 1` for `ok` and reports its pg Pool
+   * counts; a failed probe yields `ok:false` rather than throwing, so the health
+   * endpoint never 500s on a flaky DB. The non-persistent (NO_DB) store has no
+   * pool and returns null. NEVER exposes connection strings or secrets.
+   */
+  poolStats(): Promise<{ ok: boolean; total: number; idle: number; waiting: number } | null>;
+
   // Users / auth (§7.1) — absent in NO_DB (returns null / throws on register).
   createUser(input: {
     username: string;

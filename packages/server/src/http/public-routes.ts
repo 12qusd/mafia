@@ -17,14 +17,41 @@ import { readToken } from './auth-routes.js';
  */
 const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
+/** Process start (epoch ms), captured at module load, for the /healthz uptime. */
+const PROCESS_STARTED_AT = Date.now();
+
 export function registerPublicRoutes(app: FastifyInstance, ctx: GatewayContext): void {
-  // Health endpoint (§4.2).
-  app.get('/healthz', async () => ({
-    ok: true,
-    game: GAME_NAME,
-    draining: ctx.manager.isDraining,
-    persistent: ctx.store.persistent,
-  }));
+  // Health endpoint (§4.2) + observability depth (deferred-tail wave).
+  //
+  // The bare `/healthz` stays a CHEAP liveness check (no DB round-trip): the
+  // original fields (ok, game, draining, persistent) for backward-compat, plus
+  // process uptime + serverBuild (both free, non-sensitive). The heavier DB
+  // readiness probe is gated behind `?deep=1`: `/healthz?deep=1` adds a `db`
+  // block with the pg Pool stats from store.poolStats(). The DB probe is
+  // best-effort — a failure surfaces as `db.ok:false`, it NEVER throws/500s the
+  // endpoint — and a non-persistent (NO_DB) store reports `db:null`. No secrets
+  // or connection strings are ever exposed.
+  app.get<{ Querystring: { deep?: string } }>('/healthz', async (req) => {
+    const base = {
+      ok: true,
+      game: GAME_NAME,
+      draining: ctx.manager.isDraining,
+      persistent: ctx.store.persistent,
+      uptimeSec: Math.floor((Date.now() - PROCESS_STARTED_AT) / 1000),
+      serverBuild: ctx.cfg.serverBuild,
+    };
+    if (req.query.deep !== '1') return base;
+    // Deep/readiness probe: best-effort DB pool stats. poolStats() already
+    // swallows its own query failure (ok:false); guard anyway so a thrown
+    // rejection can never 500 the health endpoint.
+    let db: { ok: boolean; total: number; idle: number; waiting: number } | null = null;
+    try {
+      db = await ctx.store.poolStats();
+    } catch {
+      db = { ok: false, total: 0, idle: 0, waiting: 0 };
+    }
+    return { ...base, db };
+  });
 
   // --- Retention front-end: public social proof + shareable summaries ------
   // All three are no-auth and leak-safe: the recent list and the summary expose
