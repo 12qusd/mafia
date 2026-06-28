@@ -463,6 +463,20 @@ export interface NotificationRow {
   readAt: number | null;
 }
 
+/**
+ * One row of the server-instance registry (horizontal scaling observability).
+ * Each live Node process owns exactly one row, heartbeating on a ~30s timer.
+ */
+export interface LiveInstance {
+  id: string;
+  host: string;
+  version: string;
+  /** Epoch ms the instance first registered (this boot). */
+  startedAt: number;
+  /** Epoch ms of the most recent heartbeat. */
+  lastHeartbeatAt: number;
+}
+
 export interface Store {
   readonly persistent: boolean;
 
@@ -680,6 +694,13 @@ export interface Store {
   touchPresence(userId: string, at: number): Promise<void>;
   /** Last-seen epoch-ms (or null) for each of the given user ids. */
   getLastSeen(userIds: string[]): Promise<Record<string, number | null>>;
+  /**
+   * Cluster-wide count of accounts seen within the last `windowMs` (presence
+   * pings land in `users.last_seen_at`, which is shared across all instances).
+   * Backs the cluster-coherent `/api/stats/online`. Returns 0 under a
+   * non-persistent store (NO_DB has no account presence).
+   */
+  getOnlineCount(windowMs: number): Promise<number>;
 
   // --- Social: friends ------------------------------------------------------
   /**
@@ -881,6 +902,24 @@ export interface Store {
    * Returns rows deleted. A no-op returning 0 under a non-persistent store.
    */
   pruneOldNotifications(olderThanMs: number): Promise<number>;
+
+  // --- Server-instance registry (horizontal scaling — observability) --------
+  // All best-effort, cluster-coherent, and never in the game hot path or the §5
+  // leak path. The MemoryStore (NO_DB / single-instance) keeps a minimal map so
+  // single-instance still works exactly as today.
+  /**
+   * Register (or re-register) THIS instance at boot: upsert the row, resetting
+   * started_at + last_heartbeat_at to now. Idempotent on the id.
+   */
+  registerInstance(id: string, host: string, version: string): Promise<void>;
+  /** Bump an instance's last_heartbeat_at to now (the ~30s liveness ping). */
+  heartbeatInstance(id: string): Promise<void>;
+  /** Live instances (heartbeat within `staleMs`), newest heartbeat first. */
+  listLiveInstances(staleMs: number): Promise<LiveInstance[]>;
+  /** Remove an instance's row (graceful shutdown). */
+  removeInstance(id: string): Promise<void>;
+  /** Delete instance rows whose last heartbeat is older than `staleMs`. Returns rows removed. */
+  pruneStaleInstances(staleMs: number): Promise<number>;
 
   close(): Promise<void>;
 }

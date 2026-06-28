@@ -7,15 +7,21 @@
  * MemoryStore present as persistent and seed old/recent rows.
  */
 
-import { describe, it, expect } from 'vitest';
+import { describe, it, expect, vi, afterEach } from 'vitest';
 import { MemoryStore } from '../db/memory-store.js';
 import { Maintenance } from '../maintenance.js';
 import type { MaintenanceConfig } from '../config.js';
+
+afterEach(() => {
+  vi.useRealTimers();
+});
 
 const CFG: MaintenanceConfig = {
   chatRetentionDays: 90,
   notificationRetentionDays: 30,
   intervalMs: 24 * 60 * 60 * 1000,
+  instanceHeartbeatMs: 30_000,
+  instanceStaleMs: 90_000,
 };
 
 const DAY = 24 * 60 * 60 * 1000;
@@ -32,8 +38,52 @@ describe('Maintenance.sweep', () => {
     const m = new Maintenance(store, CFG);
     m.start(); // no-op
     const res = await m.sweep();
-    expect(res).toEqual({ chat: 0, notifications: 0 });
+    expect(res).toEqual({ chat: 0, notifications: 0, instances: 0 });
     m.stop();
+  });
+
+  it('prunes stale server-instance rows in the sweep (idempotent / best-effort)', async () => {
+    const store = new MemoryStore();
+    makePersistent(store);
+    vi.useFakeTimers();
+    const base = Date.now();
+
+    // An old instance registered now, then time advances past the stale window.
+    await store.registerInstance('inst-dead', 'h', 'v');
+    const m = new Maintenance(store, CFG, { id: 'inst-live', host: 'h', version: 'v' });
+
+    // Advance past the stale window, then register a fresh (live) instance.
+    vi.setSystemTime(base + CFG.instanceStaleMs + 10_000);
+    await store.registerInstance('inst-live', 'h', 'v');
+
+    // The sweep prunes the dead row only; chat/notifications are zero here.
+    const res = await m.sweep();
+    expect(res.instances).toBe(1);
+    expect(res.chat).toBe(0);
+    expect((await store.listLiveInstances(CFG.instanceStaleMs)).map((i) => i.id)).toEqual([
+      'inst-live',
+    ]);
+  });
+
+  it('register/heartbeat/deregister an instance are best-effort + persistent-gated', async () => {
+    const store = new MemoryStore();
+    makePersistent(store);
+    const m = new Maintenance(store, CFG, { id: 'inst-a', host: 'host-1', version: 'b1' });
+    await m.registerInstance();
+    expect((await store.listLiveInstances(CFG.instanceStaleMs)).map((i) => i.id)).toEqual([
+      'inst-a',
+    ]);
+    await m.deregisterInstance();
+    expect(await store.listLiveInstances(CFG.instanceStaleMs)).toHaveLength(0);
+  });
+
+  it('register/deregister are inert under a non-persistent store (no throw, no rows)', async () => {
+    const store = new MemoryStore(); // persistent === false
+    const m = new Maintenance(store, CFG, { id: 'inst-a', host: 'h', version: 'v' });
+    await m.registerInstance();
+    await m.deregisterInstance();
+    // Nothing registered (persistent gate); methods resolve without throwing.
+    expect(await store.listLiveInstances(CFG.instanceStaleMs)).toHaveLength(0);
   });
 
   it('prunes only old READ notifications when persistent', async () => {

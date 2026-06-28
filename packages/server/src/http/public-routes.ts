@@ -20,6 +20,15 @@ const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/
 /** Process start (epoch ms), captured at module load, for the /healthz uptime. */
 const PROCESS_STARTED_AT = Date.now();
 
+/**
+ * "Online" presence window (ms) for the cluster-wide online count: an account
+ * seen within this window counts as online. Matches the Social "who's around"
+ * window so both surfaces agree.
+ */
+const ONLINE_WINDOW_MS = 120_000;
+/** Liveness window (ms) for counting instances in the deep health probe. */
+const INSTANCE_STALE_WINDOW_MS = 90_000;
+
 export function registerPublicRoutes(app: FastifyInstance, ctx: GatewayContext): void {
   // Health endpoint (§4.2) + observability depth (deferred-tail wave).
   //
@@ -50,7 +59,17 @@ export function registerPublicRoutes(app: FastifyInstance, ctx: GatewayContext):
     } catch {
       db = { ok: false, total: 0, idle: 0, waiting: 0 };
     }
-    return { ...base, db };
+    // Horizontal-scaling observability (non-sensitive): this process's instance
+    // id + the live-instance count from the shared registry. Best-effort — a
+    // registry blip must never 500 /healthz; under NO_DB the registry is empty
+    // so the count is just this single instance (0 if it never registered).
+    let instances = 0;
+    try {
+      instances = (await ctx.store.listLiveInstances(INSTANCE_STALE_WINDOW_MS)).length;
+    } catch {
+      instances = 0;
+    }
+    return { ...base, db, instanceId: ctx.cfg.serverInstanceId, instances };
   });
 
   // --- Retention front-end: public social proof + shareable summaries ------
@@ -58,8 +77,29 @@ export function registerPublicRoutes(app: FastifyInstance, ctx: GatewayContext):
   // ONLY finished matches (the store filters ended_at NOT NULL), and online is a
   // bare connection count. They degrade to empty/zero under NO_DB.
 
-  // Live "souls around" count for the home-page social-proof strip. Cheap.
-  app.get('/api/stats/online', async () => ({ online: ctx.onlineCount?.() ?? 0 }));
+  // Live "souls around" count for the home-page social-proof strip.
+  //
+  // Cluster-coherent: when the store is persistent the count is the CLUSTER-WIDE
+  // number of accounts seen within the online window (presence pings all land in
+  // the shared users.last_seen_at), plus the live-instance count — so the figure
+  // is correct no matter which instance answers. Under a non-persistent store
+  // (NO_DB / single-instance dev) we fall back to this process's live socket
+  // count. Response stays back-compat: it always carries `online`. The local
+  // per-process connection count remains available via ctx.onlineCount for
+  // /healthz drain / internal use.
+  app.get('/api/stats/online', async () => {
+    if (ctx.store.persistent) {
+      const [online, instances] = await Promise.all([
+        ctx.store.getOnlineCount(ONLINE_WINDOW_MS).catch(() => 0),
+        ctx.store
+          .listLiveInstances(INSTANCE_STALE_WINDOW_MS)
+          .then((l) => l.length)
+          .catch(() => 0),
+      ]);
+      return { online, instances };
+    }
+    return { online: ctx.onlineCount?.() ?? 0 };
+  });
 
   // "Fresh off the table" — recent FINISHED matches (newest first). Default 8,
   // capped at 30. Empty list under NO_DB (no persisted matches) or on no data.

@@ -87,9 +87,15 @@ export async function buildApp(cfg: ServerConfig): Promise<BuiltApp> {
   const identity = new IdentityService(store, cfg);
   const moderation = new Moderation(store);
   const telemetry = new Telemetry(store);
-  // In-server daily maintenance: chat retention + read-notification pruning.
-  // Best-effort + persistent-only (inert under NO_DB). Started after listen().
-  const maintenance = new Maintenance(store, cfg.maintenance);
+  // In-server maintenance: chat retention + read-notification pruning + the
+  // server-instance heartbeat/prune (horizontal-scaling observability). Best-
+  // effort + persistent-only (inert under NO_DB). Started after listen(); the
+  // instance row is registered post-listen and removed on graceful shutdown.
+  const maintenance = new Maintenance(store, cfg.maintenance, {
+    id: cfg.serverInstanceId,
+    host: cfg.serverHostLabel,
+    version: cfg.serverBuild,
+  });
 
   // Name resolution: room/lobby keep names; this is a best-effort lookup used
   // by lobby DTOs. Names are captured at join/start; for ids we don't know we
@@ -259,11 +265,21 @@ export async function buildApp(cfg: ServerConfig): Promise<BuiltApp> {
     const addr = app.server.address();
     const port = typeof addr === 'object' && addr ? addr.port : cfg.port;
     boundWsUrl = `ws://127.0.0.1:${port}/ws`;
-    // Daily retention maintenance (chat + read-notifications). Started here so a
-    // boot sweep runs only on a real listen() (not in test app builds). No-op +
-    // best-effort under a non-persistent store; timer is unref'd.
+    // Daily retention maintenance (chat + read-notifications) + the instance
+    // heartbeat. Started here so a boot sweep runs only on a real listen() (not
+    // in test app builds). No-op + best-effort under a non-persistent store;
+    // timers are unref'd.
     maintenance.start();
-    log.info('server listening', { port: cfg.port, host: cfg.host, noDb: cfg.noDb });
+    // Register THIS instance in the shared server_instances registry (best-
+    // effort, persistent-only). Awaited but it never throws, so a registry blip
+    // cannot fail a real listen().
+    await maintenance.registerInstance();
+    log.info('server listening', {
+      port: cfg.port,
+      host: cfg.host,
+      noDb: cfg.noDb,
+      instanceId: cfg.serverInstanceId,
+    });
   };
 
   const shutdown = async (graceful: boolean): Promise<void> => {
@@ -291,6 +307,10 @@ export async function buildApp(cfg: ServerConfig): Promise<BuiltApp> {
     }
     gateway.closeAll();
     manager.disposeAll();
+    // Remove this instance from the shared registry before closing the store
+    // (best-effort; the stale-prune is the safety net if this misses). Must run
+    // while the store/pool is still open.
+    await maintenance.deregisterInstance();
     await app.close();
     await store.close();
   };

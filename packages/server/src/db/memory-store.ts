@@ -46,6 +46,7 @@ import type {
   UserSearchHit,
   DmThreadSummary,
   NotificationRow,
+  LiveInstance,
 } from './types.js';
 
 /**
@@ -151,6 +152,13 @@ export class MemoryStore implements Store {
   // --- Social (process-lifetime only) --------------------------------------
   private readonly profiles = new Map<string, ProfileRow>();
   private readonly lastSeen = new Map<string, number>();
+  /**
+   * Server-instance registry (horizontal scaling — observability). A minimal
+   * in-memory map so the single-instance / NO_DB path still works exactly as
+   * today; the round-trip (register → heartbeat → list → prune) is exercised in
+   * tests against this map.
+   */
+  private readonly instances = new Map<string, LiveInstance>();
   private readonly friendships: MemFriendship[] = [];
   /** Notifications center (QoL wave; process-lifetime only). */
   private readonly notifications: MemNotification[] = [];
@@ -761,6 +769,18 @@ export class MemoryStore implements Store {
     const out: Record<string, number | null> = {};
     for (const id of userIds) out[id] = this.lastSeen.get(id) ?? null;
     return out;
+  }
+
+  /**
+   * Online count from in-memory presence (NO_DB has no accounts, so this is 0
+   * in normal operation). Derived honestly from the lastSeen map for parity
+   * with the PgStore window query.
+   */
+  async getOnlineCount(windowMs: number): Promise<number> {
+    const cutoff = Date.now() - Math.max(0, windowMs);
+    let n = 0;
+    for (const at of this.lastSeen.values()) if (at > cutoff) n += 1;
+    return n;
   }
 
   // --- Social: friends ------------------------------------------------------
@@ -1416,6 +1436,42 @@ export class MemoryStore implements Store {
       const n = this.notifications[i]!;
       if (n.readAt !== null && n.createdAt < cutoff) {
         this.notifications.splice(i, 1);
+        removed += 1;
+      }
+    }
+    return removed;
+  }
+
+  // --- Server-instance registry (horizontal scaling — observability) --------
+
+  async registerInstance(id: string, host: string, version: string): Promise<void> {
+    const now = Date.now();
+    this.instances.set(id, { id, host, version, startedAt: now, lastHeartbeatAt: now });
+  }
+
+  async heartbeatInstance(id: string): Promise<void> {
+    const cur = this.instances.get(id);
+    if (cur) cur.lastHeartbeatAt = Date.now();
+  }
+
+  async listLiveInstances(staleMs: number): Promise<LiveInstance[]> {
+    const cutoff = Date.now() - Math.max(0, staleMs);
+    return [...this.instances.values()]
+      .filter((i) => i.lastHeartbeatAt > cutoff)
+      .sort((a, b) => b.lastHeartbeatAt - a.lastHeartbeatAt)
+      .map((i) => ({ ...i }));
+  }
+
+  async removeInstance(id: string): Promise<void> {
+    this.instances.delete(id);
+  }
+
+  async pruneStaleInstances(staleMs: number): Promise<number> {
+    const cutoff = Date.now() - Math.max(0, staleMs);
+    let removed = 0;
+    for (const [id, i] of this.instances) {
+      if (i.lastHeartbeatAt < cutoff) {
+        this.instances.delete(id);
         removed += 1;
       }
     }

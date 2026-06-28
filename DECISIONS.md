@@ -2678,3 +2678,35 @@ engine/§5 leak path untouched.
 Gate green: tests 1032 (server 327); eslint 0; leak 0/200. Verified live (typing both
 directions + self-exclude + guest-401; /healthz?deep=1 pool stats). Horizontal scaling
 remains the one knowingly-unaddressed audit item (an architecture decision, not a feature).
+
+---
+
+## Wave 7a — multi-instance readiness (horizontal scaling, done right)
+
+The buildout already kept ALL durable + coordination state in Postgres, so the only
+in-memory state is per-game-room — which is the CORRECT shard boundary for a deterministic,
+§5-leak-safe engine (a room must live on one process; spreading it would need Redis-backed
+room state / WS proxying — extra latency + a determinism/leak-audit risk, unwarranted here).
+So horizontal scaling = make the SHARED surfaces cluster-coherent + add instance observability
++ document the deployment model. Engine/transport/WS-protocol/§5 untouched.
+
+- **Instance registry**: server_instances table (id/host/version/started_at/last_heartbeat_at,
+  idempotent). SERVER_INSTANCE_ID (`inst-<id>`) + SERVER_HOST_LABEL config. register on boot,
+  ~30s heartbeat (Maintenance timer, .unref()), removeInstance on shutdown,
+  pruneStaleInstances in the daily sweep (idempotent → safe on every instance, no leader election).
+- **Cluster-coherent presence**: getOnlineCount(windowMs) (DB last_seen, parameterized window);
+  /api/stats/online returns `{online: <cluster DB count>, instances: <live count>}` when
+  persistent (back-compat `online` always present), local socket count under NO_DB.
+  /healthz?deep=1 adds instanceId + live instance count.
+- **DEPLOYMENT.md**: the horizontal model — shared Postgres + per-instance game rooms (the room
+  is the shard unit, preserving determinism + ScopedTransport §5); sticky-session routing on the
+  nocturne_session cookie (Caddy `lb_policy cookie` + nginx `sticky cookie`/`ip_hash` samples,
+  behind cloudflared); a 2-instance pm2 sample; an honest cluster-coherent-vs-per-instance table
+  (public-lobby browse + invite joins are per-instance; Quick Play + bot-backfill always form a
+  game; cross-instance lobby discovery flagged as a future enhancement); migrate-once + sweep-safe
+  ops notes + scale guidance.
+- **SIGHUP**: hot-reloads the live-consumed knobs (rate limits, retention/stale windows) in place —
+  no restart/drain/disruption; restart-only settings detected + logged.
+
+Gate green: tests 1056 (server 351); eslint 0; leak 0/200. DB migrated; verified live (self-register
++ fresh heartbeat, online/instances coherent, /healthz?deep instanceId, SIGHUP reload no disruption).

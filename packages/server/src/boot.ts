@@ -5,7 +5,7 @@
  * let running games finish (max DRAIN_MAX_MS / 60 min), then exit.
  */
 
-import { loadConfig } from './config.js';
+import { loadConfig, hotReloadConfig } from './config.js';
 import { buildApp } from './app.js';
 import { log } from './log.js';
 import { initErrorSink, reportError, flushErrorSink } from './observability/error-sink.js';
@@ -43,6 +43,35 @@ export async function main(): Promise<void> {
 
   process.on('SIGTERM', () => onSignal('SIGTERM'));
   process.on('SIGINT', () => onSignal('SIGINT'));
+
+  // SIGHUP — minimal, safe hot-reload (horizontal-scaling ops). Re-reads only
+  // the cheap knobs that are consumed live (per-route rate limits + retention /
+  // instance-stale windows) and MUTATES the running cfg in place; connections +
+  // in-flight games are entirely undisturbed (NO listener/store/gateway rebuild,
+  // NO restart, NO drain — distinct from the SIGTERM/SIGINT path above). Settings
+  // that cannot be hot-swapped (PORT/HOST/DATABASE_URL/SESSION_SECRET/the timer
+  // intervals) are logged as needing a restart. Best-effort: never throws.
+  process.on('SIGHUP', () => {
+    try {
+      const result = hotReloadConfig(cfg);
+      log.info('config reload (SIGHUP)', {
+        rateLimit: result.applied.rateLimit,
+        chatRetentionDays: result.applied.chatRetentionDays,
+        notificationRetentionDays: result.applied.notificationRetentionDays,
+        instanceStaleMs: result.applied.instanceStaleMs,
+        ...(result.restartRequired.length > 0
+          ? { restartRequiredFor: result.restartRequired }
+          : {}),
+      });
+      if (result.restartRequired.length > 0) {
+        log.warn('config reload: some settings need a full restart to apply', {
+          settings: result.restartRequired,
+        });
+      }
+    } catch (err) {
+      log.warn('config reload (SIGHUP) failed', { err: String(err) });
+    }
+  });
 
   // Crash-safety (Task D). A rejected promise nobody awaited is logged
   // structured but does NOT kill the process (it may be a benign background

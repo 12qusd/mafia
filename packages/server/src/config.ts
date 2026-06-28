@@ -7,6 +7,8 @@
  * Postgres (§10).
  */
 
+import { newId } from './ids.js';
+
 export interface ServerConfig {
   /** HTTP + WS port. Default 8080 (production behind Cloudflare tunnel). */
   port: number;
@@ -20,6 +22,18 @@ export interface ServerConfig {
   sessionSecret: string;
   /** Server build identifier persisted with matches (§10). */
   serverBuild: string;
+  /**
+   * Stable id for THIS process in the server-instance registry (horizontal
+   * scaling observability). From `SERVER_INSTANCE_ID`; defaults to a freshly
+   * generated `inst-<uuid>` computed once at config load so every running
+   * instance is distinguishable in the registry / `/healthz` deep probe.
+   */
+  serverInstanceId: string;
+  /**
+   * Human label for the host this instance runs on (registry `host` column).
+   * From `SERVER_HOST_LABEL`, else the OS `HOSTNAME`, else 'local'.
+   */
+  serverHostLabel: string;
   /** Max ms a draining server lets running games finish (§4.4, §13.4). */
   drainMaxMs: number;
   /** Directory of the built client to serve statically (§4.2). */
@@ -76,6 +90,17 @@ export interface MaintenanceConfig {
   notificationRetentionDays: number;
   /** Tick interval in ms (default 24h). */
   intervalMs: number;
+  /**
+   * Server-instance heartbeat period in ms (default 30s). Each instance bumps
+   * its registry row on this cadence; far shorter than the retention tick.
+   */
+  instanceHeartbeatMs: number;
+  /**
+   * Liveness window in ms (default 90s — a few missed heartbeats). Instances
+   * whose last heartbeat is older are considered dead: excluded from the live
+   * list and pruned by the maintenance sweep.
+   */
+  instanceStaleMs: number;
 }
 
 /** SMTP knobs (all from env). `smtpHost` unset ⇒ LogTransport (dev/unconfigured). */
@@ -126,6 +151,10 @@ export function loadConfig(env: NodeJS.ProcessEnv = process.env): ServerConfig {
     databaseUrl: env.DATABASE_URL,
     sessionSecret: env.SESSION_SECRET ?? 'dev-insecure-session-secret-change-me',
     serverBuild: env.SERVER_BUILD ?? 'dev',
+    // Generated once per process when SERVER_INSTANCE_ID is unset, so every
+    // instance in a cluster is distinguishable in the registry.
+    serverInstanceId: env.SERVER_INSTANCE_ID ?? `inst-${newId()}`,
+    serverHostLabel: env.SERVER_HOST_LABEL ?? env.HOSTNAME ?? 'local',
     drainMaxMs: envInt('DRAIN_MAX_MS', 60 * 60 * 1000),
     clientDistDir: env.CLIENT_DIST_DIR ?? '../client/dist',
     adminToken: env.ADMIN_TOKEN,
@@ -159,6 +188,83 @@ export function loadConfig(env: NodeJS.ProcessEnv = process.env): ServerConfig {
       chatRetentionDays: envInt('CHAT_RETENTION_DAYS', 90),
       notificationRetentionDays: envInt('NOTIFICATION_RETENTION_DAYS', 30),
       intervalMs: envInt('MAINTENANCE_INTERVAL_MS', 24 * 60 * 60 * 1000),
+      instanceHeartbeatMs: envInt('INSTANCE_HEARTBEAT_MS', 30_000),
+      instanceStaleMs: envInt('INSTANCE_STALE_MS', 90_000),
     },
+  };
+}
+
+/**
+ * Result of a SIGHUP hot-reload (see {@link hotReloadConfig}). `applied` is the
+ * effective hot values AFTER mutation; `restartRequired` lists settings that
+ * changed in the environment but cannot be hot-swapped (they take effect only
+ * on a full restart — e.g. PORT, HOST, DATABASE_URL, the session secret).
+ */
+export interface HotReloadResult {
+  applied: {
+    rateLimit: RateLimitConfig;
+    chatRetentionDays: number;
+    notificationRetentionDays: number;
+    instanceStaleMs: number;
+  };
+  restartRequired: string[];
+}
+
+/**
+ * SIGHUP hot-reload: re-read the CHEAP, SAFE config knobs from `env` and apply
+ * them by MUTATING the live `cfg` in place. Only values consumed live on each
+ * request/tick are hot-swapped:
+ *  - the per-route rate limits (read per-request from `cfg.rateLimit`)
+ *  - the retention windows + instance stale window (read each maintenance sweep)
+ * Structural settings (port/host, the database URL, the session secret, the
+ * client dist dir, the instance id) are NOT touched here — changing them needs
+ * a restart; if the environment now differs for one of them it is reported in
+ * `restartRequired` so the operator knows a restart is needed to apply it.
+ *
+ * Pure aside from the in-place mutation; never throws. Connections + in-flight
+ * games are entirely undisturbed (no listener, store, or gateway is rebuilt).
+ */
+export function hotReloadConfig(
+  cfg: ServerConfig,
+  env: NodeJS.ProcessEnv = process.env,
+): HotReloadResult {
+  const fresh = loadConfig(env);
+
+  // Hot-swap the live rate limits (consumed per-request from cfg.rateLimit).
+  cfg.rateLimit.windowMs = fresh.rateLimit.windowMs;
+  cfg.rateLimit.register = fresh.rateLimit.register;
+  cfg.rateLimit.login = fresh.rateLimit.login;
+  cfg.rateLimit.guest = fresh.rateLimit.guest;
+  cfg.rateLimit.friendRequest = fresh.rateLimit.friendRequest;
+  cfg.rateLimit.profileEdit = fresh.rateLimit.profileEdit;
+  cfg.rateLimit.setupCreate = fresh.rateLimit.setupCreate;
+
+  // Hot-swap the retention windows + instance stale window (read each sweep).
+  // The retention TICK interval + heartbeat interval are bound into running
+  // timers, so changing them needs a restart — flagged below if they differ.
+  cfg.maintenance.chatRetentionDays = fresh.maintenance.chatRetentionDays;
+  cfg.maintenance.notificationRetentionDays = fresh.maintenance.notificationRetentionDays;
+  cfg.maintenance.instanceStaleMs = fresh.maintenance.instanceStaleMs;
+
+  // Detect environment changes that can NOT be hot-applied (restart-only).
+  const restartRequired: string[] = [];
+  if (fresh.port !== cfg.port) restartRequired.push('PORT');
+  if (fresh.host !== cfg.host) restartRequired.push('HOST');
+  if (fresh.databaseUrl !== cfg.databaseUrl) restartRequired.push('DATABASE_URL');
+  if (fresh.sessionSecret !== cfg.sessionSecret) restartRequired.push('SESSION_SECRET');
+  if (fresh.clientDistDir !== cfg.clientDistDir) restartRequired.push('CLIENT_DIST_DIR');
+  if (fresh.maintenance.intervalMs !== cfg.maintenance.intervalMs)
+    restartRequired.push('MAINTENANCE_INTERVAL_MS');
+  if (fresh.maintenance.instanceHeartbeatMs !== cfg.maintenance.instanceHeartbeatMs)
+    restartRequired.push('INSTANCE_HEARTBEAT_MS');
+
+  return {
+    applied: {
+      rateLimit: { ...cfg.rateLimit },
+      chatRetentionDays: cfg.maintenance.chatRetentionDays,
+      notificationRetentionDays: cfg.maintenance.notificationRetentionDays,
+      instanceStaleMs: cfg.maintenance.instanceStaleMs,
+    },
+    restartRequired,
   };
 }

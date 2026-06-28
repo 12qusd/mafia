@@ -44,6 +44,7 @@ import type {
   UserSearchHit,
   DmThreadSummary,
   NotificationRow,
+  LiveInstance,
 } from './types.js';
 
 interface PgUser {
@@ -1262,6 +1263,21 @@ export class PgStore implements Store {
     return out;
   }
 
+  /**
+   * Cluster-wide count of accounts seen within the last `windowMs`. Because
+   * presence pings all land in the shared `users.last_seen_at`, this count is
+   * correct across every instance — backing a cluster-coherent online count.
+   * The window is passed as a parameter (ms → interval) — no string interpolation.
+   */
+  async getOnlineCount(windowMs: number): Promise<number> {
+    const { rows } = await this.pool.query<{ n: string }>(
+      `SELECT count(*)::text AS n FROM users
+       WHERE last_seen_at > now() - ($1::bigint * interval '1 millisecond')`,
+      [Math.max(0, Math.floor(windowMs))],
+    );
+    return Number(rows[0]?.n ?? 0) || 0;
+  }
+
   // --- Social: friends ------------------------------------------------------
 
   async requestFriend(
@@ -2313,6 +2329,63 @@ export class PgStore implements Store {
     const res = await this.pool.query(
       `DELETE FROM notifications WHERE read_at IS NOT NULL AND created_at < to_timestamp($1)`,
       [cutoffSec],
+    );
+    return res.rowCount ?? 0;
+  }
+
+  // --- Server-instance registry (horizontal scaling — observability) --------
+
+  async registerInstance(id: string, host: string, version: string): Promise<void> {
+    await this.pool.query(
+      `INSERT INTO server_instances (id, host, version, started_at, last_heartbeat_at)
+       VALUES ($1, $2, $3, now(), now())
+       ON CONFLICT (id) DO UPDATE
+         SET host = EXCLUDED.host,
+             version = EXCLUDED.version,
+             started_at = now(),
+             last_heartbeat_at = now()`,
+      [id, host, version],
+    );
+  }
+
+  async heartbeatInstance(id: string): Promise<void> {
+    await this.pool.query(`UPDATE server_instances SET last_heartbeat_at = now() WHERE id = $1`, [
+      id,
+    ]);
+  }
+
+  async listLiveInstances(staleMs: number): Promise<LiveInstance[]> {
+    const { rows } = await this.pool.query<{
+      id: string;
+      host: string;
+      version: string;
+      started_at: Date;
+      last_heartbeat_at: Date;
+    }>(
+      `SELECT id, host, version, started_at, last_heartbeat_at
+       FROM server_instances
+       WHERE last_heartbeat_at > now() - ($1::bigint * interval '1 millisecond')
+       ORDER BY last_heartbeat_at DESC`,
+      [Math.max(0, Math.floor(staleMs))],
+    );
+    return rows.map((r) => ({
+      id: r.id,
+      host: r.host,
+      version: r.version,
+      startedAt: r.started_at.getTime(),
+      lastHeartbeatAt: r.last_heartbeat_at.getTime(),
+    }));
+  }
+
+  async removeInstance(id: string): Promise<void> {
+    await this.pool.query(`DELETE FROM server_instances WHERE id = $1`, [id]);
+  }
+
+  async pruneStaleInstances(staleMs: number): Promise<number> {
+    const res = await this.pool.query(
+      `DELETE FROM server_instances
+       WHERE last_heartbeat_at < now() - ($1::bigint * interval '1 millisecond')`,
+      [Math.max(0, Math.floor(staleMs))],
     );
     return res.rowCount ?? 0;
   }

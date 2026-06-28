@@ -97,4 +97,34 @@ describe('GET /healthz?deep=1 — readiness block', () => {
     expect(body.db).toEqual({ ok: false, total: 0, idle: 0, waiting: 0 });
     await app.close();
   });
+
+  it('includes this instanceId + the live-instance count (horizontal scaling)', async () => {
+    const { app, ctx } = await buildApp();
+    // Stub two live instances so the count reflects the shared registry.
+    ctx.store.listLiveInstances = async () => [
+      { id: 'inst-1', host: 'h', version: 'dev', startedAt: 1, lastHeartbeatAt: 2 },
+      { id: 'inst-2', host: 'h', version: 'dev', startedAt: 1, lastHeartbeatAt: 2 },
+    ];
+    const res = await app.inject({ method: 'GET', url: '/healthz?deep=1' });
+    expect(res.statusCode).toBe(200);
+    const body = res.json() as { instanceId: string; instances: number };
+    // The test config generates an inst-<uuid> id.
+    expect(typeof body.instanceId).toBe('string');
+    expect(body.instanceId).toBe(ctx.cfg.serverInstanceId);
+    expect(body.instances).toBe(2);
+    await app.close();
+  });
+
+  it('a thrown listLiveInstances is caught → instances:0, never 500s', async () => {
+    const { app, ctx } = await buildApp();
+    ctx.store.listLiveInstances = async () => {
+      throw new Error('registry exploded');
+    };
+    const res = await app.inject({ method: 'GET', url: '/healthz?deep=1' });
+    expect(res.statusCode).toBe(200);
+    const body = res.json() as { ok: boolean; instances: number };
+    expect(body.ok).toBe(true);
+    expect(body.instances).toBe(0);
+    await app.close();
+  });
 });

@@ -540,3 +540,23 @@ CREATE TABLE IF NOT EXISTS notifications (
 CREATE INDEX IF NOT EXISTS notifications_user_idx ON notifications (user_id, created_at DESC);
 -- Fast unread count (partial index over only the unread rows).
 CREATE INDEX IF NOT EXISTS notifications_unread_idx ON notifications (user_id) WHERE read_at IS NULL;
+
+-- --------------------------------------------------------------------------
+-- Server instance registry (horizontal scaling — observability only).
+-- Each Node process upserts a row at boot and bumps last_heartbeat_at on a
+-- ~30s timer; a graceful shutdown removes its row, and the maintenance sweep
+-- prunes any row that has stopped heartbeating (a crashed/killed instance).
+-- This is purely a cluster-coherent OBSERVABILITY surface (who is live, how
+-- many) — game rooms still live entirely on their owning process. Never touched
+-- in the game hot path or the §5 leak path; holds no secrets.
+-- --------------------------------------------------------------------------
+CREATE TABLE IF NOT EXISTS server_instances (
+  id                text PRIMARY KEY,
+  host              text NOT NULL,
+  version           text NOT NULL,
+  started_at        timestamptz NOT NULL DEFAULT now(),
+  last_heartbeat_at timestamptz NOT NULL DEFAULT now()
+);
+-- "Live instances" lookup (heartbeat within window, newest first).
+CREATE INDEX IF NOT EXISTS server_instances_heartbeat_idx
+  ON server_instances (last_heartbeat_at DESC);
