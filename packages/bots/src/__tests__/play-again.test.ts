@@ -72,11 +72,11 @@ describe('play again / rematch over the real socket (§7.7)', () => {
 
     // Host starts; drive to completion via repeated end_phase (no timer waits).
     host.send({ v: 1, type: 'start_game' } as never);
-    await until(() => host.capture.some((m) => m.type === 'debug_state'), 8000);
+    await until(() => host.capture.some((m) => m.type === 'debug_state'), 15000);
     const driveDone = await until(() => {
       if (!host.view.over) host.send({ v: 1, type: 'test_control', action: 'end_phase' } as never);
       return host.view.over;
-    }, 30000);
+    }, 40000);
     expect(driveDone).toBe(true);
     expect(host.view.over && guest.view.over).toBe(true);
 
@@ -107,5 +107,8 @@ describe('play again / rematch over the real socket (§7.7)', () => {
 
     host.close();
     guest.close();
-  }, 60000);
+    // A real-socket full game + rematch legitimately needs >10s under load; the
+    // file-level vitest config also pins this test to a single, contention-free
+    // fork. Keep a generous explicit ceiling so a slow CI box never trips it.
+  }, 90_000);
 });

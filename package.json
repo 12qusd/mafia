@@ -21,7 +21,8 @@
     "sim": "pnpm --filter @nocturne/bots run sim",
     "dev:solo": "pnpm --filter @nocturne/bots run dev:solo",
     "leakcheck": "pnpm --filter @nocturne/bots run leakcheck",
-    "smoke:test-mode": "node scripts/smoke-test-mode.mjs"
+    "smoke:test-mode": "node scripts/smoke-test-mode.mjs",
+    "e2e": "pnpm --filter @nocturne/e2e run e2e"
   },
   "devDependencies": {
     "@eslint/js": "^9.17.0",

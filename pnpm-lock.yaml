@@ -122,6 +122,15 @@ importers:
         specifier: ^2.1.8
         version: 2.1.9(@types/node@20.19.43)(jsdom@25.0.1)
 
+  packages/e2e:
+    devDependencies:
+      '@nocturne/server':
+        specifier: workspace:*
+        version: link:../server
+      playwright-core:
+        specifier: ^1.58.0
+        version: 1.61.1
+
   packages/engine:
     dependencies:
       '@nocturne/shared':
@@ -1932,6 +1941,11 @@ packages:
 
   pino@10.3.1:
     resolution: {integrity: sha512-r34yH/GlQpKZbU1BvFFqOjhISRo1MNx1tWYsYvmj6KIRHSPMT2+yHOEb1SG6NMvRoHRF0a07kCOox/9yakl1vg==}
+    hasBin: true
+
+  playwright-core@1.61.1:
+    resolution: {integrity: sha512-h7Qlt6m4REp25qvIdvbDtVmD4LqVXfpRxhORv9L0jzETM05p4fuPJ3dKyuSXQxDSbXnmS79HAgi9589lGSpLkg==}
+    engines: {node: '>=18'}
     hasBin: true
 
   postcss@8.5.15:
@@ -4237,6 +4251,8 @@ snapshots:
       safe-stable-stringify: 2.5.0
       sonic-boom: 4.2.1
       thread-stream: 4.2.0
+
+  playwright-core@1.61.1: {}
 
   postcss@8.5.15:
     dependencies:

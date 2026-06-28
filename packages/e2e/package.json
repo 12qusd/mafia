@@ -1,0 +1,14 @@
+{
+  "name": "@nocturne/e2e",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "description": "Standalone Playwright browser smoke for the guest core loop. NOT part of `pnpm -r test`.",
+  "scripts": {
+    "e2e": "node src/smoke.mjs"
+  },
+  "devDependencies": {
+    "@nocturne/server": "workspace:*",
+    "playwright-core": "^1.58.0"
+  }
+}

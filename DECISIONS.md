@@ -2633,3 +2633,26 @@ Deferred-tail. HTTP + own tables + a maintenance timer + client; engine/§5 leak
 
 Gate green: tests 935→ (server 266); eslint 0; leak 0/200 (the real-socket play-again
 bots test is a known ~10s timing flake — green on isolated re-run, unrelated). DB migrated.
+
+---
+
+## Wave 6b — test hardening (flake fix + admin/moderation + WS error-paths + browser E2E)
+
+No production code touched (test/config/e2e only).
+
+- **Flaky test fixed**: the real-socket bots tests (socket/play-again/reconnect) contended
+  for CPU/timers under parallel forks → intermittent timeout. New packages/bots/vitest.config.ts
+  pins those three to a single serial forks pool (light tests stay parallel) + raises
+  testTimeout to 45s. Proven stable across 5 isolated re-runs (39/39 each).
+- **Admin/moderation tests** (+31): admin-routes authz gate (anon/guest/non-admin/wrong-token)
+  + happy paths (x-admin-token AND isAdmin branches) + validation + season rollover; in-game
+  admin_action/report_player authz + audit-logging + sanction → getActiveSanctions; Moderation
+  ladder. **WS error-path tests** (+15): graceful error frames (never a crash) for pre-hello,
+  unknown type, malformed/oversized frame, in-game cmd with no game, host-only cmd from non-host,
+  invalid/dead seat, and a sabotaged-handler proof the gateway never throws. Server 266→312.
+- **Browser E2E smoke** (packages/e2e/, standalone `pnpm e2e`, NOT in the gate): playwright-core
+  drives the guest core loop against a real NO_DB server (home → Quick Play → bot-backfilled live
+  game → role card + seats render → zero console errors). SKIP-with-exit-0 guard when no chromium.
+  Scoped to the guest gameplay loop (account flows need a DB). Verified PASS here.
+
+Gate green: tests server 312 (+46); eslint 0; leak 0/200. E2E passes.

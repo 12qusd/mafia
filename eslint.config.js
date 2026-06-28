@@ -26,9 +26,9 @@ export default tseslint.config(
       ],
     },
   },
-  // Pre-existing Node tooling scripts (plain .mjs, not part of a TS package).
+  // Node tooling scripts + the standalone E2E runner (plain .mjs, not TS packages).
   {
-    files: ['scripts/**/*.{js,mjs,cjs}'],
+    files: ['scripts/**/*.{js,mjs,cjs}', 'packages/e2e/**/*.{js,mjs,cjs}'],
     languageOptions: {
       globals: { ...globals.node },
     },
