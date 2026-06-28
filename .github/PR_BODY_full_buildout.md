@@ -1,8 +1,8 @@
 ## Project NOCTURNE — full game + production-readiness buildout
 
-This branch takes NOCTURNE from spec to a launch-ready 1920s-noir Mafia / social-deduction game: the complete deterministic game engine, a full web client, and an 8-wave production-readiness program (security, retention, accessibility, ranked depth, social, and niceties). **42 commits · 265 files · ~46.5k insertions.**
+This branch takes NOCTURNE from spec to a launch-ready 1920s-noir Mafia / social-deduction game: the complete deterministic game engine, a full web client, and a production-readiness program (security, retention, accessibility, ranked depth, social, niceties, test hardening, and multi-instance readiness). **47 commits · ~280 files.**
 
-**Quality bar (held across every commit):** `pnpm -r build && pnpm -r test && npx eslint .` clean · **955 tests** · the §5 information-leak auditor **0/200** · engine determinism property tests green.
+**Quality bar (held across every commit):** `pnpm -r build && pnpm -r test && npx eslint .` clean · **1,059 tests** · the §5 information-leak auditor **0/200** · engine determinism property tests green.
 
 ---
 
@@ -17,6 +17,8 @@ This branch takes NOCTURNE from spec to a launch-ready 1920s-noir Mafia / social
 - **W3 — accessibility & polish:** keyboard-reachable roster/chat (whisper was unreachable) · aria-live announcements · modal focus traps · WCAG-AA contrast · form labels/errors/counters · 44px touch targets · code-split (initial JS 558→456 kB).
 - **W4 — ranked depth + social completeness:** season rollover/soft-reset/archive · placements · MMR inactivity decay · leaver penalty · leaderboard pagination + self-rank — and DM unread badges · user search · blocking · message deletion · per-room activity.
 - **W5 — niceties & QoL:** notifications center (bell + feed) · deterministic avatars · @mentions · quote/reply · forum search · report-from-profile · referrals (`?ref=` + bonus) · pluggable Sentry error sink · perf (single-query forum index, batched ranked inserts).
+- **W6 — moderation, retention automation & test hardening:** admin chat-room lock/slow-mode · an in-server daily maintenance sweep (90-day chat retention + read-notification pruning) · the flaky real-socket test fixed (serial fork pool) · **+46 tests** (admin/moderation authz + WS error-paths) · a **browser E2E smoke** (`pnpm e2e`) of the guest game loop · DM typing indicators · `/healthz?deep=1` DB-pool observability.
+- **W7 — multi-instance readiness & anti-smurf:** the durable state was built shared-correct throughout, so horizontal scaling is a coherence + deployment concern, not a rewrite — an instance registry + heartbeat, cluster-wide presence/online count, a rigorous `DEPLOYMENT.md` (sticky-session routing; the game room is the shard unit, preserving determinism + §5), `SIGHUP` hot-reload, and a ranked anti-smurf gate (min finished games). The one deliberate non-goal: making a single game room span processes (would need Redis-backed room state / WS proxying and risks the determinism + leak invariants).
 
 ### Invariants (never violated by any social/ranked/retention/notification work)
 The engine, `transport.ts`/ScopedTransport, the game WS protocol, and the §5 leak path were never touched by the HTTP/own-tables feature work. Only finished matches are ever exposed on public/replay surfaces. The one engine change in the whole branch is the Vigilante Night-1 hold-fire fix.
@@ -32,7 +34,7 @@ A final 5-lens review (authz/IDOR · leak-safety · economy/abuse · cross-wave 
 5. Register an account + set its admin flag (`flags | 1`) — for prod test-mode QA
 6. Seasons roll over on demand: `POST /api/admin/seasons/rollover`
 
-### Knowingly deferred (lowest value / highest effort)
-Horizontal scaling (in-memory game state is the single-process ceiling — fine at current scale) · a browser E2E + load/soak suite · automating the chat-partition retention job · typing indicators · chat-room lock/pin moderation UI. All catalogued in `DECISIONS.md`.
+### Scope note
+The full 124-finding readiness audit has been worked through. The single deliberate non-goal is making one game room span processes (Redis-backed room state / WS proxying) — out of scope because the deterministic, §5-leak-safe engine makes the *game room* the correct shard unit, and `DEPLOYMENT.md` documents running N instances behind sticky-session routing. A load/soak suite is the only test-tier not added (the build relies on extensive unit/integration coverage + a browser E2E smoke + live verification of every wave).
 
 🤖 Generated with [Claude Code](https://claude.com/claude-code)
