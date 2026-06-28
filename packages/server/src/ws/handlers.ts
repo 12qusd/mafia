@@ -16,6 +16,7 @@ import {
   WHISPER_TEXT_MAX,
   LAST_WILL_MAX,
   DEATH_NOTE_MAX,
+  RANKED_MIN_GAMES,
   type ClientMessage,
   type ServerMessage,
   type ErrorCode,
@@ -304,9 +305,21 @@ export class MessageHandlers {
       replyError(conn, 'forbidden', 'banned');
       return;
     }
+    // Anti-smurf: ranked requires a minimum of finished games so a freshly made
+    // throwaway account can't immediately smurf the ladder. Checked here (async
+    // DB read) only for ranked + a persistent store; surfaced via `cannot_start`
+    // + a `ranked_locked` detail (no new protocol code), like `cooldown`/`no_game`.
+    const mode = msg.mode ?? 'casual';
+    if (mode === 'ranked' && this.ctx.store.persistent && conn.identity && !conn.identity.isGuest) {
+      const stats = await this.ctx.store.getUserStats(conn.identity.id);
+      if ((stats?.gamesPlayed ?? 0) < RANKED_MIN_GAMES) {
+        replyError(conn, 'cannot_start', 'ranked_locked');
+        return;
+      }
+    }
     // mode defaults to 'casual'; 'ranked' is account-gated inside quickPlay
     // (guests get 'not_authenticated' → the client prompts to sign in).
-    const err = this.ctx.manager.quickPlay(conn, msg.mode ?? 'casual');
+    const err = this.ctx.manager.quickPlay(conn, mode);
     if (!err) return;
     // A ranked leaver cooldown is surfaced via the existing `cannot_start` code
     // with a `cooldown` detail (no new protocol error code), mirroring `no_game`.

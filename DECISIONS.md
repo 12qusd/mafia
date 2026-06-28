@@ -2710,3 +2710,23 @@ So horizontal scaling = make the SHARED surfaces cluster-coherent + add instance
 
 Gate green: tests 1056 (server 351); eslint 0; leak 0/200. DB migrated; verified live (self-register
 + fresh heartbeat, online/instances coherent, /healthz?deep instanceId, SIGHUP reload no disruption).
+
+---
+
+## Wave 7b — ranked anti-smurf gate
+
+A throwaway account can no longer drop straight into ranked. Shared const
+`RANKED_MIN_GAMES = 3`: the ranked queue requires at least that many finished games
+(any mode). Checked in `onQuickPlay` (async DB read, ranked + persistent only — casual
+is never gated), surfaced as `cannot_start` + a `ranked_locked` detail (no new protocol
+code — same pattern as `cooldown`/`no_game`). The client Toasts map known detail codes to
+friendly copy ("Ranked unlocks after 3 games — play a few casual rounds first."). +3 tests;
+verified live (fresh account → ranked_locked).
+
+This closes the last audit long-tail item. Horizontal scaling is addressed as multi-instance
+readiness (7a) — the one thing NOT done is making a single game room span processes, which is
+deliberately out of scope (it would require Redis-backed room state / WS proxying and risks
+the determinism + §5 invariants; the room is the correct shard unit). Everything else in the
+124-finding audit is now built.
+
+Gate green: tests 1059 (server 354); eslint 0; leak 0/200.

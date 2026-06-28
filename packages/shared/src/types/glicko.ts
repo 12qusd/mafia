@@ -61,6 +61,15 @@ const SCALE = 173.7178;
 export const PLACEMENT_GAMES = 5;
 
 /**
+ * Anti-smurf gate: a player must have finished at least this many games (any
+ * mode — casual or ranked) before the ranked queue opens to them, so a freshly
+ * created throwaway account can't immediately drop into ranked. A modest bar
+ * that real players clear quickly; surfaced to the client as a `ranked_locked`
+ * message. Compile-time const so both server (gate) and client (copy) agree.
+ */
+export const RANKED_MIN_GAMES = 3;
+
+/**
  * Season soft-reset: how much of a player's distance from the mean carries into
  * the new season. `new = MEAN + (old - MEAN) * CARRY`. 0 ⇒ everyone resets to
  * the mean; 1 ⇒ full carry. 0.5 pulls everyone halfway toward the mean so the
