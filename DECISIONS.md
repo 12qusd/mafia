@@ -2609,3 +2609,27 @@ test-mode excluded from ranking/points). Fixes applied:
   on public recent/replay surfaces (they already never counted for ranking/points).
 
 Gate: build clean; tests 955 (server 250); eslint 0; leak 0/200.
+
+---
+
+## Wave 6a — chat-room moderation + automated retention + season-archive polish
+
+Deferred-tail. HTTP + own tables + a maintenance timer + client; engine/§5 leak path untouched.
+
+- **Chat-room moderation**: chat_rooms gains `locked` + `slow_mode_sec` (idempotent).
+  Admin-only `POST /api/rooms/:slug/moderate` {locked?, slowModeSec? 0–3600}. A locked
+  room rejects non-admin posts (403); slow_mode raises the per-(user,room) cooldown floor
+  to max(1.2s, slowModeSec) for non-admins (admins exempt); 429 carries Retry-After.
+  /api/rooms surfaces locked+slowModeSec; Community shows a lock badge + locked-composer
+  note + admin lock/slow-mode controls (gated on me.isAdmin).
+- **Automated retention**: a `Maintenance` service (telemetry-timer pattern: 24h interval
+  + ~30s boot sweep, .unref()) runs a best-effort, persistent-only daily DELETE of
+  chat_messages older than CHAT_RETENTION_DAYS=90 (a plain DELETE — partition DROP is
+  premature at this scale) AND prunes READ notifications older than 30 days (Wave-5a left
+  them unpruned). Every step try/caught + logged; no-op under NO_DB. Config:
+  CHAT_RETENTION_DAYS, NOTIFICATION_RETENTION_DAYS, MAINTENANCE_INTERVAL_MS.
+- **Season archive**: the leaderboard season dropdown already worked (W4a); polished the
+  labels to explicit "(current)"/"(ended)" + an "Ended — standings final" banner.
+
+Gate green: tests 935→ (server 266); eslint 0; leak 0/200 (the real-socket play-again
+bots test is a known ~10s timing flake — green on isolated re-run, unrelated). DB migrated.

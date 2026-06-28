@@ -1399,6 +1399,8 @@ export class PgStore implements Store {
     kind: string;
     sort: number;
     created_at: Date;
+    locked: boolean;
+    slow_mode_sec: number;
   }): ChatRoomRow {
     return {
       id: r.id,
@@ -1408,6 +1410,8 @@ export class PgStore implements Store {
       kind: r.kind,
       sort: r.sort,
       createdAt: r.created_at.getTime(),
+      locked: r.locked,
+      slowModeSec: r.slow_mode_sec,
     };
   }
 
@@ -1423,9 +1427,12 @@ export class PgStore implements Store {
       kind: string;
       sort: number;
       created_at: Date;
+      locked: boolean;
+      slow_mode_sec: number;
       active_count: string | null;
     }>(
       `SELECT r.id, r.slug, r.name, r.topic, r.kind, r.sort, r.created_at,
+              r.locked, r.slow_mode_sec,
               COALESCE(a.active_count, 0) AS active_count
        FROM chat_rooms r
        LEFT JOIN LATERAL (
@@ -1449,11 +1456,40 @@ export class PgStore implements Store {
       kind: string;
       sort: number;
       created_at: Date;
+      locked: boolean;
+      slow_mode_sec: number;
     }>(
-      `SELECT id, slug, name, topic, kind, sort, created_at FROM chat_rooms WHERE slug = $1`,
+      `SELECT id, slug, name, topic, kind, sort, created_at, locked, slow_mode_sec
+       FROM chat_rooms WHERE slug = $1`,
       [slug],
     );
     return rows[0] ? this.mapRoom(rows[0]) : null;
+  }
+
+  async setRoomModeration(
+    slug: string,
+    flags: { locked?: boolean; slowModeSec?: number },
+  ): Promise<boolean> {
+    const sets: string[] = [];
+    const params: unknown[] = [slug];
+    if (flags.locked !== undefined) {
+      params.push(flags.locked);
+      sets.push(`locked = $${params.length}`);
+    }
+    if (flags.slowModeSec !== undefined) {
+      params.push(flags.slowModeSec);
+      sets.push(`slow_mode_sec = $${params.length}`);
+    }
+    if (sets.length === 0) {
+      // No-op flags: just confirm the room exists.
+      const { rowCount } = await this.pool.query(`SELECT 1 FROM chat_rooms WHERE slug = $1`, [slug]);
+      return (rowCount ?? 0) > 0;
+    }
+    const res = await this.pool.query(
+      `UPDATE chat_rooms SET ${sets.join(', ')} WHERE slug = $1`,
+      params,
+    );
+    return (res.rowCount ?? 0) > 0;
   }
 
   async postRoomMessage(roomId: string, userId: string, body: string): Promise<RoomMessageRow> {
@@ -2256,6 +2292,29 @@ export class PgStore implements Store {
       );
     }
     return this.getUnreadNotificationCount(userId);
+  }
+
+  // --- Maintenance / retention ---------------------------------------------
+
+  async pruneOldChat(olderThanMs: number): Promise<number> {
+    // A plain time-windowed DELETE is correct + simple at this scale; partition
+    // DROP is premature. `to_timestamp` takes seconds, hence the /1000.
+    const cutoffSec = (Date.now() - olderThanMs) / 1000;
+    const res = await this.pool.query(
+      `DELETE FROM chat_messages WHERE created_at < to_timestamp($1)`,
+      [cutoffSec],
+    );
+    return res.rowCount ?? 0;
+  }
+
+  async pruneOldNotifications(olderThanMs: number): Promise<number> {
+    // Only READ notifications are pruned; unread rows are kept regardless of age.
+    const cutoffSec = (Date.now() - olderThanMs) / 1000;
+    const res = await this.pool.query(
+      `DELETE FROM notifications WHERE read_at IS NOT NULL AND created_at < to_timestamp($1)`,
+      [cutoffSec],
+    );
+    return res.rowCount ?? 0;
   }
 
   async close(): Promise<void> {

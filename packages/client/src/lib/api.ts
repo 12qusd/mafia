@@ -1244,6 +1244,10 @@ export interface ChatRoom {
   topic: string;
   kind: 'shoutbox' | 'channel';
   sort: number;
+  /** Admin lock: when true only admins may post (moderation). */
+  locked: boolean;
+  /** Per-room slow-mode floor (seconds); 0 disables (moderation). */
+  slowModeSec: number;
   /** Distinct posters in the last ~10 min — an "alive" signal, not true presence. */
   activeCount: number;
 }
@@ -1271,6 +1275,8 @@ function narrowRoom(v: unknown): ChatRoom | null {
     topic: str(v['topic']) ?? '',
     kind,
     sort: num(v['sort']),
+    locked: bool(v['locked']),
+    slowModeSec: num(v['slowModeSec']),
     activeCount: num(v['activeCount']),
   };
 }
@@ -1343,6 +1349,27 @@ export async function postRoomMessage(
     return { ok: false, status: res.status };
   } catch {
     return { ok: false, status: 0 };
+  }
+}
+
+/**
+ * `POST /api/rooms/:slug/moderate` { locked?, slowModeSec? } (admin-only).
+ * Returns true on success. Omitted fields are left unchanged server-side.
+ */
+export async function moderateRoom(
+  slug: string,
+  flags: { locked?: boolean; slowModeSec?: number },
+): Promise<boolean> {
+  try {
+    const res = await fetch(`/api/rooms/${encodeURIComponent(slug)}/moderate`, {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      credentials: 'include',
+      body: JSON.stringify(flags),
+    });
+    return res.ok;
+  } catch {
+    return false;
   }
 }
 

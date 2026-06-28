@@ -290,6 +290,13 @@ export interface ChatRoomRow {
   kind: string;
   sort: number;
   createdAt: number;
+  /** Admin lock: when true, only admins may post (moderation). */
+  locked: boolean;
+  /**
+   * Per-room slow-mode floor (seconds) for the post cooldown. 0 disables.
+   * Admins are exempt; enforced in the messages route (moderation).
+   */
+  slowModeSec: number;
   /**
    * Distinct non-deleted posters in the last ~10 minutes (an "alive" signal, NOT
    * true presence). Populated by {@link Store.listRooms}; absent elsewhere.
@@ -696,6 +703,14 @@ export interface Store {
   listRooms(): Promise<ChatRoomRow[]>;
   /** A room by its slug, or null. */
   getRoomBySlug(slug: string): Promise<ChatRoomRow | null>;
+  /**
+   * Set a room's moderation flags by slug (admin-only at the route). Omitted
+   * fields are left unchanged. Returns false when the slug is unknown.
+   */
+  setRoomModeration(
+    slug: string,
+    flags: { locked?: boolean; slowModeSec?: number },
+  ): Promise<boolean>;
   /** Post a message to a room (returns the persisted row, author joined). */
   postRoomMessage(roomId: string, userId: string, body: string): Promise<RoomMessageRow>;
   /**
@@ -844,6 +859,19 @@ export interface Store {
    * omitted/undefined. Returns the user's unread count AFTER the update.
    */
   markNotificationsRead(userId: string, ids?: string[]): Promise<number>;
+
+  // --- Maintenance / retention (in-server daily tick) -----------------------
+  /**
+   * Delete chat messages older than `olderThanMs` (a plain time-windowed DELETE —
+   * partition DROP is premature at this scale). Returns the number of rows
+   * deleted. Best-effort; a no-op returning 0 under a non-persistent store.
+   */
+  pruneOldChat(olderThanMs: number): Promise<number>;
+  /**
+   * Delete READ notifications older than `olderThanMs` (unread rows are kept).
+   * Returns rows deleted. A no-op returning 0 under a non-persistent store.
+   */
+  pruneOldNotifications(olderThanMs: number): Promise<number>;
 
   close(): Promise<void>;
 }

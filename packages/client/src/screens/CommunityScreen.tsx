@@ -34,10 +34,16 @@ function visitorCount(): number {
 export function CommunityScreen() {
   const me = useStore((s) => s.me);
   const canPost = !!me && !me.isGuest;
+  const isAdmin = !!me?.isAdmin;
   const [rooms, setRooms] = useState<ChatRoom[]>([]);
   const channels = useMemo(() => rooms.filter((r) => r.kind === 'channel'), [rooms]);
   const [activeSlug, setActiveSlug] = useState<string | null>(null);
   const [friends, setFriends] = useState<FriendItem[]>([]);
+
+  // Apply a moderation result locally so the lock/slow-mode UI reflects it
+  // immediately (the next /api/rooms poll would also pick it up).
+  const patchRoom = (slug: string, patch: Partial<ChatRoom>) =>
+    setRooms((prev) => prev.map((r) => (r.slug === slug ? { ...r, ...patch } : r)));
 
   useEffect(() => {
     let live = true;
@@ -81,7 +87,12 @@ export function CommunityScreen() {
 
       <div className="community-grid">
         {/* The Wire (global shoutbox). */}
-        <Shoutbox canPost={canPost} />
+        <Shoutbox
+          room={rooms.find((r) => r.kind === 'shoutbox') ?? null}
+          canPost={canPost}
+          isAdmin={isAdmin}
+          onModerated={patchRoom}
+        />
 
         {/* Channels + who's around. */}
         <div className="stack community-side">
@@ -117,6 +128,11 @@ export function CommunityScreen() {
                 >
                   <span className="channel-tab-name">
                     {c.name}
+                    {c.locked && (
+                      <span className="channel-lock" title={COMMUNITY.locked} aria-label={COMMUNITY.locked}>
+                        🔒
+                      </span>
+                    )}
                     {c.activeCount > 0 && (
                       <span className="channel-active" title={COMMUNITY.chatting(c.activeCount)}>
                         {COMMUNITY.chatting(c.activeCount)}
@@ -134,7 +150,15 @@ export function CommunityScreen() {
       </div>
 
       {/* Active channel pane (full width below). */}
-      {active && <ChannelPane key={active.slug} room={active} canPost={canPost} />}
+      {active && (
+        <ChannelPane
+          key={active.slug}
+          room={active}
+          canPost={canPost}
+          isAdmin={isAdmin}
+          onModerated={patchRoom}
+        />
+      )}
     </div>
   );
 }
@@ -149,6 +173,9 @@ function MessageBoard({
   maxLen,
   compact,
   canPost,
+  locked,
+  slowModeSec,
+  isAdmin,
 }: {
   slug: string;
   pollMs: number;
@@ -158,6 +185,10 @@ function MessageBoard({
   maxLen: number;
   compact: boolean;
   canPost: boolean;
+  /** Room moderation state (admin lock + per-room slow-mode floor in seconds). */
+  locked: boolean;
+  slowModeSec: number;
+  isAdmin: boolean;
 }) {
   const me = useStore((s) => s.me);
   const pushInfo = useStore((s) => s.pushInfo);
@@ -268,29 +299,133 @@ function MessageBoard({
         )}
         <div ref={bottomRef} />
       </div>
-      {canPost ? (
-        <form className="board-post" onSubmit={submit}>
-          <input
-            className="board-input"
-            value={draft}
-            onChange={(e) => setDraft(e.target.value.slice(0, maxLen))}
-            placeholder={placeholder}
-            maxLength={maxLen}
-            aria-label={placeholder}
-          />
-          <button type="submit" className="btn btn-sm btn-primary" disabled={sending || !draft.trim()}>
-            {postLabel}
-          </button>
-        </form>
+      {/* Locked: non-admins see a note instead of the composer; admins may post. */}
+      {locked && !isAdmin ? (
+        <div className="board-locked-note faint" role="note">
+          <span className="board-lock-icon" aria-hidden="true">
+            🔒
+          </span>{' '}
+          {COMMUNITY.lockedNote}
+        </div>
+      ) : canPost ? (
+        <>
+          {slowModeSec > 0 && !isAdmin && (
+            <div className="faint board-slow-note" role="note">
+              {COMMUNITY.slowMode(slowModeSec)}
+            </div>
+          )}
+          <form className="board-post" onSubmit={submit}>
+            <input
+              className="board-input"
+              value={draft}
+              onChange={(e) => setDraft(e.target.value.slice(0, maxLen))}
+              placeholder={placeholder}
+              maxLength={maxLen}
+              aria-label={placeholder}
+            />
+            <button type="submit" className="btn btn-sm btn-primary" disabled={sending || !draft.trim()}>
+              {postLabel}
+            </button>
+          </form>
+        </>
       ) : null}
     </div>
   );
 }
 
-function Shoutbox({ canPost }: { canPost: boolean }) {
+/**
+ * Admin-only channel moderation control: toggle lock + set slow-mode. Posts to
+ * `/api/rooms/:slug/moderate`; lifts the result to the parent so the lock/slow
+ * UI updates immediately. Rendered only for admins (account/admin-gated UI).
+ */
+function RoomModControls({
+  room,
+  onModerated,
+}: {
+  room: ChatRoom;
+  onModerated: (slug: string, patch: Partial<ChatRoom>) => void;
+}) {
+  const pushInfo = useStore((s) => s.pushInfo);
+  const [busy, setBusy] = useState(false);
+
+  async function toggleLock(): Promise<void> {
+    if (busy) return;
+    setBusy(true);
+    const next = !room.locked;
+    const ok = await api.moderateRoom(room.slug, { locked: next });
+    setBusy(false);
+    if (ok) onModerated(room.slug, { locked: next });
+    else pushInfo(COMMUNITY.modFailed);
+  }
+
+  async function setSlow(sec: number): Promise<void> {
+    if (busy) return;
+    setBusy(true);
+    const ok = await api.moderateRoom(room.slug, { slowModeSec: sec });
+    setBusy(false);
+    if (ok) onModerated(room.slug, { slowModeSec: sec });
+    else pushInfo(COMMUNITY.modFailed);
+  }
+
+  return (
+    <div className="room-mod-controls" role="group" aria-label={COMMUNITY.modSlowLabel}>
+      <button
+        type="button"
+        className={`btn btn-sm ${room.locked ? 'btn-primary' : 'btn-ghost'}`}
+        onClick={() => void toggleLock()}
+        disabled={busy}
+        aria-pressed={room.locked}
+      >
+        {room.locked ? COMMUNITY.modUnlock : COMMUNITY.modLock}
+      </button>
+      <label className="room-mod-slow">
+        {COMMUNITY.modSlowLabel}:{' '}
+        <select
+          className="select"
+          value={room.slowModeSec}
+          onChange={(e) => void setSlow(Number(e.target.value))}
+          disabled={busy}
+          aria-label={COMMUNITY.modSlowLabel}
+        >
+          <option value={0}>{COMMUNITY.modSlowOff}</option>
+          <option value={5}>5s</option>
+          <option value={15}>15s</option>
+          <option value={30}>30s</option>
+        </select>
+      </label>
+    </div>
+  );
+}
+
+/** A small "🔒 Locked" badge shown on a moderated room's header. */
+function LockBadge() {
+  return (
+    <span className="room-lock-badge" title={COMMUNITY.locked}>
+      <span aria-hidden="true">🔒</span> {COMMUNITY.locked}
+    </span>
+  );
+}
+
+function Shoutbox({
+  room,
+  canPost,
+  isAdmin,
+  onModerated,
+}: {
+  room: ChatRoom | null;
+  canPost: boolean;
+  isAdmin: boolean;
+  onModerated: (slug: string, patch: Partial<ChatRoom>) => void;
+}) {
+  const locked = room?.locked ?? false;
+  const slowModeSec = room?.slowModeSec ?? 0;
   return (
     <div className="panel panel-pad stack shoutbox">
-      <DecoHead>{COMMUNITY.shoutboxHeading}</DecoHead>
+      <div className="spread">
+        <DecoHead>{COMMUNITY.shoutboxHeading}</DecoHead>
+        {locked && <LockBadge />}
+      </div>
+      {isAdmin && room && <RoomModControls room={room} onModerated={onModerated} />}
       <div className="faint shoutbox-topic">{COMMUNITY.shoutboxTopic}</div>
       <MessageBoard
         slug="shoutbox"
@@ -301,17 +436,32 @@ function Shoutbox({ canPost }: { canPost: boolean }) {
         maxLen={280}
         compact
         canPost={canPost}
+        locked={locked}
+        slowModeSec={slowModeSec}
+        isAdmin={isAdmin}
       />
     </div>
   );
 }
 
-function ChannelPane({ room, canPost }: { room: ChatRoom; canPost: boolean }) {
+function ChannelPane({
+  room,
+  canPost,
+  isAdmin,
+  onModerated,
+}: {
+  room: ChatRoom;
+  canPost: boolean;
+  isAdmin: boolean;
+  onModerated: (slug: string, patch: Partial<ChatRoom>) => void;
+}) {
   return (
     <div className="panel panel-pad stack channel-pane">
       <div className="spread">
         <DecoHead>{sanitizeInline(room.name)}</DecoHead>
+        {room.locked && <LockBadge />}
       </div>
+      {isAdmin && <RoomModControls room={room} onModerated={onModerated} />}
       <div className="faint" style={{ marginTop: -6 }}>
         {sanitizeInline(room.topic)}
       </div>
@@ -324,6 +474,9 @@ function ChannelPane({ room, canPost }: { room: ChatRoom; canPost: boolean }) {
         maxLen={1000}
         compact={false}
         canPost={canPost}
+        locked={room.locked}
+        slowModeSec={room.slowModeSec}
+        isAdmin={isAdmin}
       />
     </div>
   );

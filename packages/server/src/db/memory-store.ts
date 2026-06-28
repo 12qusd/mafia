@@ -184,6 +184,8 @@ export class MemoryStore implements Store {
         kind: r.kind,
         sort: r.sort,
         createdAt: now,
+        locked: false,
+        slowModeSec: 0,
       });
     }
     // Seed the same default forum categories + boards the SQL schema seeds, so
@@ -222,6 +224,18 @@ export class MemoryStore implements Store {
   /** Test/seed helper: record a join date (epoch ms) for a synthetic user id. */
   setUserJoinedForTest(userId: string, at: number): void {
     this.userJoined.set(userId, at);
+  }
+  /**
+   * Test/seed helper: insert a notification with explicit timestamps so the
+   * retention sweep (pruneOldNotifications) can be exercised against old rows.
+   */
+  seedNotificationForTest(
+    userId: string,
+    type: NotificationType,
+    createdAt: number,
+    readAt: number | null,
+  ): void {
+    this.notifications.push({ id: newId(), userId, type, payload: {}, createdAt, readAt });
   }
 
   /**
@@ -882,6 +896,16 @@ export class MemoryStore implements Store {
     const r = this.rooms.find((x) => x.slug === slug);
     return r ? { ...r } : null;
   }
+  async setRoomModeration(
+    slug: string,
+    flags: { locked?: boolean; slowModeSec?: number },
+  ): Promise<boolean> {
+    const r = this.rooms.find((x) => x.slug === slug);
+    if (!r) return false;
+    if (flags.locked !== undefined) r.locked = flags.locked;
+    if (flags.slowModeSec !== undefined) r.slowModeSec = flags.slowModeSec;
+    return true;
+  }
   async postRoomMessage(roomId: string, userId: string, body: string): Promise<RoomMessageRow> {
     const row: RoomMessageRow = {
       id: newId(),
@@ -1369,6 +1393,33 @@ export class MemoryStore implements Store {
       n.readAt = now;
     }
     return this.getUnreadNotificationCount(userId);
+  }
+
+  // --- Maintenance / retention ---------------------------------------------
+
+  /**
+   * No-op: the MemoryStore drops match chat (writeMatch is a no-op here), so
+   * there is nothing to prune. Returns 0. The real DELETE runs in PgStore.
+   */
+  async pruneOldChat(_olderThanMs: number): Promise<number> {
+    return 0;
+  }
+
+  /**
+   * Delete READ notifications older than the cutoff (unread rows are kept).
+   * Mirrors the PgStore predicate so the maintenance tick is exercised in tests.
+   */
+  async pruneOldNotifications(olderThanMs: number): Promise<number> {
+    const cutoff = Date.now() - olderThanMs;
+    let removed = 0;
+    for (let i = this.notifications.length - 1; i >= 0; i -= 1) {
+      const n = this.notifications[i]!;
+      if (n.readAt !== null && n.createdAt < cutoff) {
+        this.notifications.splice(i, 1);
+        removed += 1;
+      }
+    }
+    return removed;
   }
 
   async close(): Promise<void> {}

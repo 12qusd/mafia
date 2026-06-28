@@ -115,6 +115,72 @@ describe('rooms: seed + post + sinceId delta', () => {
   });
 });
 
+describe('rooms: moderation (setRoomModeration)', () => {
+  it('seeded rooms default to unlocked + slow-mode off', async () => {
+    const store = new MemoryStore();
+    const room = (await store.getRoomBySlug('parlor'))!;
+    expect(room.locked).toBe(false);
+    expect(room.slowModeSec).toBe(0);
+    const fromList = (await store.listRooms()).find((r) => r.slug === 'parlor')!;
+    expect(fromList.locked).toBe(false);
+    expect(fromList.slowModeSec).toBe(0);
+  });
+
+  it('round-trips lock + slow-mode, leaves omitted fields unchanged, 404s an unknown slug', async () => {
+    const store = new MemoryStore();
+    // Set both flags.
+    expect(await store.setRoomModeration('parlor', { locked: true, slowModeSec: 15 })).toBe(true);
+    let room = (await store.getRoomBySlug('parlor'))!;
+    expect(room.locked).toBe(true);
+    expect(room.slowModeSec).toBe(15);
+
+    // An update of only `locked` leaves slowModeSec untouched.
+    expect(await store.setRoomModeration('parlor', { locked: false })).toBe(true);
+    room = (await store.getRoomBySlug('parlor'))!;
+    expect(room.locked).toBe(false);
+    expect(room.slowModeSec).toBe(15);
+
+    // listRooms surfaces the same moderation state.
+    const fromList = (await store.listRooms()).find((r) => r.slug === 'parlor')!;
+    expect(fromList.locked).toBe(false);
+    expect(fromList.slowModeSec).toBe(15);
+
+    // An unknown slug returns false.
+    expect(await store.setRoomModeration('no-such-room', { locked: true })).toBe(false);
+  });
+});
+
+describe('retention: pruneOldNotifications / pruneOldChat (MemoryStore)', () => {
+  it('prunes only READ notifications older than the cutoff; keeps unread + recent', async () => {
+    const store = new MemoryStore();
+    const now = Date.now();
+    const THIRTY_DAYS = 30 * 24 * 60 * 60 * 1000;
+    const old = now - 40 * 24 * 60 * 60 * 1000;
+    const recent = now - 1 * 24 * 60 * 60 * 1000;
+
+    // Old + READ → pruned.
+    store.seedNotificationForTest(A, 'rank_up', old, old);
+    // Old but UNREAD → kept (unread rows survive regardless of age).
+    store.seedNotificationForTest(A, 'rank_up', old, null);
+    // Recent + READ → kept (within the window).
+    store.seedNotificationForTest(A, 'rank_up', recent, recent);
+
+    const deleted = await store.pruneOldNotifications(THIRTY_DAYS);
+    expect(deleted).toBe(1);
+
+    // Two notifications remain for A: the old-unread + the recent-read.
+    const left = await store.listNotifications(A, 50);
+    expect(left).toHaveLength(2);
+    // The unread one is still counted as unread.
+    expect(await store.getUnreadNotificationCount(A)).toBe(1);
+  });
+
+  it('pruneOldChat is a no-op (0) on the MemoryStore (match chat is dropped here)', async () => {
+    const store = new MemoryStore();
+    expect(await store.pruneOldChat(90 * 24 * 60 * 60 * 1000)).toBe(0);
+  });
+});
+
 describe('DMs: canonicalization + isolation + thread order + preview', () => {
   it('ensureDmThread is symmetric (a,b)===(b,a)', async () => {
     const store = new MemoryStore();

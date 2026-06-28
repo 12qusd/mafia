@@ -17,6 +17,7 @@ import { IdentityService } from './auth/identity.js';
 import { LobbyManager } from './lobby/manager.js';
 import { Moderation } from './moderation/moderation.js';
 import { Telemetry } from './telemetry.js';
+import { Maintenance } from './maintenance.js';
 import { getEngine, isUsingFallbackEngine } from './engine-adapter.js';
 import { Gateway } from './ws/gateway.js';
 import type { GatewayContext } from './ws/context.js';
@@ -86,6 +87,9 @@ export async function buildApp(cfg: ServerConfig): Promise<BuiltApp> {
   const identity = new IdentityService(store, cfg);
   const moderation = new Moderation(store);
   const telemetry = new Telemetry(store);
+  // In-server daily maintenance: chat retention + read-notification pruning.
+  // Best-effort + persistent-only (inert under NO_DB). Started after listen().
+  const maintenance = new Maintenance(store, cfg.maintenance);
 
   // Name resolution: room/lobby keep names; this is a best-effort lookup used
   // by lobby DTOs. Names are captured at join/start; for ids we don't know we
@@ -255,11 +259,16 @@ export async function buildApp(cfg: ServerConfig): Promise<BuiltApp> {
     const addr = app.server.address();
     const port = typeof addr === 'object' && addr ? addr.port : cfg.port;
     boundWsUrl = `ws://127.0.0.1:${port}/ws`;
+    // Daily retention maintenance (chat + read-notifications). Started here so a
+    // boot sweep runs only on a real listen() (not in test app builds). No-op +
+    // best-effort under a non-persistent store; timer is unref'd.
+    maintenance.start();
     log.info('server listening', { port: cfg.port, host: cfg.host, noDb: cfg.noDb });
   };
 
   const shutdown = async (graceful: boolean): Promise<void> => {
     telemetry.stopRollups();
+    maintenance.stop();
     await telemetry.flush().catch(() => {});
     if (graceful) {
       manager.startDrain();

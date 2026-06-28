@@ -1931,6 +1931,25 @@ select[aria-invalid='true'] {
   align-items: center;
   gap: 0.4em;
 }
+/* Archived (ended) season banner + status tag. */
+.lb-archived-banner {
+  display: flex;
+  align-items: center;
+  gap: var(--sp-1);
+  font-size: var(--fs-sm);
+}
+.lb-season-tag {
+  font-size: var(--fs-xs);
+  font-weight: 700;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  padding: 1px 6px;
+  border-radius: 3px;
+}
+.lb-season-ended {
+  color: var(--c-brass-dim);
+  border: 1px solid var(--c-brass-dim);
+}
 .lb-pager {
   display: flex;
   align-items: center;
@@ -3536,6 +3555,46 @@ table {
   font-size: var(--fs-xs);
   font-weight: 600;
   color: var(--c-verdigris);
+}
+
+/* Chat-room moderation (admin lock + slow-mode). */
+.channel-lock {
+  margin-left: 6px;
+  font-size: var(--fs-xs);
+}
+.room-lock-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  font-size: var(--fs-xs);
+  font-weight: 600;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  color: var(--c-brass-dim);
+}
+.room-mod-controls {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  flex-wrap: wrap;
+  margin: 4px 0 2px;
+}
+.room-mod-slow {
+  font-size: var(--fs-xs);
+  color: var(--c-text-faint);
+}
+.room-mod-slow .select {
+  margin-left: 4px;
+}
+.board-locked-note,
+.board-slow-note {
+  font-size: var(--fs-xs);
+}
+.board-locked-note {
+  padding: 6px 8px;
+}
+.board-lock-icon {
+  font-size: var(--fs-sm);
 }
 
 /* Soft-delete tombstone body ("[removed]"). */

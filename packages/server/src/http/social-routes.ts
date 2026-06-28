@@ -62,6 +62,18 @@ function bodySchema(max: number) {
   return z.object({ body: z.string().trim().min(1).max(max) });
 }
 
+/** Max slow-mode delay (seconds) an admin can set on a room. */
+const SLOW_MODE_MAX_SEC = 3600;
+/**
+ * Room moderation body (admin-only): toggle the lock and/or set the per-room
+ * slow-mode cooldown floor (seconds, 0 disables, capped at 1h). At least one
+ * field is expected; an empty body is a valid no-op confirm.
+ */
+const RoomModerateBody = z.object({
+  locked: z.boolean().optional(),
+  slowModeSec: z.number().int().min(0).max(SLOW_MODE_MAX_SEC).optional(),
+});
+
 /** Online if last-seen is within this window (Social "who's around"). */
 const ONLINE_WINDOW_MS = 120_000;
 /** Per-user post cooldown for rooms/DMs. */
@@ -152,7 +164,7 @@ export function registerSocialRoutes(app: FastifyInstance, ctx: GatewayContext):
   async function requirePoster(
     token: string | undefined,
     reply: FastifyReply,
-  ): Promise<{ id: string; name: string } | null> {
+  ): Promise<{ id: string; name: string; isAdmin: boolean } | null> {
     const identity = await ctx.identity.resolveToken(token);
     if (!identity) {
       reply.code(401).send({ error: 'not_authenticated' });
@@ -171,7 +183,7 @@ export function registerSocialRoutes(app: FastifyInstance, ctx: GatewayContext):
       reply.code(403).send({ error: 'silenced' });
       return null;
     }
-    return { id: identity.id, name: identity.name };
+    return { id: identity.id, name: identity.name, isAdmin: identity.isAdmin };
   }
 
   /**
@@ -179,15 +191,20 @@ export function registerSocialRoutes(app: FastifyInstance, ctx: GatewayContext):
    * DM thread) has its own bucket, so posting in one channel never rate-limits a
    * post in another channel or a DM — it only deters flooding a single stream.
    * Returns true if the caller is too fast for that scope.
+   *
+   * `minMs` raises the effective cooldown floor for this call (room slow-mode):
+   * the gap that must elapse is `max(POST_COOLDOWN_MS, minMs)`. The base 1.2s
+   * anti-flood always applies; slow-mode only ever makes the wait longer.
    */
-  function tooFast(userId: string, scope: string, reply?: FastifyReply): boolean {
+  function tooFast(userId: string, scope: string, reply?: FastifyReply, minMs = 0): boolean {
     const key = `${userId}:${scope}`;
     const now = Date.now();
     const last = lastPostAt.get(key) ?? 0;
-    if (now - last < POST_COOLDOWN_MS) {
+    const cooldown = Math.max(POST_COOLDOWN_MS, minMs);
+    if (now - last < cooldown) {
       // Set a Retry-After (seconds) so the 429 is consistent with the
       // rate-limit pattern, mirroring makeRateLimiter's guard.
-      if (reply) reply.header('Retry-After', String(Math.ceil((POST_COOLDOWN_MS - (now - last)) / 1000)));
+      if (reply) reply.header('Retry-After', String(Math.ceil((cooldown - (now - last)) / 1000)));
       return true;
     }
     lastPostAt.set(key, now);
@@ -410,6 +427,9 @@ export function registerSocialRoutes(app: FastifyInstance, ctx: GatewayContext):
         topic: r.topic,
         kind: r.kind,
         sort: r.sort,
+        // Moderation state (admin lock + per-room slow-mode floor in seconds).
+        locked: r.locked,
+        slowModeSec: r.slowModeSec,
         // Recently-active poster count (last 10 min) — the "N chatting" signal.
         activeCount: r.activeCount,
       })),
@@ -437,10 +457,15 @@ export function registerSocialRoutes(app: FastifyInstance, ctx: GatewayContext):
     if (!room) return reply.code(404).send({ error: 'not_found' });
     const poster = await requirePoster(readToken(req), reply);
     if (!poster) return reply; // requirePoster already sent the error.
+    // Moderation: a locked room rejects non-admin posts (admins may still post).
+    if (room.locked && !poster.isAdmin) return reply.code(403).send({ error: 'locked' });
     const max = room.kind === 'shoutbox' ? SHOUTBOX_BODY_MAX : CHANNEL_BODY_MAX;
     const parsed = bodySchema(max).safeParse(req.body);
     if (!parsed.success) return reply.code(400).send({ error: 'bad_request' });
-    if (tooFast(poster.id, `room:${room.slug}`, reply))
+    // Slow-mode raises the per-(user,room) cooldown floor for non-admins; admins
+    // are exempt. The base anti-flood cooldown always applies underneath.
+    const slowFloorMs = poster.isAdmin ? 0 : room.slowModeSec * 1000;
+    if (tooFast(poster.id, `room:${room.slug}`, reply, slowFloorMs))
       return reply.code(429).send({ error: 'slow_down' });
     const message = await ctx.store.postRoomMessage(room.id, poster.id, parsed.data.body);
     void recordPresence(poster.id);
@@ -451,6 +476,23 @@ export function registerSocialRoutes(app: FastifyInstance, ctx: GatewayContext):
       messageId: message.id,
     });
     return reply.send({ message });
+  });
+
+  // Moderate a room (admin-only): toggle lock + set slow-mode. Mirrors the forum
+  // thread moderate route — the admin gate runs FIRST so a non-admin never
+  // learns whether the slug exists.
+  app.post<{ Params: { slug: string } }>('/api/rooms/:slug/moderate', async (req, reply) => {
+    const identity = await ctx.identity.resolveToken(readToken(req));
+    if (!identity) return reply.code(401).send({ error: 'not_authenticated' });
+    if (!identity.isAdmin) return reply.code(403).send({ error: 'forbidden' });
+    const parsed = RoomModerateBody.safeParse(req.body);
+    if (!parsed.success) return reply.code(400).send({ error: 'bad_request' });
+    const flags: { locked?: boolean; slowModeSec?: number } = {};
+    if (parsed.data.locked !== undefined) flags.locked = parsed.data.locked;
+    if (parsed.data.slowModeSec !== undefined) flags.slowModeSec = parsed.data.slowModeSec;
+    const ok = await ctx.store.setRoomModeration(req.params.slug, flags);
+    if (!ok) return reply.code(404).send({ error: 'not_found' });
+    return reply.send({ ok: true });
   });
 
   // --- Direct messages -----------------------------------------------------

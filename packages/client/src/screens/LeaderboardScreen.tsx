@@ -267,7 +267,10 @@ function RankedBoard({ me }: { me: { id: string } | null }) {
   };
 
   const totalPages = data ? Math.max(1, Math.ceil(data.total / (data.limit || RANKED_PAGE_SIZE))) : 1;
-  const viewingCurrent = seasonId === '' || seasons?.find((s) => s.id === seasonId)?.isCurrent;
+  const selectedSeason = seasonId === '' ? null : seasons?.find((s) => s.id === seasonId);
+  const viewingCurrent = seasonId === '' || selectedSeason?.isCurrent;
+  // An explicitly-chosen, non-current season is an archived (ended) season.
+  const archivedSeason = selectedSeason && !selectedSeason.isCurrent ? selectedSeason : null;
 
   return (
     <div className="stack">
@@ -282,8 +285,9 @@ function RankedBoard({ me }: { me: { id: string } | null }) {
             >
               {seasons.map((s) => (
                 <option key={s.id} value={s.isCurrent ? '' : s.id}>
-                  {sanitizeInline(s.name)}
-                  {s.isCurrent ? ' ★' : ''}
+                  {s.isCurrent
+                    ? LEADERBOARD.seasonOptionCurrent(sanitizeInline(s.name))
+                    : LEADERBOARD.seasonOptionEnded(sanitizeInline(s.name))}
                 </option>
               ))}
             </select>
@@ -308,6 +312,14 @@ function RankedBoard({ me }: { me: { id: string } | null }) {
           </div>
         )}
       </div>
+
+      {/* Archived-season banner: a clear "ended" marker when browsing the past. */}
+      {archivedSeason && (
+        <div className="lb-archived-banner panel panel-pad" role="note">
+          <span className="lb-season-tag lb-season-ended">{LEADERBOARD.seasonEnded}</span>{' '}
+          {LEADERBOARD.archivedBanner(sanitizeInline(archivedSeason.name))}
+        </div>
+      )}
 
       {data === null ? (
         <div className="panel panel-pad center" style={{ minHeight: 120 }}>

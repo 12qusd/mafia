@@ -59,6 +59,23 @@ export interface ServerConfig {
    * set, @sentry/node is lazily loaded + initialized at boot.
    */
   sentryDsn: string | undefined;
+  /**
+   * Daily in-server maintenance (chat retention + read-notification pruning).
+   * `chatRetentionDays` is the age threshold for deleting chat (default 90);
+   * `notificationRetentionDays` for READ notifications (default 30);
+   * `maintenanceIntervalMs` is the tick period (default 24h). All overridable.
+   */
+  maintenance: MaintenanceConfig;
+}
+
+/** Retention/maintenance knobs (in-server daily tick). All env-overridable. */
+export interface MaintenanceConfig {
+  /** Delete chat messages older than this many days (default 90). */
+  chatRetentionDays: number;
+  /** Delete READ notifications older than this many days (default 30). */
+  notificationRetentionDays: number;
+  /** Tick interval in ms (default 24h). */
+  intervalMs: number;
 }
 
 /** SMTP knobs (all from env). `smtpHost` unset ⇒ LogTransport (dev/unconfigured). */
@@ -138,5 +155,10 @@ export function loadConfig(env: NodeJS.ProcessEnv = process.env): ServerConfig {
     },
     publicBaseUrl: (env.PUBLIC_BASE_URL ?? 'https://mafia.0cs.me').replace(/\/+$/, ''),
     sentryDsn: env.SENTRY_DSN,
+    maintenance: {
+      chatRetentionDays: envInt('CHAT_RETENTION_DAYS', 90),
+      notificationRetentionDays: envInt('NOTIFICATION_RETENTION_DAYS', 30),
+      intervalMs: envInt('MAINTENANCE_INTERVAL_MS', 24 * 60 * 60 * 1000),
+    },
   };
 }

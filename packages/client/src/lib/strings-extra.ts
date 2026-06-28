@@ -416,6 +416,13 @@ export const LEADERBOARD = {
   yourRankUnplaced: 'Unranked — finish your placements to land on the board.',
   rankedHistory: 'Ranked history',
   rankedHistoryEmpty: 'No ranked games yet.',
+  // Season archive status (current vs an ended/archived season).
+  seasonCurrent: 'Current',
+  seasonEnded: 'Ended',
+  seasonOptionCurrent: (name: string) => `${name} (current)`,
+  seasonOptionEnded: (name: string) => `${name} (ended)`,
+  archivedBanner: (name: string) =>
+    `Viewing ${name}, an ended season. These standings are final.`,
 } as const;
 
 /** Community hub copy (Social feature) — the "old-web" social district. */
@@ -449,6 +456,15 @@ export const COMMUNITY = {
   findPeople: 'Find people',
   searchPlaceholder: 'Search names…',
   searchEmpty: 'No one by that name.',
+  // Moderation (admin lock + slow-mode).
+  locked: 'Locked',
+  lockedNote: 'This channel is locked. The house has called for quiet.',
+  slowMode: (n: number) => `Slow mode: ${n}s`,
+  modLock: 'Lock channel',
+  modUnlock: 'Unlock channel',
+  modSlowLabel: 'Slow mode',
+  modSlowOff: 'Off',
+  modFailed: 'That order did not stick.',
 } as const;
 
 /** Public profile screen copy (Social feature). */

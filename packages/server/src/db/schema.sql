@@ -222,8 +222,11 @@ CREATE TABLE IF NOT EXISTS chat_messages (
 ) PARTITION BY RANGE (created_at);
 
 -- A catch-all default partition so inserts never fail before the weekly
--- maintenance job creates dated partitions. Weekly partitions + DROP PARTITION
--- retention (90d) are an operational job, documented in DECISIONS-server.md.
+-- maintenance job creates dated partitions. The 90-day retention is now an
+-- IN-SERVER daily maintenance tick (Maintenance service) that runs a plain
+-- `DELETE FROM chat_messages WHERE created_at < now() - interval '90 days'` —
+-- correct + simple at this scale (partition DROP is premature here). The window
+-- + interval are config-overridable (CHAT_RETENTION_DAYS, default 90).
 CREATE TABLE IF NOT EXISTS chat_messages_default
   PARTITION OF chat_messages DEFAULT;
 
@@ -340,6 +343,11 @@ CREATE TABLE IF NOT EXISTS chat_rooms (
   sort       int NOT NULL DEFAULT 0,
   created_at timestamptz NOT NULL DEFAULT now()
 );
+-- Moderation columns (additive + idempotent): admin lock + per-room slow-mode.
+-- `locked` blocks non-admin posting; `slow_mode_sec` raises the per-(user,room)
+-- post-cooldown floor for non-admins. Both enforced in the messages route.
+ALTER TABLE chat_rooms ADD COLUMN IF NOT EXISTS locked boolean NOT NULL DEFAULT false;
+ALTER TABLE chat_rooms ADD COLUMN IF NOT EXISTS slow_mode_sec int NOT NULL DEFAULT 0;
 -- Seed the default rooms (idempotent on slug).
 INSERT INTO chat_rooms (slug, name, topic, kind, sort) VALUES
   ('shoutbox', 'The Wire', 'Word on the street — keep it short.', 'shoutbox', 0),
