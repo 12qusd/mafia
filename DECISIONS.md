@@ -2730,3 +2730,36 @@ the determinism + §5 invariants; the room is the correct shard unit). Everythin
 124-finding audit is now built.
 
 Gate green: tests 1059 (server 354); eslint 0; leak 0/200.
+
+
+## 2026-09-09 — Nocturne playability and visual refresh
+
+Preserve the established engine, roles, account/community features, and the mrfox
+deployment. The start screen leads with Quick Play and explains bot backfill;
+private hosting and identity forms expand only when needed. An original noir town
+illustration anchors both the start screen and an in-game public-seat tableau.
+Phase guidance and a compact mobile clock make the next action clear. All hidden
+role data remains confined to the existing per-seat transport.
+
+Corrected: conditional GameScreen hook order; StrictMode socket-close race;
+user IDs overwriting real credentials; auto-guests not receiving resume tokens;
+invite links using lobby UUIDs instead of six-character invite codes; ping echoes
+being mistaken for server time; leaving a lobby retaining local navigation state;
+finished rooms retaining departed players; active games permitting play_again;
+and stale role/ability snapshots after role changes. Resume now replays only
+whitelisted, already-public vote/trial/result events and the seat's fresh own-role
+card. Quick Play again starts a new bot-filled table without resetting identity.
+The WebGL capability probe releases its context and runs once per mount, cinematic
+callbacks have stable dependencies, and hidden tabs stop the ambient render pump.
+
+Validation: 1,066 unit/integration tests, lint and workspace typecheck; 200 complete
+seeded games with zero entitlement violations; independent browser identities
+join a private invite, chat, Quick Play, refresh in-game and at game-over, mobile
+panes, complete a round with the real engine/bots, and Quick Play again. The
+standalone browser runner accelerates phase deadlines only in its own local
+in-memory server, never on a deployed server.
+
+Deployment uses an isolated release checkout on mrfox; the provisioned untracked
+ecosystem config stays in its original location. Postgres restart policy becomes
+unless-stopped. A proposed game-only boot-recovery unit is supplied but requires
+operator approval before installation under HomeLabDocs policy.

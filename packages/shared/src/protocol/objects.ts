@@ -27,6 +27,7 @@ export const LobbySchema = z.object({
   id: z.string(),
   name: z.string(),
   visibility: LobbyVisibilitySchema,
+  inviteCode: z.string().nullable().optional(),
   setupId: z.string(),
   config: LobbyConfigSchema,
   hostUserOrGuestId: z.string(),

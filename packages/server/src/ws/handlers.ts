@@ -96,7 +96,7 @@ export class MessageHandlers {
         return this.onReport(conn, msg);
       case 'ping':
         conn.lastPingT = msg.t;
-        conn.send({ v: 1, type: 'pong', t: msg.t } as ServerMessage);
+        conn.send({ v: 1, type: 'pong', t: msg.t, serverTime: Date.now() } as ServerMessage);
         return;
       case 'test_control':
         return this.onTestControl(conn, msg);
@@ -192,8 +192,13 @@ export class MessageHandlers {
       type: 'welcome',
       ...(identity.isGuest ? { guestId: identity.id } : { userId: identity.id }),
       ...(resumeSnapshot ? { resume: resumeSnapshot } : {}),
+      ...(issuedToken ? { token: issuedToken } : {}),
     } as ServerMessage);
-    void issuedToken; // token also set via HTTP cookie; WS clients keep their own.
+    // The token is delivered only by the unicast welcome above, never broadcast.
+
+    if (resumeSnapshot && scopeId) {
+      this.ctx.manager.getRoom(scopeId)?.sendResumeContext(identity.id);
+    }
 
     // If the connection rejoined a lobby (pre-game), resend lobby_state.
     if (scopeId) {

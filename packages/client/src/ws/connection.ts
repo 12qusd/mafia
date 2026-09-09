@@ -52,7 +52,10 @@ class Connection {
 
   /** Open the connection (idempotent). */
   connect(): void {
-    if (this.ws && (this.ws.readyState === WebSocket.OPEN || this.ws.readyState === WebSocket.CONNECTING)) {
+    if (
+      this.ws &&
+      (this.ws.readyState === WebSocket.OPEN || this.ws.readyState === WebSocket.CONNECTING)
+    ) {
       return;
     }
     this.closedByUser = false;
@@ -69,6 +72,7 @@ class Connection {
     this.ws = socket;
 
     socket.onopen = () => {
+      if (this.ws !== socket) return;
       this.backoff = BACKOFF_MIN_MS;
       this.hadConnection = true;
       useStore.getState().setConnection('authenticating');
@@ -76,9 +80,12 @@ class Connection {
       this.startPing();
     };
 
-    socket.onmessage = (ev) => this.onFrame(ev.data);
+    socket.onmessage = (ev) => {
+      if (this.ws === socket) this.onFrame(ev.data);
+    };
 
     socket.onclose = () => {
+      if (this.ws !== socket) return;
       this.stopPing();
       this.ws = null;
       if (this.closedByUser) {
@@ -110,6 +117,7 @@ class Connection {
       // reconnect, then close it cleanly.
       this.ws = null;
       this.stopPing();
+      sock.onopen = null;
       sock.onclose = null;
       sock.onerror = null;
       sock.onmessage = null;
@@ -187,14 +195,16 @@ class Connection {
       const t0 = this.pingSends.get(msg.t);
       if (t0 !== undefined) {
         this.pingSends.delete(msg.t);
-        store.addClockSample({ t0, t1: Date.now(), serverT: msg.t });
+        if (msg.serverTime !== undefined) {
+          store.addClockSample({ t0, t1: Date.now(), serverT: msg.serverTime });
+        }
       }
       return; // pong carries no store state.
     }
 
     if (msg.type === 'welcome') {
       // Persist any token the server hands back over the resume path.
-      if (msg.userId) saveToken(msg.userId);
+      if (msg.token) saveToken(msg.token);
     }
 
     store.ingest(msg);

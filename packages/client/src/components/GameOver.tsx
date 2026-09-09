@@ -80,7 +80,9 @@ export function GameOver() {
         aria-modal="true"
         aria-labelledby="gameover-title"
       >
-        <div className="win-result" id="gameover-title">{GAME.gameOver}</div>
+        <div className="win-result" id="gameover-title">
+          {GAME.gameOver}
+        </div>
         <div className="stack" style={{ alignItems: 'center' }}>
           {over.winners.map((w) => (
             <div key={w} className="win-loss win" style={{ fontFamily: 'var(--font-display)' }}>
@@ -174,9 +176,19 @@ export function GameOver() {
           )}
         </div>
 
-        <div className="row">
+        <div className="row" style={{ flexWrap: 'wrap' }}>
           <button
             className="btn btn-primary grow"
+            onClick={() => {
+              leaveLobby();
+              navigate('/');
+              quickPlay();
+            }}
+          >
+            Quick Play again
+          </button>
+          <button
+            className="btn grow"
             disabled={rematching}
             onClick={() => {
               // "Play again" reconvenes the crowd in a fresh lobby (§7.7). The
@@ -194,7 +206,7 @@ export function GameOver() {
             className="btn"
             onClick={() => {
               leaveLobby();
-              useStore.getState().resetAll();
+              // Keep the authenticated socket ready for the next game.
               navigate('/');
             }}
           >

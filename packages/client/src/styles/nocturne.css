@@ -1,0 +1,684 @@
+/* Nocturne, September 2026: ink, aged brass, and a town with something to hide. */
+:root {
+  --c-ink: #0b1113;
+  --c-ink-2: #111a1d;
+  --c-panel: #172125;
+  --c-panel-2: #1c282c;
+  --c-line: #354145;
+  --c-line-soft: #2b363a;
+  --c-text: #eee9dd;
+  --c-text-dim: #b9bcb5;
+  --c-text-faint: #a3aaa5;
+  --c-brass: #d2b777;
+  --c-amber: #e4c989;
+  --grad-panel: linear-gradient(155deg, #182327f5, #10191df8);
+  --grad-brass-btn: linear-gradient(115deg, #e4cb91, #c6a46c);
+  --radius-lg: 5px;
+}
+[data-scene='night'] {
+  --c-ink: #090f13;
+  --c-panel: #141e24;
+}
+.deco-bg {
+  background: radial-gradient(ellipse at 60% 0, #20353855, transparent 70%);
+}
+.panel {
+  box-shadow: 0 10px 30px #0002;
+  backdrop-filter: none;
+}
+.panel::before {
+  display: none;
+}
+.btn {
+  min-height: 42px;
+  box-shadow: none;
+  border-radius: 3px;
+}
+.btn-primary {
+  color: #1b211f;
+  text-shadow: none;
+  box-shadow: 0 4px 20px #0003;
+}
+.btn:disabled {
+  opacity: 0.48;
+}
+.linkbtn:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+.topbar {
+  background: #0c1417ee;
+  border-bottom: 1px solid #b99b6233;
+  padding: 17px 28px;
+  gap: 28px;
+}
+.brand {
+  font-size: 23px;
+  letter-spacing: 0.22em;
+  color: var(--c-brass);
+  background: none;
+  -webkit-text-fill-color: currentColor;
+}
+.topbar-nav {
+  gap: 20px;
+  flex-wrap: wrap;
+}
+.topbar-nav .linkbtn {
+  font-size: 12px;
+  letter-spacing: 0.02em;
+  color: #c1c5bf;
+}
+.topbar-nav .linkbtn:hover {
+  color: var(--c-amber);
+}
+.page {
+  max-width: 1360px;
+  padding: 30px;
+}
+.eyebrow {
+  font: 600 10px/1.6 var(--font-body);
+  letter-spacing: 0.19em;
+  text-transform: uppercase;
+  color: var(--c-brass);
+}
+.home-page {
+  gap: 24px;
+}
+.start-scene {
+  position: relative;
+  isolation: isolate;
+  min-height: 560px;
+  border: 1px solid #b99b6255;
+  background: #102124 url('/art/nocturne-town.png') 70% 54% / cover;
+  border-radius: 5px;
+  overflow: hidden;
+  box-shadow: 0 20px 65px #0005;
+}
+.start-scene::before {
+  content: '';
+  position: absolute;
+  inset: 0;
+  z-index: -1;
+  background:
+    linear-gradient(90deg, #0a1216fa 0%, #0a1216eb 24%, #0a121660 57%, #0a121608 100%),
+    linear-gradient(0deg, #0a1216a6, transparent 36%);
+}
+.start-content {
+  width: 520px;
+  max-width: 100%;
+  padding: 48px 44px 40px;
+}
+.deco-diamond {
+  display: inline-block;
+  width: 7px;
+  height: 7px;
+  margin-right: 8px;
+  background: var(--c-brass);
+  transform: rotate(45deg);
+}
+.start-content h1 {
+  font-size: clamp(42px, 4.7vw, 65px);
+  font-weight: 400;
+  letter-spacing: 0.13em;
+  margin: 22px 0 18px;
+  color: #ebd6a8;
+}
+.start-tagline {
+  font-family: var(--font-display);
+  font-size: 32px;
+  line-height: 1.18;
+  margin: 0 0 20px;
+}
+.start-tagline em {
+  color: #d7b982;
+  font-weight: 400;
+}
+.start-description {
+  font-size: 14px;
+  line-height: 1.8;
+  color: #bdc7c4;
+  max-width: 345px;
+}
+.start-play {
+  max-width: 350px;
+  margin-top: 26px;
+}
+.start-play .btn-quickplay {
+  display: flex;
+  justify-content: space-between;
+  min-height: 54px;
+  font-size: 15px;
+  letter-spacing: 0.13em;
+  padding: 12px 22px;
+}
+.start-note {
+  font-size: 11px;
+  color: #b7c1bd;
+  margin: 10px 0 20px;
+  text-align: center;
+}
+.start-secondary {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding-top: 14px;
+  border-top: 1px solid #bca46d44;
+}
+.start-secondary a,
+.start-secondary .linkbtn {
+  font-size: 12px;
+  color: #d6cfbd;
+  text-decoration: none;
+}
+.connection-caption {
+  display: flex;
+  align-items: center;
+  gap: 9px;
+  color: #a6b6af;
+  margin-top: 30px;
+  font-size: 11px;
+}
+.dot-on {
+  background: #80b9a0;
+  box-shadow: 0 0 8px #80b9a044;
+}
+.scene-caption {
+  position: absolute;
+  bottom: 30px;
+  right: 30px;
+  display: flex;
+  flex-direction: column;
+  align-items: flex-end;
+  gap: 5px;
+  text-shadow: 0 2px 5px #000;
+}
+.scene-caption span:first-child {
+  color: #e0c487;
+  font-size: 9px;
+  letter-spacing: 0.22em;
+}
+.scene-caption span:last-child {
+  font-family: var(--font-display);
+  font-size: 16px;
+  font-style: italic;
+  color: #d1cbbd;
+}
+.home-utilities {
+  display: grid;
+  grid-template-columns: 1.15fr 1fr 1fr;
+  gap: 16px;
+  align-items: start;
+}
+.home-utilities > .panel,
+.home-disclosure {
+  min-height: 126px;
+  padding: 20px;
+  background: #131e21;
+  border: 1px solid var(--c-line-soft);
+  border-radius: 4px;
+}
+.home-utilities .deco-head {
+  justify-content: flex-start;
+  font-family: var(--font-body);
+  font-size: 10px;
+  margin-bottom: 8px;
+}
+.home-utilities .deco-head::before,
+.home-utilities .deco-head::after {
+  display: none;
+}
+.home-utilities .row {
+  min-width: 0;
+}
+.home-utilities input {
+  min-width: 60px;
+}
+.home-utilities .btn {
+  font-size: 11px;
+  white-space: nowrap;
+}
+.home-disclosure summary {
+  cursor: pointer;
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  list-style: none;
+}
+.home-disclosure summary::-webkit-details-marker {
+  display: none;
+}
+.home-disclosure summary > span:last-child {
+  display: flex;
+  justify-content: space-between;
+  gap: 12px;
+  font-family: var(--font-display);
+  font-size: 20px;
+}
+.home-disclosure[open] summary {
+  padding-bottom: 20px;
+}
+.home-disclosure > .panel {
+  border: 0;
+  padding: 0;
+  box-shadow: none;
+  background: transparent;
+}
+.home-disclosure .profile-panel {
+  margin-top: 15px;
+}
+.welcome-banner {
+  box-shadow: none;
+  background: transparent;
+  border: 0;
+  padding: 0 4px;
+  font-size: 12px;
+}
+.welcome-banner .welcome-text {
+  color: var(--c-text-faint);
+}
+.invite-control {
+  display: flex;
+  gap: 12px;
+  align-items: center;
+}
+.invite-code {
+  font-variant-numeric: tabular-nums;
+  font-size: 18px;
+  letter-spacing: 0.18em;
+  color: var(--c-amber);
+}
+.queue-cards {
+  display: flex;
+  justify-content: center;
+  margin: 26px 0 18px;
+}
+.queue-cards span {
+  display: grid;
+  place-items: center;
+  width: 64px;
+  height: 90px;
+  border: 1px solid var(--c-brass);
+  background: #172528;
+  font:
+    32px Georgia,
+    serif;
+  color: var(--c-brass);
+  border-radius: 4px;
+  box-shadow: 0 6px 20px #0005;
+}
+.queue-cards span:first-child {
+  transform: translate(12px, 8px) rotate(-14deg);
+}
+.queue-cards span:nth-child(2) {
+  z-index: 1;
+  background: #223437;
+}
+.queue-cards span:last-child {
+  transform: translate(-12px, 8px) rotate(14deg);
+}
+.queue-countdown {
+  font-variant-numeric: tabular-nums;
+  color: var(--c-amber);
+}
+/* The town is visible even with WebGL disabled, without hiding action controls. */
+.town-scene {
+  position: relative;
+  isolation: isolate;
+  margin: 18px 20px 0;
+  min-height: 240px;
+  background: #14282d url('/art/nocturne-town.png') center 51% / cover;
+  border: 1px solid #a88d574d;
+  overflow: hidden;
+  border-radius: 5px;
+  z-index: 1;
+}
+.town-scene::before {
+  content: '';
+  position: absolute;
+  inset: 0;
+  z-index: -1;
+  background:
+    linear-gradient(90deg, #081519db, #08151935 65%),
+    linear-gradient(0deg, #0a1417ec, #0a141708 70%);
+}
+.town-night {
+  background-position: center 35%;
+}
+.town-dawn::before,
+.town-day_discussion::before,
+.town-day_voting::before {
+  background:
+    linear-gradient(90deg, #1c251edb, #bc8c4230), linear-gradient(0deg, #0a1417f5, transparent);
+}
+.town-trial_defense::before,
+.town-trial_judgment::before,
+.town-execution::before {
+  background:
+    linear-gradient(90deg, #250e10e8, #58171935), linear-gradient(0deg, #140e10ed, transparent);
+}
+.town-hud {
+  display: flex;
+  justify-content: space-between;
+  gap: 20px;
+  padding: 26px 30px 0;
+}
+.town-hud h1 {
+  font-size: 32px;
+  font-weight: 400;
+  margin: 8px 0;
+  color: #fff0d2;
+  text-shadow: 0 2px 10px #0008;
+}
+.town-hud p {
+  font-size: 12px;
+  margin: 0;
+  max-width: 560px;
+  color: #d1d9d3;
+  text-shadow: 0 1px 4px #000;
+}
+.hud-divider {
+  margin: 0 10px;
+  opacity: 0.6;
+}
+.town-clock {
+  text-align: right;
+  flex: 0 0 auto;
+}
+.town-clock strong {
+  display: block;
+  font: 40px/1.25 var(--font-display);
+  font-variant-numeric: tabular-nums;
+  color: #f0dfbc;
+}
+.town-clock.urgent strong {
+  color: #ffafa2;
+}
+.town-cast {
+  display: flex;
+  justify-content: center;
+  gap: clamp(8px, 2vw, 34px);
+  padding: 10px 24px 12px;
+  overflow-x: auto;
+}
+.town-resident {
+  position: relative;
+  flex: 0 1 68px;
+  min-width: 40px;
+  text-align: center;
+}
+.town-resident svg {
+  display: block;
+  height: 70px;
+  width: 58px;
+  max-width: 100%;
+  margin: 0 auto;
+  filter: drop-shadow(0 3px 6px #0009);
+}
+.resident-coat {
+  fill: #34484b;
+  stroke: #8b9c9244;
+}
+.resident-shirt {
+  fill: #b6b5a0;
+}
+.resident-face {
+  fill: #b79873;
+}
+.resident-hat {
+  fill: #18282d;
+  stroke: #83998d66;
+}
+.resident-band {
+  fill: #b2976555;
+}
+.town-resident:nth-child(3n + 2) .resident-coat {
+  fill: #51433c;
+}
+.town-resident:nth-child(3n) .resident-coat {
+  fill: #3e414f;
+}
+.resident-number {
+  position: absolute;
+  top: 49px;
+  left: calc(50% - 9px);
+  background: #172225;
+  color: #dfc896;
+  border: 1px solid #988660;
+  border-radius: 50%;
+  width: 20px;
+  height: 20px;
+  font-size: 10px;
+  line-height: 18px;
+}
+.resident-name {
+  display: block;
+  font-size: 10px;
+  color: #b6c3bd;
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+}
+.resident-you .resident-name {
+  color: #f2d595;
+  font-weight: 700;
+}
+.resident-you svg {
+  filter: drop-shadow(0 0 6px #d2b77760);
+}
+.departed {
+  opacity: 0.45;
+  filter: grayscale(1);
+}
+.departed .resident-name {
+  text-decoration: line-through;
+}
+.game-shell {
+  padding: 16px 20px 20px;
+  grid-template-columns: minmax(250px, 1.15fr) minmax(320px, 1.25fr) minmax(230px, 0.95fr);
+  height: max(520px, calc(100dvh - 352px));
+  gap: 16px;
+}
+.game-shell .phase-banner {
+  display: none;
+}
+.game-shell > .panel {
+  background: #121d21f5;
+}
+.game-col {
+  gap: 14px;
+}
+.role-card {
+  background: linear-gradient(145deg, #25312c, #151f23 70%);
+  border-color: #9b875657;
+}
+.role-emblem {
+  float: right;
+  width: 56px;
+  height: 56px;
+  display: grid;
+  place-items: center;
+  border: 1px solid #bca16b66;
+  transform: rotate(45deg);
+  margin: 2px 8px 20px 15px;
+  color: #dfc789;
+  background: #d3b7750a;
+}
+.role-emblem svg {
+  width: 32px;
+  height: 32px;
+  transform: rotate(-45deg);
+}
+.role-name {
+  font-size: 28px;
+}
+.role-card .eyebrow {
+  margin-bottom: 10px;
+}
+.role-card .spread {
+  flex-wrap: wrap;
+  justify-content: flex-start;
+  gap: 10px;
+}
+.role-desc {
+  line-height: 1.7;
+}
+.game-mobile-topbar {
+  z-index: 4;
+}
+@media (min-width: 821px) and (max-width: 1100px) {
+  .game-shell {
+    grid-template-columns: minmax(200px, 1fr) minmax(280px, 1.25fr);
+    height: auto;
+  }
+  .game-pane-table {
+    grid-column: 1 / -1;
+  }
+  .game-pane-chat {
+    min-height: 480px;
+    max-height: 650px;
+  }
+}
+@media (max-width: 820px) {
+  .topbar {
+    padding: 13px 18px;
+  }
+  .page {
+    padding: 18px;
+  }
+  .start-scene {
+    min-height: 560px;
+    background-position: 62% center;
+  }
+  .start-content {
+    padding: 32px 26px;
+    width: 460px;
+  }
+  .start-scene::before {
+    background:
+      linear-gradient(90deg, #0a1216eb, #0a121670), linear-gradient(0deg, #0a1216dd, transparent);
+  }
+  .scene-caption {
+    display: none;
+  }
+  .home-utilities {
+    grid-template-columns: 1fr;
+  }
+  .home-utilities > .panel,
+  .home-disclosure {
+    min-height: auto;
+  }
+  .town-scene {
+    margin: 12px 12px 0;
+    min-height: 200px;
+  }
+  .town-hud {
+    padding: 18px 18px 0;
+  }
+  .town-hud h1 {
+    font-size: 26px;
+  }
+  .town-hud p {
+    font-size: 11px;
+  }
+  .town-clock {
+    display: none;
+  }
+  .town-cast {
+    justify-content: flex-start;
+    gap: 12px;
+    padding: 12px 18px;
+  }
+  .town-resident {
+    min-width: 44px;
+  }
+  .town-resident svg {
+    height: 58px;
+  }
+  .resident-number {
+    top: 39px;
+  }
+  .game-shell {
+    display: block;
+    height: auto;
+    min-height: 420px;
+    padding: 12px;
+  }
+  .game-shell .game-pane-chat {
+    height: 60dvh;
+    min-height: 340px;
+  }
+  .game-mobile-topbar {
+    margin: 12px 12px 0;
+    background: #101a1e;
+  }
+  .invite-control {
+    flex-wrap: wrap;
+    gap: 6px;
+  }
+  .lobby-grid + .row,
+  .page > .spread {
+    flex-wrap: wrap;
+  }
+}
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    scroll-behavior: auto !important;
+    animation: none !important;
+    transition: none !important;
+  }
+}
+@media (max-width: 820px) {
+  .game-mobile-topbar .phase-banner {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    padding: 8px 12px;
+    border: 0;
+    box-shadow: none;
+  }
+  .game-mobile-topbar .phase-banner > .row {
+    flex: 1;
+    justify-content: flex-start !important;
+  }
+  .game-mobile-topbar .phase-title {
+    font-family: var(--font-body);
+    font-size: 11px;
+    letter-spacing: 0.05em;
+    text-align: left;
+  }
+  .game-mobile-topbar .phase-day,
+  .game-mobile-topbar .phase-banner::before,
+  .game-mobile-topbar .phase-banner::after {
+    display: none;
+  }
+  .game-mobile-topbar .countdown {
+    font-size: 25px;
+    margin: 0;
+  }
+  .game-mobile-topbar .game-mobile-tabs {
+    border-radius: 4px;
+  }
+  .game-mobile-tab {
+    border-radius: 3px;
+  }
+  .game-shell .game-pane-role {
+    overflow-y: visible !important;
+    height: auto;
+  }
+}
+/* Keep one document scroll surface. height:100% + overflow-x:hidden made the
+   body a clipped nested scroller on phones, hiding lower controls. */
+html,
+body,
+#root {
+  height: auto;
+  min-height: 100%;
+}
+body {
+  overflow-x: clip;
+}
+#root {
+  min-height: 100vh;
+}

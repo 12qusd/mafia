@@ -1,0 +1,21 @@
+# Optional boot recovery on mrfox. Installing a new unit requires operator approval.
+[Unit]
+Description=Nocturne game and local AI recovery
+Wants=network-online.target
+After=network-online.target docker.service
+Requires=docker.service
+
+[Service]
+Type=oneshot
+RemainAfterExit=yes
+User=fox
+Environment=PATH=/home/fox/.nvm/versions/node/v20.19.6/bin:/usr/local/bin:/usr/bin:/bin
+WorkingDirectory=/home/fox/Projects/mafia
+ExecStart=/usr/bin/docker start nocturne-pg
+ExecStart=/home/fox/.nvm/versions/node/v20.19.6/bin/pm2 start /home/fox/Projects/mafia/ecosystem.config.cjs --only nocturne
+ExecStart=/usr/bin/bash -c 'if pm2 describe llm-mafia >/dev/null 2>&1; then pm2 restart llm-mafia; else pm2 start /home/fox/llm/llama-b9616/llama-server --name llm-mafia --interpreter none -- -m /home/fox/llm/models/qwen2.5-0.5b-instruct-q4_k_m.gguf --host 127.0.0.1 --port 11435; fi' 
+ExecStop=/home/fox/.nvm/versions/node/v20.19.6/bin/pm2 stop nocturne llm-mafia
+TimeoutStartSec=90
+
+[Install]
+WantedBy=multi-user.target

@@ -343,7 +343,16 @@ export class LobbyManager {
     // In a room: explicit leave = suicide at next night (§8).
     const room = this.rooms.get(scopeId);
     if (room) {
-      room.markLeaving(identityId);
+      if (room.isOver) {
+        room.detach(identityId);
+        room.removeSpectator(identityId);
+        this.identityScope.delete(identityId);
+        conn.lobbyId = null;
+        conn.spectator = false;
+        this.disposeRoomIfEmpty(room);
+      } else {
+        room.markLeaving(identityId);
+      }
     }
   }
 
@@ -750,6 +759,7 @@ export class LobbyManager {
     const room = this.roomOf(conn);
     // Not in a (finished) room anymore → caller falls back to Quick Play.
     if (!room) return 'no_game';
+    if (!room.isOver) return 'wrong_phase';
 
     // Detach this connection from the dead room scope exactly as the disconnect
     // path does, so the player is no longer scoped to the finished room and may
@@ -947,7 +957,10 @@ export class LobbyManager {
         // Leaver / queue-dodge: a short re-queue cooldown for anyone who
         // abandoned the match (checked in quickPlay('ranked')).
         for (const userId of award.leavers) {
-          this.rankedCooldownUntil.set(userId, (this.deps.clock?.() ?? Date.now()) + LEAVER_COOLDOWN_MS);
+          this.rankedCooldownUntil.set(
+            userId,
+            (this.deps.clock?.() ?? Date.now()) + LEAVER_COOLDOWN_MS,
+          );
         }
       }
       // Award points & achievements to registered players (goal 4). Guests and

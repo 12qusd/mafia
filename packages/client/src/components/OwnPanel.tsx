@@ -16,23 +16,13 @@ import {
   type Phase,
 } from '@nocturne/shared';
 import { useStore } from '../store/store.js';
+import { FactionIcon } from './Icons.js';
 import { FactionTag } from './common.js';
 import { GAME } from '../lib/strings-extra.js';
 import { sanitizeInline } from '../lib/sanitize.js';
-import {
-  sendNightAction,
-  sendDayAbility,
-  sendLastWill,
-  sendDeathNote,
-} from '../ws/actions.js';
+import { sendNightAction, sendDayAbility, sendLastWill, sendDeathNote } from '../ws/actions.js';
 
-export function OwnPanel({
-  seats,
-  phase,
-}: {
-  seats: PublicSeat[];
-  phase: Phase;
-}) {
+export function OwnPanel({ seats, phase }: { seats: PublicSeat[]; phase: Phase }) {
   const own = useStore((s) => s.own);
   const lastWillsEnabled = useStore((s) => s.lobby?.config.lastWillsEnabled ?? true);
   if (!own) return null;
@@ -44,7 +34,10 @@ export function OwnPanel({
   return (
     <div className="stack">
       <div className={`role-card role-card-${def.faction}`}>
-        <div className="role-card-crest" aria-hidden="true" />
+        <div className="role-emblem" aria-hidden="true">
+          <FactionIcon faction={def.faction} />
+        </div>
+        <div className="eyebrow">Your secret identity</div>
         <div className="spread">
           <span className="role-name">{def.name}</span>
           <FactionTag faction={def.faction} />
@@ -181,9 +174,7 @@ function NightAction({
   // Two-target night actions share one picker (first target = `target`, second =
   // `target2`). The Witch's `witch_control` seizes a PUPPET and steers it onto a
   // VICTIM; the Transporter's `transport` swaps two HOUSES. Only the labels differ.
-  const twoTarget = nightAbilities.find(
-    (a) => a.id === 'witch_control' || a.id === 'transport',
-  );
+  const twoTarget = nightAbilities.find((a) => a.id === 'witch_control' || a.id === 'transport');
   if (twoTarget) {
     const labels =
       twoTarget.id === 'transport'
@@ -245,7 +236,11 @@ function AbilityControl({
   }
 
   // gap A3/A4/H5: self/none toggles render an explicit ON/OFF button, NOT a grid.
-  if (SELF_TOGGLE_IDS.has(ability.id) || ability.targetDomain === 'self' || ability.targetDomain === 'none') {
+  if (
+    SELF_TOGGLE_IDS.has(ability.id) ||
+    ability.targetDomain === 'self' ||
+    ability.targetDomain === 'none'
+  ) {
     const armed = selectedHere;
     return (
       <div className="stack" style={{ gap: 4 }}>
@@ -311,8 +306,7 @@ function AbilityControl({
   // that is a separate self-toggle; its `douse` may NOT target self (the engine
   // rejects a self-douse), so never offer the actor in the douse grid.
   const allowSelf =
-    ability.id !== 'douse' &&
-    (def.targetScope === 'others_or_self' || def.targetScope === 'self');
+    ability.id !== 'douse' && (def.targetScope === 'others_or_self' || def.targetScope === 'self');
   const selfOnly = def.targetScope === 'self';
   const targets = seats.filter((s) => {
     if (!s.alive) return false;
@@ -602,10 +596,7 @@ function TwoTargetAction({
           <span className="muted">
             {labels.firstSet(seatName(puppet))} {labels.secondSet(seatName(victim))}
           </span>
-          <button
-            className="btn btn-sm btn-ghost"
-            onClick={() => submit(null, null)}
-          >
+          <button className="btn btn-sm btn-ghost" onClick={() => submit(null, null)}>
             {GAME.cancelAction}
           </button>
         </div>
@@ -650,9 +641,7 @@ function DayAbilities({
         </div>
         {own.jailTarget !== null && (
           <span className="muted">
-            {GAME.jailSet(
-              sanitizeInline(seats.find((s) => s.seat === own.jailTarget)?.name ?? ''),
-            )}
+            {GAME.jailSet(sanitizeInline(seats.find((s) => s.seat === own.jailTarget)?.name ?? ''))}
           </span>
         )}
       </div>

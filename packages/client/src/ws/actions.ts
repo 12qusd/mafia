@@ -1,3 +1,4 @@
+import { useStore } from '../store/store.js';
 /**
  * Outbound command helpers (BUILD_SPEC §9.1). Each function constructs a
  * shared-typed client message and sends it through the validated connection.
@@ -50,6 +51,8 @@ export function joinLobby(opts: {
 
 export function leaveLobby(): void {
   conn.send({ v: V, type: 'leave_lobby' });
+  useStore.getState().resetGame();
+  useStore.setState({ lobby: null, matchmaking: null });
 }
 
 export function setLobbyConfig(config: LobbyConfig): void {

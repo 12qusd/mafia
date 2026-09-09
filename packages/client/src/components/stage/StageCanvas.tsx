@@ -13,7 +13,7 @@
  *  - pause entirely when the tab is hidden.
  */
 
-import { useEffect, useRef, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import { Canvas, useThree, useFrame } from '@react-three/fiber';
 import type { Phase, DeathAnnounce } from '@nocturne/shared';
 import { useStore } from '../../store/store.js';
@@ -75,15 +75,20 @@ export default function StageCanvas() {
   // Select the stable seats array (never a fresh literal/function in a selector —
   // that loops React #185 under Zustand v5) and derive the name lookup locally.
   const seats = useStore((s) => s.game?.seats ?? NO_SEATS);
-  const seatNameOf = (seat: number) =>
-    seats.find((x) => x.seat === seat)?.name ?? `Seat ${seat + 1}`;
+  const seatNameOf = useCallback(
+    (seat: number) => seats.find((x) => x.seat === seat)?.name ?? `Seat ${seat + 1}`,
+    [seats],
+  );
 
   const moodRef = useRef<SceneMood>(moodForPhase(phase));
   const activeUntil = useRef<number>(performance.now() + 1500);
   const prevMood = useRef<SceneMood>(moodForPhase(phase));
   const seenDeaths = useRef<Set<string>>(new Set());
 
-  const [transition, setTransition] = useState<{ t: NonNullable<PhaseTransition>; at: number } | null>(null);
+  const [transition, setTransition] = useState<{
+    t: NonNullable<PhaseTransition>;
+    at: number;
+  } | null>(null);
   const [cue, setCue] = useState<DeathCue | null>(null);
 
   // React to phase → mood changes: cross-fade + transition flourish.
@@ -144,8 +149,7 @@ export default function StageCanvas() {
   // and drop MSAA so the WebGL fill cost stays bounded on mobile GPUs. Desktop
   // keeps the crisper [1, 1.75] range with antialiasing. Computed once at mount
   // (a stage remount on resize is unnecessary for this perf gate).
-  const narrow =
-    typeof window !== 'undefined' && window.matchMedia?.('(max-width: 820px)').matches;
+  const narrow = typeof window !== 'undefined' && window.matchMedia?.('(max-width: 820px)').matches;
   const maxDpr = narrow ? Math.min(window.devicePixelRatio || 1, 1.5) : 1.75;
   const antialias = !narrow;
 
@@ -172,7 +176,7 @@ export default function StageCanvas() {
       style={{ width: '100%', height: '100%' }}
     >
       <color attach="background" args={['#07060d']} />
-      <RenderPump activeUntil={activeUntil} />
+      {!hidden && <RenderPump activeUntil={activeUntil} />}
       <SceneContent moodRef={moodRef} />
       {transition && <TransitionFlourish transition={transition.t} startedAt={transition.at} />}
       {cue && <DeathCinematic cue={cue} />}

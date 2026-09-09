@@ -14,9 +14,15 @@ import { useNavigate } from 'react-router-dom';
 import { getRole, type ChatChannel } from '@nocturne/shared';
 import { strings } from '@nocturne/shared';
 import { useStore } from '../store/store.js';
-import { entitledChannels, canSpeakIn, muteReasonFor, type ChannelContext } from '../lib/channels.js';
+import {
+  entitledChannels,
+  canSpeakIn,
+  muteReasonFor,
+  type ChannelContext,
+} from '../lib/channels.js';
 import { GAME } from '../lib/strings-extra.js';
 import { sanitizeInline } from '../lib/sanitize.js';
+import { TownScene } from '../components/TownScene.js';
 import { PhaseBanner } from '../components/PhaseBanner.js';
 import { PlayerList } from '../components/PlayerList.js';
 import { OwnPanel } from '../components/OwnPanel.js';
@@ -29,7 +35,7 @@ import { DirectorGate } from '../components/DirectorPanel.js';
 import { AdminPanel } from '../components/AdminPanel.js';
 import { AnimationStage } from '../components/AnimationStage.js';
 import { LiveAnnouncer } from '../components/LiveAnnouncer.js';
-import { TestBadge } from '../components/common.js';
+import { DecoHead, TestBadge } from '../components/common.js';
 import { GAME_MOBILE_PANES, type GameMobilePane } from '../components/gameMobilePanes.js';
 import { useLobbyNav } from '../components/useLobbyNav.js';
 import { sendChat, sendWhisper } from '../ws/actions.js';
@@ -53,6 +59,8 @@ export function GameScreen() {
       sanitizeInline(game?.seats.find((s) => s.seat === seat)?.name ?? `#${seat + 1}`),
     [game?.seats],
   );
+
+  const [mobilePane, setMobilePane] = useState<GameMobilePane>('role');
 
   if (!game) {
     return (
@@ -115,12 +123,17 @@ export function GameScreen() {
   // and reveals the segmented tab bar + a sticky mini phase banner. This state
   // never affects the desktop DOM (every column is still rendered; CSS hides the
   // two that aren't active), so logic/handlers/tests are untouched.
-  const [mobilePane, setMobilePane] = useState<GameMobilePane>('role');
-
   return (
     <>
       <AnimationStage />
       <LiveAnnouncer />
+      <TownScene
+        seats={game.seats}
+        phase={game.phase}
+        dayNumber={game.dayNumber}
+        endsAt={game.endsAt}
+        ownSeat={own?.seat ?? null}
+      />
       {testMode && (
         <div className="row" style={{ margin: '4px 8px 0', justifyContent: 'flex-end' }}>
           <TestBadge />
@@ -155,8 +168,16 @@ export function GameScreen() {
 
       <div className={`game-shell game-mobile-pane-${mobilePane}`}>
         {/* Left: chat */}
-        <div className="game-col panel panel-pad game-pane game-pane-chat" style={{ overflow: 'hidden' }}>
-          {spectator && <div className="pill" style={{ marginBottom: 8 }}>{GAME.spectating}</div>}
+        <div
+          className="game-col panel panel-pad game-pane game-pane-chat"
+          style={{ overflow: 'hidden' }}
+        >
+          {spectator && (
+            <div className="pill" style={{ marginBottom: 8 }}>
+              {GAME.spectating}
+            </div>
+          )}
+          <DecoHead>Town conversation</DecoHead>
           <ChatPane
             channels={tabChannels}
             activeDefault={activeDefault}
@@ -203,6 +224,7 @@ export function GameScreen() {
             // gated to living↔living day-phase by the server; an inert arm in a
             // disabled context simply does nothing on send.
             useStore.getState().setWhisperArm(seat);
+            setMobilePane('chat');
           }}
         />
       </div>

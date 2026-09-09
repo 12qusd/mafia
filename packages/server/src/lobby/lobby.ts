@@ -194,6 +194,7 @@ export class Lobby implements AudienceProvider {
       id: this.id,
       name: this.name,
       visibility: this.visibility,
+      inviteCode: this.inviteCode,
       setupId: this.setupId,
       config: this.config,
       hostUserOrGuestId: this.hostId,

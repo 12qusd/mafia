@@ -1,5 +1,40 @@
 # Operations — Project NOCTURNE live deploy
 
+## Current deployment workflow — 2026-09-09
+
+Nocturne is served at https://mafia.0cs.me on mrfox :8080. Build into an isolated
+`/home/fox/Projects/nocturne-releases/<release>` checkout, then point the existing
+`/home/fox/Projects/mafia/ecosystem.config.cjs` script, cwd, CLIENT_DIST_DIR, and
+SERVER_BUILD at the release and restart only `nocturne`. Provisioned credentials
+stay in that existing untracked config; never copy them into a release or Git.
+Keep the previous release for rollback. Do not rebuild a live client directory.
+The original checkout and its unrelated untracked ARCHITECTURE.md are preserved.
+
+The Cloudflare tunnel runs as the existing systemd cloudflared.service; do not
+resurrect the obsolete PM2 tunnel entry. Postgres `nocturne-pg` uses its existing
+volume and now has restart policy `unless-stopped`. Local AI is PM2 `llm-mafia`
+at 127.0.0.1:11435. Scripted backfill works without this model.
+
+`scripts/nocturne-stack.service` is an optional, game-only recovery unit. It is
+**not installed until operator approval**: a new boot mechanism is ask_first.
+After approval, install to /etc/systemd/system/nocturne-stack.service, run
+`sudo systemctl daemon-reload`, then `sudo systemctl enable --now nocturne-stack`.
+It starts the existing database and only the two game PM2 applications.
+
+The historical TEST MODE exposure below was superseded by the current code:
+production/persistent servers require an admin for test lobbies, even with the
+environment flag set. No auth gate was weakened for this refresh.
+
+### Repeat browser verification
+
+Run `pnpm -r build`, then set PLAYWRIGHT_CHROMIUM to an installed browser binary
+and run `node packages/e2e/src/polish-check.mjs`. It boots its own in-memory server
+and checks invitation, chat, quick play, refresh, mobile, full round, game-over
+refresh, and quick play again. NOCTURNE_URL optionally targets an existing server
+for the non-accelerated smoke; no full-round acceleration is exposed remotely.
+
+### Historical notes (2026-06-14; use the workflow above)
+
 Operational notes for the live homelab deployment (public site behind a Cloudflare tunnel). All
 claims here were verified against the repo and the running host on **2026-06-14**. Source of truth
 for the env is [`ecosystem.config.cjs`](ecosystem.config.cjs); the config reader is

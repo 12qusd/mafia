@@ -24,6 +24,7 @@ import {
   clearRef,
 } from '../lib/storage.js';
 import { timeAgo } from '../lib/social.js';
+import { useCountdown } from '../components/useCountdown.js';
 import { useModalA11y } from '../lib/useModalA11y.js';
 import { refreshMe } from '../lib/me.js';
 import * as api from '../lib/api.js';
@@ -42,56 +43,94 @@ export function HomeScreen() {
   const ready = connection === 'open' && authed;
 
   return (
-    <div className="page stack">
-      <div className="hero">
-        <h1>{strings.UI.appName}</h1>
-        <p>{HOME.heroSub}</p>
+    <div className="page home-page stack">
+      <section className="start-scene" aria-label="Play Nocturne">
+        <div className="start-content">
+          <div className="eyebrow">
+            <span className="deco-diamond" /> A game of deception & deduction
+          </div>
+          <h1>NOCTURNE</h1>
+          <p className="start-tagline">
+            The town sleeps.
+            <br />
+            <em>Someone doesn’t.</em>
+          </p>
+          <p className="start-description">
+            Take a secret role in a town full of suspects. Read the room, make your move, and live
+            to see the morning.
+          </p>
+          <div className="start-play">
+            <button
+              className="btn btn-primary btn-quickplay"
+              disabled={!ready}
+              onClick={() => quickPlay()}
+            >
+              <span aria-hidden="true">♠</span> {HOME.quickPlay} <span aria-hidden="true">→</span>
+            </button>
+            <p className="start-note">Play solo or with others · Bots fill empty seats</p>
+            <div className="start-secondary">
+              <button
+                className="linkbtn"
+                disabled={!ready}
+                onClick={() => {
+                  if (!me || me.isGuest) {
+                    pushInfo(HOME.rankedSignInPrompt);
+                    return;
+                  }
+                  rankedPlay();
+                }}
+              >
+                {HOME.ranked} <span aria-hidden="true">↗</span>
+              </button>
+              <Link to="/how-to-play">
+                Learn to play <span aria-hidden="true">↗</span>
+              </Link>
+            </div>
+          </div>
+          <div className="connection-caption" role="status">
+            <span className={`dot ${ready ? 'dot-on' : ''}`} />
+            {ready
+              ? 'The town is open. Your seat is waiting.'
+              : connection === 'connecting' || connection === 'authenticating'
+                ? 'Opening the doors…'
+                : 'Reconnecting to the town…'}
+            {!ready && connection !== 'connecting' && (
+              <button className="linkbtn" onClick={() => conn.reauth()}>
+                Retry
+              </button>
+            )}
+          </div>
+        </div>
+        <div className="scene-caption" aria-hidden="true">
+          <span>THE TOWN AFTER DARK</span>
+          <span>Trust is a dangerous thing.</span>
+        </div>
+      </section>
+      <div className="home-utilities">
+        <JoinByCode />
+        <details className="home-disclosure">
+          <summary>
+            <span className="eyebrow">Gather your friends</span>
+            <span>
+              Host a private table <span aria-hidden="true">＋</span>
+            </span>
+          </summary>
+          {authed ? <CreateLobbyCard /> : <p className="muted">Connecting…</p>}
+        </details>
+        <details className="home-disclosure">
+          <summary>
+            <span className="eyebrow">Your identity</span>
+            <span>
+              Guest name & account <span aria-hidden="true">＋</span>
+            </span>
+          </summary>
+          <AuthCard />
+          {me && <ProfilePanel />}
+        </details>
       </div>
-
-      <WelcomeBanner />
       <SocialProof />
-
-      <div className="quickplay">
-        <div className="quickplay-row">
-          <button
-            className="btn btn-primary btn-quickplay"
-            disabled={!ready}
-            onClick={() => quickPlay()}
-          >
-            {HOME.quickPlay}
-          </button>
-          <button
-            className="btn btn-ranked btn-quickplay"
-            disabled={!ready}
-            onClick={() => {
-              // Ranked needs a registered account. Guests get a clear prompt to
-              // sign in rather than a server rejection toast.
-              if (!me || me.isGuest) {
-                pushInfo(HOME.rankedSignInPrompt);
-                return;
-              }
-              rankedPlay();
-            }}
-            title={!me || me.isGuest ? HOME.rankedSignInPrompt : HOME.rankedSub}
-          >
-            {HOME.ranked}
-          </button>
-        </div>
-        <p className="quickplay-sub">{HOME.quickPlaySub}</p>
-      </div>
-
-      {me && <ProfilePanel />}
-
-      <div className="grid-2">
-        <AuthCard />
-        <div className="stack">
-          <JoinByCode />
-          {authed && <CreateLobbyCard />}
-        </div>
-      </div>
-
       <LobbyBrowser onJoin={(id) => joinLobby({ lobbyId: id })} pushInfo={pushInfo} />
-
+      <WelcomeBanner />
       <QuickPlayOverlay />
     </div>
   );
@@ -201,9 +240,7 @@ function SocialProof() {
             // (ambiguous / no winner). Then players · relative-time. The title
             // mirrors the visible text for the tooltip.
             const factionLabel =
-              g.winner && g.winner in FACTION_LABEL
-                ? FACTION_LABEL[g.winner as Faction]
-                : null;
+              g.winner && g.winner in FACTION_LABEL ? FACTION_LABEL[g.winner as Faction] : null;
             const lead = factionLabel ? SOCIAL_PROOF.prevailed(factionLabel) : setup;
             const meta = `${SOCIAL_PROOF.players(g.players)} · ${timeAgo(g.endedAt)}`;
             return (
@@ -235,6 +272,7 @@ function QuickPlayOverlay() {
   const matchmaking = useStore((s) => s.matchmaking);
   const dialogRef = useRef<HTMLDivElement>(null);
   const matched = matchmaking?.state === 'matched';
+  const seconds = useCountdown(matchmaking?.eta ?? null);
   // Esc cancels the search while still queuing (no-op once matched — the table
   // is forming and the overlay clears itself). Focus is trapped on the dialog.
   useModalA11y(dialogRef, !!matchmaking && !matched, {
@@ -248,9 +286,18 @@ function QuickPlayOverlay() {
     <div className="overlay" role="dialog" aria-modal="true" aria-label={searchTitle}>
       <div className="modal quickplay-modal" ref={dialogRef}>
         <div className="panel panel-pad">
-          <div className="qp-spinner" aria-hidden="true" />
+          <div className="queue-cards" aria-hidden="true">
+            <span>♠</span>
+            <span>◆</span>
+            <span>♣</span>
+          </div>
           <h2 className="qp-title">{matched ? HOME.quickPlayMatched : searchTitle}</h2>
-          <p className="qp-sub">{matched ? '' : searchSub}</p>
+          <p className="qp-sub">{matched ? 'Dealing the roles…' : searchSub}</p>
+          {!matched && matchmaking.eta !== null && (
+            <p className="queue-countdown" role="status">
+              {seconds > 0 ? `Your table forms in ${seconds}s` : 'Seating the town…'}
+            </p>
+          )}
           {!matched && matchmaking.position !== null && matchmaking.queued !== null && (
             <p className="qp-position">
               {HOME.quickPlayPosition(matchmaking.position, matchmaking.queued)}
@@ -428,12 +475,12 @@ function JoinByCode() {
           value={code}
           maxLength={6}
           placeholder={HOME.joinCodePlaceholder}
-          onChange={(e) => setCode(e.target.value.toUpperCase())}
+          onChange={(e) => setCode(e.target.value.toUpperCase().replace(/[^A-Z0-9]/g, ''))}
         />
         <button
           className="btn"
           disabled={code.length !== 6}
-          onClick={() => navigate(`/join/${code}`)}
+          onClick={() => navigate(`/join/${encodeURIComponent(code)}`)}
         >
           {strings.UI.joinByCode}
         </button>

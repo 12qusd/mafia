@@ -59,7 +59,12 @@ export function LobbyScreen() {
   }
 
   const players = lobby.members.filter((m) => !m.isSpectator);
-  const canStart = host && players.length >= MIN_PLAYERS && lobby.status === 'waiting';
+  const minimum = setup?.minPlayers ?? MIN_PLAYERS;
+  const canStart =
+    host &&
+    players.length >= minimum &&
+    !!setup?.slotsByPlayerCount[String(players.length)] &&
+    lobby.status === 'waiting';
 
   return (
     <div className="page stack">
@@ -75,7 +80,7 @@ export function LobbyScreen() {
           </span>
         </div>
         <div className="row">
-          <InviteCopy code={lobby.id} visibility={lobby.visibility} />
+          <InviteCopy code={lobby.inviteCode ?? null} visibility={lobby.visibility} />
           <button
             className="btn btn-danger btn-sm"
             onClick={() => {
@@ -119,15 +124,16 @@ export function LobbyScreen() {
             </div>
           </div>
 
-          <div className="panel panel-pad" style={{ height: 320, display: 'flex', flexDirection: 'column' }}>
+          <div
+            className="panel panel-pad"
+            style={{ height: 320, display: 'flex', flexDirection: 'column' }}
+          >
             <DecoHead>{LOBBY.lobbyChat}</DecoHead>
             <ChatPane
               channels={['lobby']}
               activeDefault="lobby"
               onSend={(_ch, text) => sendChat('lobby', text)}
-              seatNameFor={(seat) =>
-                sanitizeInline(lobby.members[seat]?.name ?? `#${seat + 1}`)
-              }
+              seatNameFor={(seat) => sanitizeInline(lobby.members[seat]?.name ?? `#${seat + 1}`)}
               canSpeak
             />
           </div>
@@ -138,7 +144,11 @@ export function LobbyScreen() {
           <div className="panel panel-pad">
             <DecoHead>{LOBBY.setupSummary}</DecoHead>
             <strong>{setup?.name ?? lobby.setupId}</strong>
-            {setup && <p className="muted" style={{ marginTop: 4 }}>{setup.description}</p>}
+            {setup && (
+              <p className="muted" style={{ marginTop: 4 }}>
+                {setup.description}
+              </p>
+            )}
             <div className="row" style={{ gap: 12, margin: '8px 0' }}>
               <FactionTag faction="TOWN" />
               <FactionTag faction="MAFIA" />
@@ -161,11 +171,7 @@ export function LobbyScreen() {
             )}
           </div>
 
-          <ConfigPanel
-            host={host}
-            config={lobby.config}
-            onChange={(c) => setLobbyConfig(c)}
-          />
+          <ConfigPanel host={host} config={lobby.config} onChange={(c) => setLobbyConfig(c)} />
 
           {host && lobby.testMode && lobby.status === 'waiting' && (
             <AiPlayersPanel
@@ -177,8 +183,8 @@ export function LobbyScreen() {
           <button className="btn btn-primary" disabled={!canStart} onClick={() => startGame()}>
             {strings.UI.startGame}
           </button>
-          {host && players.length < MIN_PLAYERS && (
-            <p className="muted">{LOBBY.needMorePlayers(MIN_PLAYERS)}</p>
+          {host && players.length < minimum && (
+            <p className="muted">{LOBBY.needMorePlayers(minimum)}</p>
           )}
           {!host && <p className="muted">{LOBBY.waitingForHost}</p>}
         </div>
@@ -213,9 +219,7 @@ function AiPlayersPanel({ botCount, tableSize }: { botCount: number; tableSize: 
           max={Math.max(1, room)}
           value={count}
           style={{ width: 72 }}
-          onChange={(e) =>
-            setCount(Math.max(1, Math.min(14, Number(e.target.value) || 1)))
-          }
+          onChange={(e) => setCount(Math.max(1, Math.min(14, Number(e.target.value) || 1)))}
         />
         <select value={policy} onChange={(e) => setPolicy(e.target.value as TestBotPolicy)}>
           <option value="scripted">Scripted (fast)</option>
@@ -236,7 +240,7 @@ function AiPlayersPanel({ botCount, tableSize }: { botCount: number; tableSize: 
   );
 }
 
-function InviteCopy({ code, visibility }: { code: string; visibility: string }) {
+function InviteCopy({ code, visibility }: { code: string | null; visibility: string }) {
   const [copied, setCopied] = useState(false);
   // Private lobbies route by invite code; here `code` is the lobby id used by
   // the /join route (the server maps invite codes to lobbies).
@@ -244,22 +248,28 @@ function InviteCopy({ code, visibility }: { code: string; visibility: string }) 
   if (visibility !== 'private') {
     return <span className="pill">Public table</span>;
   }
+  if (!code) return <span className="muted">Invite unavailable. Rejoin the table to refresh.</span>;
   return (
-    <button
-      className="btn btn-sm"
-      onClick={() => {
-        void navigator.clipboard?.writeText(url).then(
-          () => {
-            setCopied(true);
-            setTimeout(() => setCopied(false), 1500);
-          },
-          () => undefined,
-        );
-      }}
-      title={url}
-    >
-      <IconCopy /> {copied ? LOBBY.copied : LOBBY.copyLink}
-    </button>
+    <div className="invite-control">
+      <span className="invite-code" title="Invite code">
+        {code}
+      </span>
+      <button
+        className="btn btn-sm"
+        onClick={() => {
+          void navigator.clipboard?.writeText(url).then(
+            () => {
+              setCopied(true);
+              setTimeout(() => setCopied(false), 1500);
+            },
+            () => undefined,
+          );
+        }}
+        title={url}
+      >
+        <IconCopy /> {copied ? LOBBY.copied : LOBBY.copyLink}
+      </button>
+    </div>
   );
 }
 
@@ -277,7 +287,8 @@ function ConfigPanel({
   const deadSeeAll = c.deadSeeAll ?? DEFAULT_LOBBY_CONFIG.deadSeeAll;
   const lastWills = c.lastWillsEnabled ?? DEFAULT_LOBBY_CONFIG.lastWillsEnabled;
   const nightSecs: number = c.timings?.NIGHT ?? DEFAULT_LOBBY_CONFIG.timings.NIGHT ?? 60;
-  const votingSecs: number = c.timings?.DAY_VOTING ?? DEFAULT_LOBBY_CONFIG.timings.DAY_VOTING ?? 150;
+  const votingSecs: number =
+    c.timings?.DAY_VOTING ?? DEFAULT_LOBBY_CONFIG.timings.DAY_VOTING ?? 150;
 
   function patch(p: Partial<LobbyConfig>) {
     onChange({ ...config, ...p });
@@ -290,7 +301,11 @@ function ConfigPanel({
       <div className="toggle">
         <span>{LOBBY.whispers}</span>
         {host ? (
-          <Switch on={whispers} label={LOBBY.whispers} onChange={(v) => patch({ whispersEnabled: v })} />
+          <Switch
+            on={whispers}
+            label={LOBBY.whispers}
+            onChange={(v) => patch({ whispersEnabled: v })}
+          />
         ) : (
           <span className="badge">{whispers ? LOBBY.on : LOBBY.off}</span>
         )}
@@ -298,7 +313,11 @@ function ConfigPanel({
       <div className="toggle">
         <span>{LOBBY.deadSeeAll}</span>
         {host ? (
-          <Switch on={deadSeeAll} label={LOBBY.deadSeeAll} onChange={(v) => patch({ deadSeeAll: v })} />
+          <Switch
+            on={deadSeeAll}
+            label={LOBBY.deadSeeAll}
+            onChange={(v) => patch({ deadSeeAll: v })}
+          />
         ) : (
           <span className="badge">{deadSeeAll ? LOBBY.on : LOBBY.off}</span>
         )}
@@ -306,7 +325,11 @@ function ConfigPanel({
       <div className="toggle">
         <span>{LOBBY.lastWills}</span>
         {host ? (
-          <Switch on={lastWills} label={LOBBY.lastWills} onChange={(v) => patch({ lastWillsEnabled: v })} />
+          <Switch
+            on={lastWills}
+            label={LOBBY.lastWills}
+            onChange={(v) => patch({ lastWillsEnabled: v })}
+          />
         ) : (
           <span className="badge">{lastWills ? LOBBY.on : LOBBY.off}</span>
         )}
@@ -347,7 +370,10 @@ function TimingRow({
   return (
     <div className="toggle">
       <span>
-        {label} <span className="faint">({bounds.min}–{bounds.max}s)</span>
+        {label}{' '}
+        <span className="faint">
+          ({bounds.min}–{bounds.max}s)
+        </span>
       </span>
       {host ? (
         <input
@@ -357,7 +383,10 @@ function TimingRow({
           value={value}
           style={{ width: 80 }}
           onChange={(e) => {
-            const n = Math.max(bounds.min, Math.min(bounds.max, Number(e.target.value) || bounds.min));
+            const n = Math.max(
+              bounds.min,
+              Math.min(bounds.max, Number(e.target.value) || bounds.min),
+            );
             onChange(n);
           }}
         />

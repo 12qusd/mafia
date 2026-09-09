@@ -37,11 +37,10 @@ function webglAvailable(): boolean {
   try {
     if (typeof document === 'undefined') return false;
     const canvas = document.createElement('canvas');
-    return !!(
-      canvas.getContext('webgl2') ||
-      canvas.getContext('webgl') ||
-      canvas.getContext('experimental-webgl')
-    );
+    const gl = canvas.getContext('webgl2') || canvas.getContext('webgl');
+    if (!gl) return false;
+    gl.getExtension('WEBGL_lose_context')?.loseContext();
+    return true;
   } catch {
     return false;
   }
@@ -66,10 +65,11 @@ export function AnimationStage() {
     return () => mq?.removeEventListener?.('change', onChange);
   }, []);
 
+  const [hasWebgl] = useState(webglAvailable);
   const level = effectiveAnimationLevel(animations, reduced);
 
   // The single gate: only at 'full', with a real WebGL context available.
-  const mount = shouldMountCanvas(level) && webglAvailable();
+  const mount = shouldMountCanvas(level) && hasWebgl;
 
   // Cinematic-moment driver: while the canvas IS mounted, mirror the current
   // phase's mood onto `data-stage` on the document root. CSS keys off this to let

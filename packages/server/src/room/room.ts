@@ -92,6 +92,8 @@ export class Room implements AudienceProvider {
   private endsAt: number | null = null;
   private deadlineTimer: { cancel: () => void } | null = null;
   private over = false;
+  /** Replay only already-public UI state after welcome, never a god/debug view. */
+  private readonly publicResume = new Map<string, ServerMessage>();
   /**
    * Queue this match was played in (persisted with the MatchRecord, §10). Set by
    * the LobbyManager at start: 'quickplay' for matchmade games, otherwise left
@@ -170,12 +172,8 @@ export class Room implements AudienceProvider {
     // entirely when no seated player carries a preference so the engine takes the
     // byte-identical no-preference path (guests/bots and unentitled players carry
     // none — gated upstream in the lobby manager). See engine `assignWithPreferences`.
-    const seatPreferences = roster.map(
-      (r) => r.seatPreference ?? { blacklist: [], prefer: [] },
-    );
-    const anyPref = seatPreferences.some(
-      (p) => p.blacklist.length > 0 || p.prefer.length > 0,
-    );
+    const seatPreferences = roster.map((r) => r.seatPreference ?? { blacklist: [], prefer: [] });
+    const anyPref = seatPreferences.some((p) => p.blacklist.length > 0 || p.prefer.length > 0);
     this.state = this.engine.init(setup, this.seed, {
       playerCount: roster.length,
       names: roster.map((r) => r.name),
@@ -500,11 +498,33 @@ export class Room implements AudienceProvider {
   /** Record private/chat effects into per-seat logs, then dispatch (§5, §8). */
   private recordAndDispatch(effect: Effect): void {
     const type = (effect.msg as { type?: string }).type;
+    if (effect.to === 'public') {
+      const msg = effect.msg;
+      if (msg.type === 'phase_change') {
+        if (msg.phase !== 'DAY_VOTING') this.publicResume.delete('vote_update');
+        if (!['TRIAL_DEFENSE', 'TRIAL_JUDGMENT', 'EXECUTION'].includes(msg.phase)) {
+          this.publicResume.delete('trial_start');
+          this.publicResume.delete('verdict_result');
+        }
+      } else if (['vote_update', 'trial_start', 'verdict_result', 'game_over'].includes(msg.type)) {
+        this.publicResume.set(msg.type, msg);
+      } else if (msg.type === 'seat_transform') {
+        this.publicResume.set(`seat_transform:${msg.seat}`, msg);
+      }
+    }
     // Accumulate per-seat private knowledge for resume (§8).
     if (Array.isArray(effect.to) && (type === 'private_result' || type === 'your_role')) {
       for (const seat of effect.to) {
         const b = this.seats[seat];
-        if (b) b.privateLog.push(effect.msg);
+        if (b) {
+          b.privateLog.push(effect.msg);
+          if (effect.msg.type === 'your_role') {
+            b.role = effect.msg.role;
+            b.faction = effect.msg.faction;
+            b.abilities = effect.msg.abilities;
+            b.mates = effect.msg.mates ?? null;
+          }
+        }
         // TEST MODE: keep an uncapped per-seat private-result history for the
         // audit endpoint (downloadable evidence; only retained in test rooms).
         if (this.godIdentityId) {
@@ -622,6 +642,8 @@ export class Room implements AudienceProvider {
   buildSnapshot(seat: SeatId): SeatSnapshot | null {
     const b = this.seats[seat];
     if (!b || b.role === null || b.faction === null) return null;
+    const roleEffect = this.engine.yourRole(this.state, seat);
+    const role = roleEffect?.msg.type === 'your_role' ? roleEffect.msg : null;
     const entitledChannels = this.entitledChannels(seat);
     const backlog: ChatRecord[] = [];
     for (const ch of entitledChannels) {
@@ -633,15 +655,26 @@ export class Room implements AudienceProvider {
       dayNumber: this.dayNumber,
       endsAt: this.endsAt,
       seats: this.publicSeats() as SeatSnapshot['seats'],
-      ownRole: b.role as SeatSnapshot['ownRole'],
-      ownFaction: b.faction as SeatSnapshot['ownFaction'],
-      abilities: b.abilities as SeatSnapshot['abilities'],
-      ...(b.mates ? { mates: b.mates } : {}),
+      ownRole: role?.role ?? (b.role as SeatSnapshot['ownRole']),
+      ownFaction: role?.faction ?? (b.faction as SeatSnapshot['ownFaction']),
+      abilities: this.engine.abilities(this.state, seat),
+      ...(role?.mates ? { mates: role.mates } : {}),
       privateLog: b.privateLog,
       chatBacklog: backlog as SeatSnapshot['chatBacklog'],
       ...(b.lastWill ? { lastWill: b.lastWill } : {}),
       ...(b.deathNote ? { deathNote: b.deathNote } : {}),
     };
+  }
+
+  /** Called AFTER welcome so the client has a game before receiving its controls. */
+  sendResumeContext(identityId: string): void {
+    const seat = this.seatForIdentity(identityId);
+    if (seat === undefined) return;
+    const role = this.engine.yourRole(this.state, seat);
+    if (role) this.transport.dispatchEffect(role);
+    for (const msg of this.publicResume.values()) {
+      this.transport.dispatchEffect({ to: [seat], msg });
+    }
   }
 
   /** Chat channels a seat may read from for the backlog (§5, §6.4). */

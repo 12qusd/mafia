@@ -26,6 +26,8 @@ import { PointsBreakdownSchema, UserStatsSummarySchema } from '../types/points.j
 export const WelcomeSchema = envelope('welcome', {
   userId: z.string().optional(),
   guestId: z.string().optional(),
+  /** Newly minted guest credential, sent only to this connection. */
+  token: z.string().optional(),
   resume: SeatSnapshotSchema.optional(),
 });
 
@@ -200,6 +202,7 @@ export const ErrorSchema = envelope('error', {
 // pong {t}
 export const PongSchema = envelope('pong', {
   t: z.number(),
+  serverTime: z.number().optional(),
 });
 
 // force_update {minProtocolVersion}
